@@ -511,13 +511,25 @@ a:hover {
 }
 
 .stock-detail-header {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.stock-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
 }
 
 .stock-info h1 {
   font-size: 2rem;
   font-weight: 800;
   letter-spacing: -0.5px;
+}
+
+.company-name {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 .stock-price-large {
@@ -528,7 +540,7 @@ a:hover {
 }
 
 .stock-change-large {
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 600;
   margin-top: 0.25rem;
 }
@@ -537,6 +549,13 @@ a:hover {
   display: grid;
   grid-template-columns: 1fr 380px;
   gap: 2rem;
+  align-items: start;
+}
+
+.stock-detail-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .chart-section {
@@ -546,11 +565,49 @@ a:hover {
   padding: 1.5rem;
 }
 
-.chart-section h3 {
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.chart-header h3 {
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 1rem;
+}
+
+.range-selector {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+}
+
+.range-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+  letter-spacing: 0.5px;
+}
+
+.range-btn:hover {
+  color: var(--text-primary);
+}
+
+.range-btn.active {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 
 .chart-container {
@@ -559,7 +616,7 @@ a:hover {
 }
 
 .chart-loading {
-  height: 400px;
+  height: 420px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -567,6 +624,137 @@ a:hover {
   font-size: 0.9rem;
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
+}
+
+.performance-section,
+.fundamentals-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+}
+
+.performance-section h3,
+.fundamentals-section h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 1.25rem;
+}
+
+.perf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.perf-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.perf-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.perf-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.price-range-bar {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.range-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.range-bar-title {
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.7rem;
+}
+
+.range-bar-track {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  position: relative;
+  overflow: visible;
+}
+
+.range-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), var(--yellow), var(--green));
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.range-bar-fill.fifty-two {
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+}
+
+.range-bar-marker {
+  position: absolute;
+  top: -4px;
+  width: 14px;
+  height: 14px;
+  background: var(--text-primary);
+  border: 2px solid var(--bg-card);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+  transition: left 0.3s ease;
+}
+
+.fund-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0;
+}
+
+.fund-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.fund-item:last-child {
+  border-bottom: none;
+}
+
+.fund-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.fund-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .trade-section {

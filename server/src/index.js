@@ -4,12 +4,16 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import { initDB } from "./config/db.js";
+import logger from "./utils/logger.js";
 import authRoutes from "./routes/auth.js";
 import stockRoutes from "./routes/stocks.js";
 import tradeRoutes from "./routes/trade.js";
 import portfolioRoutes from "./routes/portfolio.js";
 import orderRoutes from "./routes/orders.js";
 import chartRoutes from "./routes/chart.js";
+import indicesRoutes from "./routes/indices.js";
+import marketRoutes from "./routes/market.js";
+import watchlistRoutes from "./routes/watchlist.js";
 import startMarketWorker from "./services/marketWorker.js";
 import startWebSocketBroadcaster from "./services/websocket.js";
 import { startSquareOffJob } from "./services/squareOff.js";
@@ -32,6 +36,9 @@ app.use("/api/trade", tradeRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/chart", chartRoutes);
+app.use("/api/indices", indicesRoutes);
+app.use("/api/market", marketRoutes);
+app.use("/api/watchlist", watchlistRoutes);
 
 app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: Date.now() });
@@ -46,7 +53,7 @@ const start = async () => {
     startSquareOffJob();
 
     server.listen(PORT, () => {
-        console.log(`Zentrade server running on port ${PORT}`);
+        logger.info("Server", `Zentrade server running on port ${PORT}`);
     });
 };
 

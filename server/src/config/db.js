@@ -1,4 +1,5 @@
 import pg from "pg";
+import logger from "../utils/logger.js";
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -36,9 +37,31 @@ const initDB = async () => {
       quantity INTEGER NOT NULL,
       price_paise BIGINT NOT NULL,
       total_value_paise BIGINT NOT NULL,
+      brokerage_paise BIGINT NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS watchlist (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      symbol VARCHAR(20) NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, symbol)
+    )
+  `);
+
+  const brokerageCheck = await pool.query(`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_name = 'orders' AND column_name = 'brokerage_paise'
+  `);
+
+  if (brokerageCheck.rows.length === 0) {
+    await pool.query(`ALTER TABLE orders ADD COLUMN brokerage_paise BIGINT NOT NULL DEFAULT 0`);
+  }
+
+  logger.info("Database", "Schema initialized");
 };
 
 export { pool, initDB };

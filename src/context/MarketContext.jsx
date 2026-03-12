@@ -7,6 +7,7 @@ const SOCKET_URL = import.meta.env.DEV ? "http://localhost:5001" : "/";
 
 const MarketProvider = ({ children }) => {
     const [prices, setPrices] = useState({});
+    const [indices, setIndices] = useState({});
     const [connected, setConnected] = useState(false);
     const socketRef = useRef(null);
 
@@ -19,13 +20,20 @@ const MarketProvider = ({ children }) => {
 
         socket.on("connect", () => setConnected(true));
         socket.on("disconnect", () => setConnected(false));
-        socket.on("prices", (data) => setPrices(data));
+        socket.on("prices", (payload) => {
+            if (payload.type === "market_update") {
+                setPrices(payload.data || {});
+                setIndices(payload.indices || {});
+            } else {
+                setPrices(payload);
+            }
+        });
 
         return () => socket.disconnect();
     }, []);
 
     return (
-        <MarketContext.Provider value={{ prices, connected }}>
+        <MarketContext.Provider value={{ prices, indices, connected }}>
             {children}
         </MarketContext.Provider>
     );
