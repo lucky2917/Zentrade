@@ -10,11 +10,23 @@ const initDB = async () => {
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       email VARCHAR(255) UNIQUE NOT NULL,
-      password_hash VARCHAR(255) NOT NULL,
+      password_hash VARCHAR(255),
+      google_id VARCHAR(255) UNIQUE,
+      name VARCHAR(255),
       balance_paise BIGINT NOT NULL DEFAULT 100000000,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+
+  const googleIdCheck = await pool.query(`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'google_id'
+  `);
+  if (googleIdCheck.rows.length === 0) {
+    await pool.query(`ALTER TABLE users ADD COLUMN google_id VARCHAR(255) UNIQUE`);
+    await pool.query(`ALTER TABLE users ADD COLUMN name VARCHAR(255)`);
+    await pool.query(`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`);
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS portfolio (

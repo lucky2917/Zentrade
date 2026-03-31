@@ -55,8 +55,11 @@ const Navbar = () => {
                 </button>
 
                 {user && (
-                    <div className="navbar-balance">
-                        <Wallet size={14} /> {formatBalance(user.balancePaise)}
+                    <div className="navbar-user-info">
+                        {user.name && <span className="navbar-username">{user.name}</span>}
+                        <div className="navbar-balance">
+                            <Wallet size={14} /> {formatBalance(user.balancePaise)}
+                        </div>
                     </div>
                 )}
                 <button className="btn-logout" onClick={handleLogout} aria-label="Logout">

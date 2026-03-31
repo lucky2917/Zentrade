@@ -6,7 +6,7 @@ const AuthContext = createContext(null);
 const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [token, setToken] = useState(localStorage.getItem("token"));
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!!localStorage.getItem("token"));
 
     useEffect(() => {
         if (token) {
@@ -26,8 +26,6 @@ const AuthProvider = ({ children }) => {
                     setToken(null);
                     setLoading(false);
                 });
-        } else {
-            setLoading(false);
         }
     }, [token]);
 
@@ -49,6 +47,15 @@ const AuthProvider = ({ children }) => {
         return res.data;
     };
 
+    const googleLogin = async (accessToken) => {
+        const res = await api.post("/auth/google", { accessToken });
+        localStorage.setItem("token", res.data.token);
+        localStorage.setItem("user", JSON.stringify(res.data.user));
+        setToken(res.data.token);
+        setUser(res.data.user);
+        return res.data;
+    };
+
     const logout = () => {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
@@ -57,7 +64,7 @@ const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, token, loading, login, signup, logout }}>
+        <AuthContext.Provider value={{ user, token, loading, login, signup, googleLogin, logout }}>
             {children}
         </AuthContext.Provider>
     );
@@ -68,9 +75,9 @@ const useAuth = () => useContext(AuthContext);
 export { AuthProvider, useAuth };
 
 /*
- * auth state management. stores the user object, token, and
- * balance. has login, signup, and logout functions. on mount it
- * tries to validate the stored token by hitting /portfolio.
- * App.jsx wraps everything in AuthProvider, and pretty much
- * every component that needs the user pulls from useAuth.
+ * auth state management. stores user, token, balance. has login,
+ * signup, googleLogin, and logout. the googleLogin method sends
+ * the credential from google's button to our backend which verifies
+ * it and returns a jwt. on mount it validates stored token by
+ * hitting /portfolio. everything that needs the user pulls from useAuth.
  */
