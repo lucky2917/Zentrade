@@ -17,3 +17,10 @@ const auth = (req, res, next) => {
 };
 
 export default auth;
+
+/*
+ * jwt auth middleware. grabs the bearer token from request headers,
+ * verifies it, and sticks the userId onto req so downstream handlers
+ * know who's making the request. used by trade, orders, portfolio,
+ * and watchlist routes — basically anything that needs a logged in user.
+ */

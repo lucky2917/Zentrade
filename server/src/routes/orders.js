@@ -28,3 +28,9 @@ router.get("/", auth, async (req, res) => {
 });
 
 export default router;
+
+/*
+ * order history route. just pulls the last 100 orders for whoever
+ * is logged in from postgres. the Orders page on the frontend
+ * calls this on load. mounted at /api/orders, needs auth.
+ */

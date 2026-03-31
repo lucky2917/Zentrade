@@ -24,3 +24,10 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+/*
+ * axios instance with /api base url. automatically attaches the
+ * jwt token from localstorage to every request. if any response
+ * comes back as 401 it clears the token and kicks you to login.
+ * every page that talks to the backend imports this.
+ */

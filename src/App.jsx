@@ -71,3 +71,11 @@ const App = () => {
 };
 
 export default App;
+
+/*
+ * root component. sets up react router and wraps everything in
+ * auth + market providers. all the page routes are defined here —
+ * login, signup, dashboard, stock detail, portfolio, orders.
+ * if user is logged in it shows the navbar, otherwise redirects
+ * to login.
+ */

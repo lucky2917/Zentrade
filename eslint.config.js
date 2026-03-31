@@ -27,3 +27,9 @@ export default defineConfig([
     },
   },
 ])
+
+/*
+ * eslint setup. flat config format with react hooks and react refresh
+ * plugins baked in. ignores the dist folder. nothing fancy, just keeps
+ * the code consistent and catches unused vars.
+ */

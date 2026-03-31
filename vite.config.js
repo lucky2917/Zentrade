@@ -13,3 +13,9 @@ export default defineConfig({
     },
   },
 });
+
+/*
+ * vite config for the react frontend. the proxy section is important —
+ * it forwards /api and /socket.io requests to the backend on port 5001
+ * so you dont run into cors issues during local dev.
+ */

@@ -62,3 +62,11 @@ router.get("/", auth, async (req, res) => {
 });
 
 export default router;
+
+/*
+ * portfolio route. fetches the user's holdings from postgres and
+ * then grabs live prices from redis to calculate real-time pnl.
+ * returns balance, each holding with current value, and the total
+ * invested vs current. the Portfolio page hits this endpoint.
+ * mounted at /api/portfolio, needs auth.
+ */

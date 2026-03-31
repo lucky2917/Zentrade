@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import api from "../services/api.js";
+import { motion } from "framer-motion";
+import { ListOrdered, FileText } from "lucide-react";
 
 const Orders = () => {
     const [orders, setOrders] = useState([]);
@@ -41,18 +43,43 @@ const Orders = () => {
         return <div className="loading-screen">Loading orders...</div>;
     }
 
+    const containerVariants = {
+        hidden: { opacity: 0 },
+        show: {
+            opacity: 1,
+            transition: { staggerChildren: 0.05 }
+        }
+    };
+
+    const itemVariants = {
+        hidden: { opacity: 0, y: 10 },
+        show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+    };
+
     return (
-        <div className="orders-page">
-            <h1>Order History</h1>
+        <motion.div
+            className="orders-page main-content"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+        >
+            <div className="dashboard-header">
+                <h1><ListOrdered size={28} className="mr-3 inline text-accent" style={{ color: 'var(--accent)' }} /> Order History</h1>
+            </div>
 
             {orders.length === 0 ? (
-                <div className="empty-state">
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="empty-state glass-panel"
+                >
+                    <FileText size={48} className="empty-icon text-muted mb-4" style={{ color: 'var(--text-muted)' }} />
                     <h3>No Orders Yet</h3>
                     <p>Your trade history will appear here.</p>
-                </div>
+                </motion.div>
             ) : (
-                <div className="orders-table-container">
-                    <table className="orders-table">
+                <div className="orders-table-container glass-panel">
+                    <table className="orders-table stock-table">
                         <thead>
                             <tr>
                                 <th>Date</th>
@@ -63,9 +90,9 @@ const Orders = () => {
                                 <th>Total</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <motion.tbody variants={containerVariants} initial="hidden" animate="show">
                             {orders.map((o) => (
-                                <tr key={o.id} className={`order-row ${o.type.toLowerCase()}`}>
+                                <motion.tr variants={itemVariants} key={o.id} className={`order-row ${o.type.toLowerCase()}`}>
                                     <td>{formatDate(o.createdAt)}</td>
                                     <td className="stock-symbol">{o.symbol}</td>
                                     <td>
@@ -76,14 +103,22 @@ const Orders = () => {
                                     <td>{o.quantity}</td>
                                     <td>{formatCurrency(o.pricePaise)}</td>
                                     <td>{formatCurrency(o.totalValuePaise)}</td>
-                                </tr>
+                                </motion.tr>
                             ))}
-                        </tbody>
+                        </motion.tbody>
                     </table>
                 </div>
             )}
-        </div>
+        </motion.div>
     );
 };
 
 export default Orders;
+
+/*
+ * order history page. lists all the buy and sell trades youve
+ * made in a table with symbol, type, quantity, price, total
+ * and timestamp. fetches from /api/orders. if you havent made
+ * any trades yet it shows a nice animated empty state. accessible
+ * from the orders link in the navbar.
+ */

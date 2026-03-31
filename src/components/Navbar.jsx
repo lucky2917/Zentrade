@@ -1,10 +1,13 @@
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useMarket } from "../context/MarketContext.jsx";
+import { useTheme } from "../context/ThemeContext.jsx";
+import { Sun, Moon, LogOut, Activity, Briefcase, ListOrdered, Wallet } from "lucide-react";
 
 const Navbar = () => {
     const { user, logout } = useAuth();
     const { connected } = useMarket();
+    const { theme, toggleTheme } = useTheme();
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -33,25 +36,31 @@ const Navbar = () => {
                     {connected ? "Live" : "Offline"}
                 </div>
             </div>
+
             <div className="navbar-links">
                 <Link to="/" className={`nav-link ${location.pathname === "/" ? "active" : ""}`}>
-                    Markets
+                    <Activity size={16} /> Markets
                 </Link>
                 <Link to="/portfolio" className={`nav-link ${location.pathname === "/portfolio" ? "active" : ""}`}>
-                    Portfolio
+                    <Briefcase size={16} /> Portfolio
                 </Link>
                 <Link to="/orders" className={`nav-link ${location.pathname === "/orders" ? "active" : ""}`}>
-                    Orders
+                    <ListOrdered size={16} /> Orders
                 </Link>
             </div>
+
             <div className="navbar-right">
+                <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle Theme">
+                    {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+
                 {user && (
                     <div className="navbar-balance">
-                        {formatBalance(user.balancePaise)}
+                        <Wallet size={14} /> {formatBalance(user.balancePaise)}
                     </div>
                 )}
-                <button className="btn-logout" onClick={handleLogout}>
-                    Logout
+                <button className="btn-logout" onClick={handleLogout} aria-label="Logout">
+                    <LogOut size={16} /> <span>Logout</span>
                 </button>
             </div>
         </nav>
@@ -59,3 +68,10 @@ const Navbar = () => {
 };
 
 export default Navbar;
+
+/*
+ * the top navbar. shows the zentrade logo, live/offline connection
+ * dot, nav links to markets/portfolio/orders, a sun/moon toggle
+ * for theme switching, the user's wallet balance, and logout.
+ * only renders when the user is logged in (App.jsx handles that).
+ */

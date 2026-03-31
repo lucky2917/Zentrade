@@ -58,3 +58,11 @@ const start = async () => {
 };
 
 start();
+
+/*
+ * main server entry point. sets up express, socket.io, cors, and
+ * mounts all the api routes. on startup it inits the db schema,
+ * kicks off the market data worker, starts the websocket price
+ * broadcaster, and schedules the auto square-off cron job.
+ * basically everything starts from here.
+ */

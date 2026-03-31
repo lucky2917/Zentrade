@@ -144,3 +144,11 @@ const startMarketWorker = () => {
 
 export { INDICES };
 export default startMarketWorker;
+
+/*
+ * background worker that keeps stock prices fresh. fetches from
+ * yahoo finance every 5 seconds for stocks and every 10 for indices,
+ * shoves it all into redis. also exports the INDICES array since
+ * the indices route and websocket broadcaster need that list too.
+ * index.js starts this on boot.
+ */

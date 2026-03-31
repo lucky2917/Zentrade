@@ -83,3 +83,11 @@ const startSquareOffJob = () => {
 };
 
 export { startSquareOffJob, squareOffAll };
+
+/*
+ * end of day auto square-off. runs at 15:25 IST before market closes.
+ * goes through every open position, sells at current price, credits
+ * the user's balance, and logs the sell order. its a cron job that
+ * index.js schedules on startup. since this is paper trading we dont
+ * want positions carrying over to next day.
+ */

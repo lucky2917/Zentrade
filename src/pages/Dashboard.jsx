@@ -55,6 +55,17 @@ const STOCK_LIST = [
     { symbol: "UPL", name: "UPL" },
 ];
 
+import { motion } from "framer-motion";
+import { Search, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, TrendingUp, TrendingDown, Activity, Zap } from "lucide-react";
+
+const formatVolume = (vol) => {
+    if (vol == null || vol === 0) return "—";
+    if (vol >= 10000000) return (vol / 10000000).toFixed(2) + " Cr";
+    if (vol >= 100000) return (vol / 100000).toFixed(2) + " L";
+    if (vol >= 1000) return (vol / 1000).toFixed(1) + " K";
+    return vol.toLocaleString("en-IN");
+};
+
 const Dashboard = () => {
     const { prices } = useMarket();
     const navigate = useNavigate();
@@ -100,6 +111,30 @@ const Dashboard = () => {
         return result;
     }, [search, sortBy, sortDir, prices]);
 
+    const movers = useMemo(() => {
+        if (!prices) return { gainers: [], losers: [], active: [] };
+        
+        const stocksWithData = STOCK_LIST.map(s => {
+            const p = prices[s.symbol];
+            return {
+                ...s,
+                price: p?.price || 0,
+                change: p?.change || 0,
+                changePercent: p?.changePercent ?? p?.change ?? 0,
+                volume: p?.volume || 0
+            };
+        }).filter(s => s.price > 0 && s.change !== 0);
+
+        const sorted = [...stocksWithData].sort((a, b) => b.changePercent - a.changePercent);
+        const sortedByVolume = [...stocksWithData].sort((a, b) => b.volume - a.volume);
+        
+        return {
+            gainers: sorted.filter(s => s.changePercent > 0).slice(0, 4),
+            losers: sorted.filter(s => s.changePercent < 0).reverse().slice(0, 4),
+            active: sortedByVolume.slice(0, 4),
+        };
+    }, [prices]);
+
     const handleSort = (col) => {
         if (sortBy === col) {
             setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -110,15 +145,36 @@ const Dashboard = () => {
     };
 
     const getSortIcon = (col) => {
-        if (sortBy !== col) return "↕";
-        return sortDir === "asc" ? "↑" : "↓";
+        if (sortBy !== col) return <ArrowUpDown size={14} className="sort-icon inactive" />;
+        return sortDir === "asc" ? <ArrowUp size={14} className="sort-icon active" /> : <ArrowDown size={14} className="sort-icon active" />;
+    };
+
+    const containerVariants = {
+        hidden: { opacity: 0 },
+        show: {
+            opacity: 1,
+            transition: {
+                staggerChildren: 0.05
+            }
+        }
+    };
+
+    const itemVariants = {
+        hidden: { opacity: 0, y: 10 },
+        show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
     };
 
     return (
-        <div className="dashboard">
+        <motion.div
+            className="dashboard"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+        >
             <div className="dashboard-header">
                 <h1>Markets</h1>
                 <div className="search-bar">
+                    <Search size={16} className="search-icon" />
                     <input
                         type="text"
                         placeholder="Search stocks..."
@@ -128,31 +184,104 @@ const Dashboard = () => {
                 </div>
             </div>
 
+            {(movers.gainers.length > 0 || movers.losers.length > 0 || movers.active.length > 0) && (
+                <div className="movers-section">
+                    <h2 className="section-title"><Activity className="text-accent" style={{ color: "var(--accent)" }}/> Market Movers</h2>
+                    
+                    <div className="movers-grid">
+                        {movers.gainers.length > 0 && (
+                            <motion.div className="movers-list glass-panel" variants={containerVariants} initial="hidden" animate="show">
+                                <h3 style={{ color: "var(--green)" }}><TrendingUp size={20} /> Top Gainers</h3>
+                                <div className="movers-cards">
+                                    {movers.gainers.map((s) => (
+                                        <motion.div variants={itemVariants} key={s.symbol} className="mover-card" onClick={() => navigate(`/stock/${s.symbol}`)}>
+                                            <div className="mover-info">
+                                                <span className="mover-symbol">{s.symbol}</span>
+                                                <span className="mover-price">{formatPrice(s.price)}</span>
+                                            </div>
+                                            <div className="mover-change positive">
+                                                <span className="mover-change-percent">+{s.changePercent.toFixed(2)}%</span>
+                                                <span className="mover-change-abs">+{formatPrice(s.change)}</span>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            </motion.div>
+                        )}
+                        
+                        {movers.losers.length > 0 && (
+                            <motion.div className="movers-list glass-panel" variants={containerVariants} initial="hidden" animate="show">
+                                <h3 style={{ color: "var(--red)" }}><TrendingDown size={20} /> Top Losers</h3>
+                                <div className="movers-cards">
+                                    {movers.losers.map((s) => (
+                                        <motion.div variants={itemVariants} key={s.symbol} className="mover-card" onClick={() => navigate(`/stock/${s.symbol}`)}>
+                                            <div className="mover-info">
+                                                <span className="mover-symbol">{s.symbol}</span>
+                                                <span className="mover-price">{formatPrice(s.price)}</span>
+                                            </div>
+                                            <div className="mover-change negative">
+                                                <span className="mover-change-percent">{s.changePercent.toFixed(2)}%</span>
+                                                <span className="mover-change-abs">{formatPrice(Math.abs(s.change))}</span>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {movers.active.length > 0 && (
+                            <motion.div className="movers-list glass-panel" variants={containerVariants} initial="hidden" animate="show">
+                                <h3 style={{ color: "var(--yellow)" }}><Zap size={20} /> Most Active</h3>
+                                <div className="movers-cards">
+                                    {movers.active.map((s) => (
+                                        <motion.div variants={itemVariants} key={s.symbol} className="mover-card" onClick={() => navigate(`/stock/${s.symbol}`)}>
+                                            <div className="mover-info">
+                                                <span className="mover-symbol">{s.symbol}</span>
+                                                <span className="mover-price">{formatPrice(s.price)}</span>
+                                            </div>
+                                            <div className="mover-change" style={{ color: "var(--text-primary)" }}>
+                                                <span className="mover-change-percent">{formatVolume(s.volume)}</span>
+                                                <span className="mover-change-abs">Vol</span>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            </motion.div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             <div className="stock-table-container">
                 <table className="stock-table">
                     <thead>
                         <tr>
                             <th onClick={() => handleSort("symbol")} className="sortable">
-                                Symbol {getSortIcon("symbol")}
+                                <span className="th-content">Symbol {getSortIcon("symbol")}</span>
                             </th>
                             <th>Company</th>
                             <th onClick={() => handleSort("price")} className="sortable">
-                                Price {getSortIcon("price")}
+                                <span className="th-content">Price {getSortIcon("price")}</span>
                             </th>
                             <th onClick={() => handleSort("change")} className="sortable">
-                                Change {getSortIcon("change")}
+                                <span className="th-content">Change {getSortIcon("change")}</span>
                             </th>
                             <th>Action</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <motion.tbody
+                        variants={containerVariants}
+                        initial="hidden"
+                        animate="show"
+                    >
                         {filteredStocks.map((stock) => {
                             const data = prices[stock.symbol];
                             const change = data?.change || 0;
                             const isPositive = change >= 0;
 
                             return (
-                                <tr
+                                <motion.tr
+                                    variants={itemVariants}
                                     key={stock.symbol}
                                     className="stock-row"
                                     onClick={() => navigate(`/stock/${stock.symbol}`)}
@@ -173,17 +302,25 @@ const Dashboard = () => {
                                                 navigate(`/stock/${stock.symbol}`);
                                             }}
                                         >
-                                            Trade
+                                            <ExternalLink size={14} /> Trade
                                         </button>
                                     </td>
-                                </tr>
+                                </motion.tr>
                             );
                         })}
-                    </tbody>
+                    </motion.tbody>
                 </table>
             </div>
-        </div>
+        </motion.div>
     );
 };
 
 export default Dashboard;
+
+/*
+ * main dashboard page. shows the market movers section at the top
+ * with top gainers, losers, and most active by volume. below that
+ * is the full stock table which you can search and sort. clicking
+ * any row or card takes you to that stock's detail page. all the
+ * price data comes from MarketContext which updates via websocket.
+ */

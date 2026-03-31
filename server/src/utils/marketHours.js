@@ -17,3 +17,10 @@ const isMarketOpen = () => {
 };
 
 export { isMarketOpen };
+
+/*
+ * simple check for whether the indian market is open right now.
+ * works off IST — returns true if its a weekday and between
+ * 09:15 and 15:30. the trade route and market status route both
+ * call this before allowing any trades to go through.
+ */

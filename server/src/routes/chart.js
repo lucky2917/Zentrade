@@ -75,3 +75,11 @@ router.get("/:symbol", async (req, res) => {
 });
 
 export default router;
+
+/*
+ * chart data endpoint. takes a symbol and range (1d, 5d, 1mo etc)
+ * and fetches OHLCV candle data from yahoo finance. caches everything
+ * in redis so we dont hammer yahoo on every request. the frontend
+ * StockDetail page hits this for rendering the candlestick chart.
+ * mounted at /api/chart in index.js.
+ */

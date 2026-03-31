@@ -42,3 +42,10 @@ router.post("/sell", auth, async (req, res) => {
 });
 
 export default router;
+
+/*
+ * buy and sell endpoints. first checks if market is open, then
+ * hands off to the tradingEngine to actually execute the trade.
+ * both routes need auth since you gotta be logged in to trade.
+ * mounted at /api/trade in index.js.
+ */

@@ -46,3 +46,10 @@ const startWebSocketBroadcaster = (io) => {
 };
 
 export default startWebSocketBroadcaster;
+
+/*
+ * websocket broadcaster. every 3 seconds it reads all stock and
+ * index prices from redis and pushes them to every connected
+ * frontend client via socket.io. the MarketContext on the react
+ * side listens for these "prices" events. index.js starts this.
+ */

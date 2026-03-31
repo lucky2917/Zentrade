@@ -54,3 +54,11 @@ const STOCKS = [
 const STOCK_MAP = new Map(STOCKS.map((s) => [s.symbol, s]));
 
 export { STOCKS, STOCK_MAP };
+
+/*
+ * master list of all 50 nifty stocks we track. each entry has our
+ * internal symbol, the yahoo finance symbol (with .NS suffix), and
+ * the company name. STOCK_MAP is just a quick lookup version of the
+ * same list. marketWorker, websocket, trading engine, and a bunch
+ * of route files pull from here.
+ */

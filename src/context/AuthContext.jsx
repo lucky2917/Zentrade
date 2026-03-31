@@ -66,3 +66,11 @@ const AuthProvider = ({ children }) => {
 const useAuth = () => useContext(AuthContext);
 
 export { AuthProvider, useAuth };
+
+/*
+ * auth state management. stores the user object, token, and
+ * balance. has login, signup, and logout functions. on mount it
+ * tries to validate the stored token by hitting /portfolio.
+ * App.jsx wraps everything in AuthProvider, and pretty much
+ * every component that needs the user pulls from useAuth.
+ */

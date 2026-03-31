@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { createChart, CandlestickSeries, HistogramSeries } from "lightweight-charts";
 import { useMarket } from "../context/MarketContext.jsx";
 import api from "../services/api.js";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, TrendingUp, TrendingDown, Activity, BarChart2 } from "lucide-react";
 
 const RANGES = [
     { key: "1d", label: "1D" },
@@ -71,12 +73,12 @@ const ChartComponent = ({ chartData, selectedRange }) => {
                 width: w,
                 height: 420,
                 layout: {
-                    background: { color: "#0a0e17" },
+                    background: { color: "transparent" },
                     textColor: "#64748b",
                 },
                 grid: {
-                    vertLines: { color: "#1a2332" },
-                    horzLines: { color: "#1a2332" },
+                    vertLines: { color: "var(--border)" },
+                    horzLines: { color: "var(--border)" },
                 },
                 timeScale: {
                     timeVisible: selectedRange === "1d" || selectedRange === "5d",
@@ -255,10 +257,28 @@ const StockDetail = () => {
         { label: "52W Low", value: formatINR(fundamentals.fiftyTwoWeekLow) },
     ] : [];
 
+    const containerVariants = {
+        hidden: { opacity: 0 },
+        show: {
+            opacity: 1,
+            transition: { staggerChildren: 0.05 }
+        }
+    };
+
+    const itemVariants = {
+        hidden: { opacity: 0, scale: 0.95 },
+        show: { opacity: 1, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } }
+    };
+
     return (
-        <div className="stock-detail">
+        <motion.div
+            className="stock-detail"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+        >
             <button className="btn-back" onClick={() => navigate("/")}>
-                ← Back to Markets
+                <ArrowLeft size={16} /> Back to Markets
             </button>
 
             <div className="stock-detail-header">
@@ -272,6 +292,7 @@ const StockDetail = () => {
                     </div>
                     {currentData && (
                         <div className={`stock-change-large ${isPositive ? "positive" : "negative"}`}>
+                            {isPositive ? <TrendingUp size={18} className="mr-2" /> : <TrendingDown size={18} className="mr-2" />}
                             {isPositive ? "+" : ""}{formatINR(Math.abs(change))} ({isPositive ? "+" : ""}{changePercent.toFixed(2)}%)
                         </div>
                     )}
@@ -282,7 +303,7 @@ const StockDetail = () => {
                 <div className="stock-detail-left">
                     <div className="chart-section">
                         <div className="chart-header">
-                            <h3>Price Chart</h3>
+                            <h3><BarChart2 size={16} className="mr-2" /> Price Chart</h3>
                             <div className="range-selector">
                                 {RANGES.map((r) => (
                                     <button
@@ -306,20 +327,20 @@ const StockDetail = () => {
 
                     {perfItems.length > 0 && (
                         <div className="performance-section">
-                            <h3>Performance</h3>
-                            <div className="perf-grid">
+                            <h3><Activity size={16} className="mr-2" /> Performance</h3>
+                            <motion.div className="perf-grid" variants={containerVariants} initial="hidden" animate="show">
                                 {perfItems.map((item) => (
-                                    <div key={item.label} className="perf-item">
+                                    <motion.div variants={itemVariants} key={item.label} className="perf-item glass-panel">
                                         <span className="perf-label">{item.label}</span>
                                         <span className={`perf-value ${item.positive ? "positive" : ""} ${item.negative ? "negative" : ""}`}>
                                             {item.value}
                                         </span>
-                                    </div>
+                                    </motion.div>
                                 ))}
-                            </div>
+                            </motion.div>
 
                             {performance.dayLow > 0 && performance.dayHigh > 0 && currentPrice > 0 && (
-                                <div className="price-range-bar">
+                                <motion.div variants={itemVariants} className="price-range-bar">
                                     <div className="range-bar-labels">
                                         <span>{formatINR(performance.dayLow)}</span>
                                         <span className="range-bar-title">Today's Range</span>
@@ -339,11 +360,11 @@ const StockDetail = () => {
                                             }}
                                         ></div>
                                     </div>
-                                </div>
+                                </motion.div>
                             )}
 
                             {performance.fiftyTwoWeekLow && performance.fiftyTwoWeekHigh && currentPrice > 0 && (
-                                <div className="price-range-bar">
+                                <motion.div variants={itemVariants} className="price-range-bar">
                                     <div className="range-bar-labels">
                                         <span>{formatINR(performance.fiftyTwoWeekLow)}</span>
                                         <span className="range-bar-title">52 Week Range</span>
@@ -363,22 +384,22 @@ const StockDetail = () => {
                                             }}
                                         ></div>
                                     </div>
-                                </div>
+                                </motion.div>
                             )}
                         </div>
                     )}
 
                     {fundItems.length > 0 && (
                         <div className="fundamentals-section">
-                            <h3>Fundamentals</h3>
-                            <div className="fund-grid">
+                            <h3><Activity size={16} className="mr-2" /> Fundamentals</h3>
+                            <motion.div className="fund-grid" variants={containerVariants} initial="hidden" animate="show">
                                 {fundItems.map((item) => (
-                                    <div key={item.label} className="fund-item">
+                                    <motion.div variants={itemVariants} key={item.label} className="fund-item">
                                         <span className="fund-label">{item.label}</span>
                                         <span className="fund-value">{item.value}</span>
-                                    </div>
+                                    </motion.div>
                                 ))}
-                            </div>
+                            </motion.div>
                         </div>
                     )}
                 </div>
@@ -436,11 +457,18 @@ const StockDetail = () => {
                             </div>
                         </div>
 
-                        {message && (
-                            <div className={`trade-message ${message.type}`}>
-                                {message.text}
-                            </div>
-                        )}
+                        <AnimatePresence>
+                            {message && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10, height: 0 }}
+                                    animate={{ opacity: 1, y: 0, height: "auto" }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className={`trade-message ${message.type}`}
+                                >
+                                    {message.text}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
 
                         <button
                             className={`btn-execute ${orderType === "BUY" ? "btn-buy" : "btn-sell"}`}
@@ -452,8 +480,17 @@ const StockDetail = () => {
                     </div>
                 </div>
             </div>
-        </div>
+        </motion.div>
     );
 };
 
 export default StockDetail;
+
+/*
+ * the individual stock page. shows a candlestick chart using
+ * lightweight-charts with range buttons (1D to 5Y), performance
+ * stats like open/close/high/low, fundamentals grid, and the
+ * buy/sell trade panel on the right. fetches everything from
+ * the /full endpoint in one shot. you get here by clicking a
+ * stock on the dashboard.
+ */

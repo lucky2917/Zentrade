@@ -16,3 +16,9 @@ const ProtectedRoute = ({ children }) => {
 };
 
 export default ProtectedRoute;
+
+/*
+ * simple route guard. checks if theres a valid token in auth context,
+ * if not it redirects to login. shows a loading screen while auth is
+ * still initializing. App.jsx wraps all the protected pages with this.
+ */

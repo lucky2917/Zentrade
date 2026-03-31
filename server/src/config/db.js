@@ -65,3 +65,11 @@ const initDB = async () => {
 };
 
 export { pool, initDB };
+
+/*
+ * this is the postgres setup file. creates the connection pool and
+ * runs all the CREATE TABLE statements when the server boots up.
+ * tables: users, portfolio, orders, watchlist. pretty much every
+ * route file that touches the database imports pool from here,
+ * and index.js calls initDB() on startup to make sure schema exists.
+ */

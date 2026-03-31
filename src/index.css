@@ -38,6 +38,25 @@
   --transition: all 0.2s ease;
 }
 
+:root.light {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafc;
+  --bg-input: #ffffff;
+  --border: #e2e8f0;
+  --border-hover: #cbd5e1;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-glow: rgba(79, 70, 229, 0.15);
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.05), 0 4px 10px -4px rgba(0, 0, 0, 0.05);
+}
+
 html {
   font-size: 16px;
   scroll-behavior: smooth;
@@ -142,6 +161,9 @@ a:hover {
 }
 
 .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 0.5rem 1rem;
   border-radius: var(--radius-sm);
   font-size: 0.875rem;
@@ -166,7 +188,28 @@ a:hover {
   gap: 1rem;
 }
 
+.theme-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 50%;
+  transition: var(--transition);
+}
+
+.theme-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
 .navbar-balance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--green);
@@ -177,6 +220,9 @@ a:hover {
 }
 
 .btn-logout {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -368,8 +414,21 @@ a:hover {
   letter-spacing: -0.5px;
 }
 
+.search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
 .search-bar input {
-  padding: 0.6rem 1.2rem;
+  padding: 0.6rem 1.2rem 0.6rem 2.2rem;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -413,6 +472,24 @@ a:hover {
   border-bottom: 1px solid var(--border);
 }
 
+.th-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sort-icon {
+  display: flex;
+}
+
+.sort-icon.inactive {
+  opacity: 0.3;
+}
+
+.sort-icon.active {
+  color: var(--accent);
+}
+
 .stock-table th.sortable {
   cursor: pointer;
   user-select: none;
@@ -421,6 +498,10 @@ a:hover {
 
 .stock-table th.sortable:hover {
   color: var(--text-primary);
+}
+
+.stock-table th.sortable:hover .sort-icon.inactive {
+  opacity: 0.6;
 }
 
 .stock-table td {
@@ -471,6 +552,9 @@ a:hover {
 }
 
 .btn-trade {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 16px;
   background: var(--accent-glow);
   color: var(--accent);
@@ -1046,6 +1130,98 @@ a:hover {
   color: var(--text-muted);
 }
 
+.movers-section {
+  margin-bottom: 2.5rem;
+}
+
+.section-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.movers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.movers-list {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+}
+
+.movers-list h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.movers-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mover-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.85rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.mover-card:hover {
+  background: var(--bg-card-hover);
+  transform: translateX(4px);
+  border-left: 3px solid var(--accent);
+}
+
+.mover-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.mover-symbol {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.mover-price {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.mover-change {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.mover-change-percent {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.mover-change-abs {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 @media (max-width: 1024px) {
   .stock-detail-content {
     grid-template-columns: 1fr;
@@ -1092,3 +1268,11 @@ a:hover {
     font-size: 1.8rem;
   }
 }
+
+/*
+ * global stylesheet for the whole app. has css custom properties
+ * for both dark and light themes at the top, then styles for
+ * everything — navbar, auth pages, dashboard table, stock detail,
+ * trade form, portfolio cards, order history, and the market
+ * movers section. responsive breakpoints at the bottom.
+ */

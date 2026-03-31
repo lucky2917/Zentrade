@@ -34,3 +34,9 @@ router.get("/status", async (req, res) => {
 });
 
 export default router;
+
+/*
+ * market status endpoint. tells the frontend whether the market
+ * is open or closed right now, what time it is in IST, and when
+ * the next open/close event is. mounted at /api/market in index.js.
+ */

@@ -77,3 +77,10 @@ router.delete("/remove", auth, async (req, res) => {
 });
 
 export default router;
+
+/*
+ * watchlist crud. lets users save stocks they wanna keep an eye on.
+ * stores in postgres, and when you fetch the list it grabs live
+ * prices from redis too. add, remove, and get — all need auth.
+ * mounted at /api/watchlist in index.js.
+ */

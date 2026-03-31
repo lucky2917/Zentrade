@@ -42,3 +42,9 @@ const logger = {
 };
 
 export default logger;
+
+/*
+ * custom console logger with color codes so the terminal output
+ * is actually readable. has levels for info, warn, error, trade,
+ * and market. every server file uses this instead of raw console.log.
+ */

@@ -42,3 +42,11 @@ const MarketProvider = ({ children }) => {
 const useMarket = () => useContext(MarketContext);
 
 export { MarketProvider, useMarket };
+
+/*
+ * real-time market data context. connects to the backend via
+ * socket.io and listens for "prices" events that come every
+ * 3 seconds. stores all stock prices and index data. Dashboard
+ * and StockDetail pages read from here, and Navbar uses the
+ * connected flag to show the live/offline indicator.
+ */

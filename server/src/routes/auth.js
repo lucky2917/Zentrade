@@ -76,3 +76,9 @@ router.post("/login", async (req, res) => {
 });
 
 export default router;
+
+/*
+ * signup and login endpoints live here. signup creates a new user
+ * with ten lakh balance, login checks credentials — both return
+ * a jwt token and user object. mounted at /api/auth in index.js.
+ */

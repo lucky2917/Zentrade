@@ -219,3 +219,11 @@ const executeSell = async (userId, symbol, quantity) => {
 };
 
 export { executeBuy, executeSell };
+
+/*
+ * the actual trading logic. handles buy and sell with proper
+ * postgres transactions so nothing gets half-done. adds 0.1%
+ * spread on trades and a flat 20 rupee brokerage. validates
+ * everything — stale prices, balance, holdings, max quantity.
+ * the trade route is the only thing that calls this.
+ */

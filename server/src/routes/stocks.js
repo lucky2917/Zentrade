@@ -349,3 +349,12 @@ router.get("/:symbol/full", async (req, res) => {
 });
 
 export default router;
+
+/*
+ * the big stocks route file. has endpoints to get all stocks,
+ * a single stock, its details, fundamentals, performance stats,
+ * and the /full endpoint which bundles chart + performance +
+ * fundamentals into one call (thats what the StockDetail page
+ * uses so it doesnt have to make three separate requests).
+ * mounted at /api/stocks in index.js.
+ */
