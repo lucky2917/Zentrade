@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 
 const MarketContext = createContext(null);
 
-const SOCKET_URL = import.meta.env.DEV ? "http://localhost:5001" : "/";
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "/";
 
 const MarketProvider = ({ children }) => {
     const [prices, setPrices] = useState({});

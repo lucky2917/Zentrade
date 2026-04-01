@@ -11,6 +11,9 @@ export default defineConfig({
         ws: true,
       },
     },
+    allowedHosts: [
+      'nonperversive-nondeafly-dorla.ngrok-free.dev'
+    ]
   },
 });
 
