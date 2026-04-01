@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { createChart, CandlestickSeries, HistogramSeries } from "lightweight-charts";
 import { useMarket } from "../context/MarketContext.jsx";
+import { useToast } from "../context/ToastContext.jsx";
 import api from "../services/api.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, TrendingUp, TrendingDown, Activity, BarChart2, Star } from "lucide-react";
@@ -159,7 +160,7 @@ const StockDetail = () => {
     const [orderType, setOrderType] = useState("BUY");
     const [quantity, setQuantity] = useState("");
     const [tradeLoading, setTradeLoading] = useState(false);
-    const [message, setMessage] = useState(null);
+    const { addToast } = useToast();
     const [inWatchlist, setInWatchlist] = useState(false);
 
     const toggleWatchlist = async () => {
@@ -167,9 +168,11 @@ const StockDetail = () => {
             if (inWatchlist) {
                 await api.delete("/watchlist/remove", { data: { symbol } });
                 setInWatchlist(false);
+                addToast("Removed from watchlist", "info");
             } else {
                 await api.post("/watchlist/add", { symbol });
                 setInWatchlist(true);
+                addToast("Added to watchlist", "success");
             }
         } catch (err) {
             console.error("Watchlist action failed");
@@ -229,25 +232,21 @@ const StockDetail = () => {
     const handleTrade = async () => {
         const qty = parseInt(quantity);
         if (!qty || qty <= 0) {
-            setMessage({ type: "error", text: "Enter a valid quantity" });
+            addToast("Enter a valid quantity", "error");
             return;
         }
 
         setTradeLoading(true);
-        setMessage(null);
 
         try {
             const endpoint = orderType === "BUY" ? "/trade/buy" : "/trade/sell";
             const res = await api.post(endpoint, { symbol, quantity: qty });
             const total = (res.data.totalCostPaise || res.data.totalValuePaise) / 100;
             const execPrice = (res.data.executionPricePaise) / 100;
-            setMessage({
-                type: "success",
-                text: `${orderType} ${qty} ${symbol} @ ${formatINR(execPrice)} = ${formatINR(total)}`,
-            });
+            addToast(`${orderType} ${qty} ${symbol} @ ${formatINR(execPrice)} = ${formatINR(total)}`, "success");
             setQuantity("");
         } catch (err) {
-            setMessage({ type: "error", text: err.response?.data?.error || "Trade failed" });
+            addToast(err.response?.data?.error || "Trade failed", "error");
         } finally {
             setTradeLoading(false);
         }
@@ -488,19 +487,6 @@ const StockDetail = () => {
                                 <span>{qty > 0 ? formatINR(estimatedCost * (orderType === "BUY" ? 1.001 : 0.999) + (orderType === "BUY" ? 20 : -20)) : "—"}</span>
                             </div>
                         </div>
-
-                        <AnimatePresence>
-                            {message && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: 10, height: 0 }}
-                                    animate={{ opacity: 1, y: 0, height: "auto" }}
-                                    exit={{ opacity: 0, height: 0 }}
-                                    className={`trade-message ${message.type}`}
-                                >
-                                    {message.text}
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
 
                         <button
                             className={`btn-execute ${orderType === "BUY" ? "btn-buy" : "btn-sell"}`}

@@ -12,6 +12,8 @@ import Orders from "./pages/Orders.jsx";
 import Watchlist from "./pages/Watchlist.jsx";
 import IndexTicker from "./components/IndexTicker.jsx";
 
+import { ToastProvider } from "./context/ToastContext.jsx";
+
 const AppContent = () => {
   const { token } = useAuth();
 
@@ -72,11 +74,13 @@ const AppContent = () => {
 const App = () => {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <MarketProvider>
-          <AppContent />
-        </MarketProvider>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <MarketProvider>
+            <AppContent />
+          </MarketProvider>
+        </AuthProvider>
+      </ToastProvider>
     </BrowserRouter>
   );
 };
