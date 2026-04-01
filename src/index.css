@@ -240,6 +240,57 @@ a:hover {
   background: var(--red-bg);
 }
 
+.index-ticker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5rem;
+  padding: 0.5rem 2rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 64px;
+  z-index: 99;
+}
+
+.ticker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.ticker-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+
+.ticker-price {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.ticker-change {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.ticker-change.positive {
+  color: var(--green);
+  background: var(--green-bg);
+}
+
+.ticker-change.negative {
+  color: var(--red);
+  background: var(--red-bg);
+}
+
 .main-content {
   padding: 2rem;
   max-width: 1400px;

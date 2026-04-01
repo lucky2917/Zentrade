@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import StockDetail from "./pages/StockDetail.jsx";
 import Portfolio from "./pages/Portfolio.jsx";
 import Orders from "./pages/Orders.jsx";
+import IndexTicker from "./components/IndexTicker.jsx";
 
 const AppContent = () => {
   const { token } = useAuth();
@@ -16,6 +17,7 @@ const AppContent = () => {
   return (
     <>
       {token && <Navbar />}
+      {token && <IndexTicker />}
       <main className={token ? "main-content" : ""}>
         <Routes>
           <Route path="/login" element={token ? <Navigate to="/" replace /> : <Login />} />
