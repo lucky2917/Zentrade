@@ -2,7 +2,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useMarket } from "../context/MarketContext.jsx";
 import { useTheme } from "../context/ThemeContext.jsx";
-import { Sun, Moon, LogOut, Activity, Briefcase, ListOrdered, Wallet } from "lucide-react";
+import { Sun, Moon, LogOut, Activity, Briefcase, ListOrdered, Wallet, Star } from "lucide-react";
 
 const Navbar = () => {
     const { user, logout } = useAuth();
@@ -40,6 +40,9 @@ const Navbar = () => {
             <div className="navbar-links">
                 <Link to="/" className={`nav-link ${location.pathname === "/" ? "active" : ""}`}>
                     <Activity size={16} /> Markets
+                </Link>
+                <Link to="/watchlist" className={`nav-link ${location.pathname === "/watchlist" ? "active" : ""}`}>
+                    <Star size={16} /> Watchlist
                 </Link>
                 <Link to="/portfolio" className={`nav-link ${location.pathname === "/portfolio" ? "active" : ""}`}>
                     <Briefcase size={16} /> Portfolio

@@ -4,7 +4,7 @@ import { createChart, CandlestickSeries, HistogramSeries } from "lightweight-cha
 import { useMarket } from "../context/MarketContext.jsx";
 import api from "../services/api.js";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, TrendingUp, TrendingDown, Activity, BarChart2 } from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown, Activity, BarChart2, Star } from "lucide-react";
 
 const RANGES = [
     { key: "1d", label: "1D" },
@@ -160,6 +160,21 @@ const StockDetail = () => {
     const [quantity, setQuantity] = useState("");
     const [tradeLoading, setTradeLoading] = useState(false);
     const [message, setMessage] = useState(null);
+    const [inWatchlist, setInWatchlist] = useState(false);
+
+    const toggleWatchlist = async () => {
+        try {
+            if (inWatchlist) {
+                await api.delete("/watchlist/remove", { data: { symbol } });
+                setInWatchlist(false);
+            } else {
+                await api.post("/watchlist/add", { symbol });
+                setInWatchlist(true);
+            }
+        } catch (err) {
+            console.error("Watchlist action failed");
+        }
+    };
 
     const currentData = prices[symbol];
     const currentPrice = currentData?.price || 0;
@@ -199,6 +214,11 @@ const StockDetail = () => {
 
     useEffect(() => {
         fetchFullData(selectedRange);
+        api.get("/watchlist").then(res => {
+            if (res.data.some(w => w.symbol === symbol)) {
+                setInWatchlist(true);
+            }
+        }).catch(() => {});
     }, [symbol]);
 
     const handleRangeChange = (range) => {
@@ -283,8 +303,20 @@ const StockDetail = () => {
 
             <div className="stock-detail-header">
                 <div className="stock-info">
-                    <div className="stock-name-row">
+                    <div className="stock-name-row flex items-center gap-2">
                         <h1>{symbol}</h1>
+                        <button 
+                            className="btn-watchlist-toggle"
+                            onClick={toggleWatchlist}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex' }}
+                            title={inWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
+                        >
+                            <Star 
+                                size={22} 
+                                style={{ color: inWatchlist ? 'var(--yellow)' : 'var(--text-muted)' }} 
+                                fill={inWatchlist ? 'var(--yellow)' : 'none'} 
+                            />
+                        </button>
                         {companyName && <span className="company-name">{companyName}</span>}
                     </div>
                     <div className="stock-price-large">

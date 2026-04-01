@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import StockDetail from "./pages/StockDetail.jsx";
 import Portfolio from "./pages/Portfolio.jsx";
 import Orders from "./pages/Orders.jsx";
+import Watchlist from "./pages/Watchlist.jsx";
 import IndexTicker from "./components/IndexTicker.jsx";
 
 const AppContent = () => {
@@ -43,6 +44,14 @@ const AppContent = () => {
             element={
               <ProtectedRoute>
                 <Portfolio />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/watchlist"
+            element={
+              <ProtectedRoute>
+                <Watchlist />
               </ProtectedRoute>
             }
           />
