@@ -291,6 +291,56 @@ a:hover {
   background: var(--red-bg);
 }
 
+.market-banner {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 6px 16px;
+  font-size: 0.8rem;
+  letter-spacing: 0.3px;
+  position: sticky;
+  top: 105px; 
+  z-index: 98;
+  border-bottom: 1px solid var(--border);
+}
+
+.market-banner.open {
+  background: var(--green-bg);
+  border-bottom-color: rgba(16, 185, 129, 0.2);
+  color: var(--green);
+}
+
+.market-banner.closed {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.banner-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.banner-icon {
+  flex-shrink: 0;
+}
+
+.pulse {
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.banner-subtext {
+  opacity: 0.8;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
 .main-content {
   padding: 2rem;
   max-width: 1400px;

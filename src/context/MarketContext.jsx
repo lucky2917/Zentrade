@@ -9,6 +9,7 @@ const MarketProvider = ({ children }) => {
     const [prices, setPrices] = useState({});
     const [indices, setIndices] = useState({});
     const [connected, setConnected] = useState(false);
+    const [isMarketOpen, setIsMarketOpen] = useState(false);
     const socketRef = useRef(null);
 
     useEffect(() => {
@@ -24,6 +25,9 @@ const MarketProvider = ({ children }) => {
             if (payload.type === "market_update") {
                 setPrices(payload.data || {});
                 setIndices(payload.indices || {});
+                if (payload.isMarketOpen !== undefined) {
+                    setIsMarketOpen(payload.isMarketOpen);
+                }
             } else {
                 setPrices(payload);
             }
@@ -33,7 +37,7 @@ const MarketProvider = ({ children }) => {
     }, []);
 
     return (
-        <MarketContext.Provider value={{ prices, indices, connected }}>
+        <MarketContext.Provider value={{ prices, indices, connected, isMarketOpen }}>
             {children}
         </MarketContext.Provider>
     );

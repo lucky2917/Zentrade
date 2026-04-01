@@ -1,6 +1,7 @@
 import redis from "../config/redis.js";
 import { STOCKS } from "../config/stocks.js";
 import { INDICES } from "./marketWorker.js";
+import { isMarketOpen } from "../utils/marketHours.js";
 import logger from "../utils/logger.js";
 
 const startWebSocketBroadcaster = (io) => {
@@ -31,6 +32,7 @@ const startWebSocketBroadcaster = (io) => {
                 data: stocks,
                 indices,
                 timestamp: Date.now(),
+                isMarketOpen: isMarketOpen(),
             });
         } catch (err) {
             logger.error("WebSocket", "Broadcast failed", { error: err.message });

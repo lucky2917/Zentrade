@@ -11,6 +11,7 @@ import Portfolio from "./pages/Portfolio.jsx";
 import Orders from "./pages/Orders.jsx";
 import Watchlist from "./pages/Watchlist.jsx";
 import IndexTicker from "./components/IndexTicker.jsx";
+import MarketStatusBanner from "./components/MarketStatusBanner.jsx";
 
 import { ToastProvider } from "./context/ToastContext.jsx";
 
@@ -21,6 +22,7 @@ const AppContent = () => {
     <>
       {token && <Navbar />}
       {token && <IndexTicker />}
+      {token && <MarketStatusBanner />}
       <main className={token ? "main-content" : ""}>
         <Routes>
           <Route path="/login" element={token ? <Navigate to="/" replace /> : <Login />} />
