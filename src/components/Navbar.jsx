@@ -77,7 +77,7 @@ export default Navbar;
 
 /*
  * the top navbar. shows the zentrade logo, live/offline connection
- * dot, nav links to markets/portfolio/orders, a sun/moon toggle
- * for theme switching, the user's wallet balance, and logout.
+ * dot, nav links to markets/watchlist/portfolio/orders, a sun/moon
+ * toggle for theme switching, the user's wallet balance, and logout.
  * only renders when the user is logged in (App.jsx handles that).
  */

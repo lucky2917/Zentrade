@@ -12,6 +12,7 @@ import Orders from "./pages/Orders.jsx";
 import Watchlist from "./pages/Watchlist.jsx";
 import IndexTicker from "./components/IndexTicker.jsx";
 import MarketStatusBanner from "./components/MarketStatusBanner.jsx";
+import MobileNav from "./components/MobileNav.jsx";
 
 import { ToastProvider } from "./context/ToastContext.jsx";
 
@@ -69,6 +70,7 @@ const AppContent = () => {
           />
         </Routes>
       </main>
+      {token && <MobileNav />}
     </>
   );
 };
@@ -90,9 +92,10 @@ const App = () => {
 export default App;
 
 /*
- * root component. sets up react router and wraps everything in
- * auth + market providers. all the page routes are defined here —
- * login, signup, dashboard, stock detail, portfolio, orders.
- * if user is logged in it shows the navbar, otherwise redirects
- * to login.
+ * root component that wires up the whole app. wraps everything in
+ * toast, auth, and market providers so any child can fire toasts
+ * or read live prices. when logged in it renders the navbar, index
+ * ticker strip, market status banner, and mobile bottom tab bar.
+ * routes include dashboard, stock detail, portfolio, watchlist,
+ * and orders.
  */

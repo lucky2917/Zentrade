@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 
 *,
 *::before,
@@ -8,53 +8,83 @@
   box-sizing: border-box;
 }
 
+/*
+ * design tokens for the dark theme — deeper blacks give that void-like
+ * terminal feel you see in TradingView and Kite. added glass tokens
+ * for the frosted panel effect, a dedicated mono font for all price
+ * numbers, and glow shadows so accent elements actually pop against
+ * the dark background instead of looking flat.
+ */
 :root {
-  --bg-primary: #060913;
-  --bg-secondary: #0a0e17;
-  --bg-tertiary: #111827;
-  --bg-card: #0f1420;
-  --bg-card-hover: #151c2c;
-  --bg-input: #111827;
-  --border: #1e293b;
-  --border-hover: #334155;
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --bg-primary: #040609;
+  --bg-secondary: #080b12;
+  --bg-tertiary: #0f1319;
+  --bg-card: #0c1017;
+  --bg-card-hover: #131a26;
+  --bg-input: #0f1319;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --border: #1a2030;
+  --border-hover: #2a3548;
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --text-primary: #e8ecf4;
+  --text-secondary: #8892a8;
+  --text-muted: #505a6e;
   --accent: #6366f1;
   --accent-hover: #818cf8;
-  --accent-glow: rgba(99, 102, 241, 0.15);
+  --accent-glow: rgba(99, 102, 241, 0.12);
+  --accent-subtle: rgba(99, 102, 241, 0.06);
   --green: #10b981;
-  --green-bg: rgba(16, 185, 129, 0.1);
-  --green-border: rgba(16, 185, 129, 0.3);
+  --green-bg: rgba(16, 185, 129, 0.08);
+  --green-border: rgba(16, 185, 129, 0.2);
+  --green-glow: rgba(16, 185, 129, 0.15);
   --red: #ef4444;
-  --red-bg: rgba(239, 68, 68, 0.1);
-  --red-border: rgba(239, 68, 68, 0.3);
+  --red-bg: rgba(239, 68, 68, 0.08);
+  --red-border: rgba(239, 68, 68, 0.2);
+  --red-glow: rgba(239, 68, 68, 0.15);
   --yellow: #f59e0b;
+  --yellow-bg: rgba(245, 158, 11, 0.08);
+  --glass: rgba(12, 16, 23, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.06);
   --radius: 12px;
   --radius-sm: 8px;
+  --radius-md: 10px;
   --radius-lg: 16px;
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.4), 0 4px 10px -4px rgba(0, 0, 0, 0.4);
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.5), 0 4px 10px -4px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 20px var(--accent-glow);
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
   --transition: all 0.2s ease;
+  --transition-slow: all 0.35s ease;
 }
 
+/*
+ * light theme overrides. keep these muted and professional, not the
+ * eye-burning white that most apps default to. off-white backgrounds
+ * with subtle gray borders are easier on the eyes during long sessions.
+ */
 :root.light {
-  --bg-primary: #f8fafc;
+  --bg-primary: #f5f7fa;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f1f5f9;
+  --bg-tertiary: #edf0f5;
   --bg-card: #ffffff;
-  --bg-card-hover: #f8fafc;
+  --bg-card-hover: #f5f7fa;
   --bg-input: #ffffff;
-  --border: #e2e8f0;
-  --border-hover: #cbd5e1;
+  --bg-hover: rgba(0, 0, 0, 0.03);
+  --border: #dde1e8;
+  --border-hover: #c5cad4;
+  --border-subtle: rgba(0, 0, 0, 0.05);
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #64748b;
+  --text-muted: #94a3b8;
   --accent: #4f46e5;
   --accent-hover: #4338ca;
-  --accent-glow: rgba(79, 70, 229, 0.15);
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.05), 0 4px 10px -4px rgba(0, 0, 0, 0.05);
+  --accent-glow: rgba(79, 70, 229, 0.12);
+  --accent-subtle: rgba(79, 70, 229, 0.06);
+  --glass: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-glow: 0 0 20px rgba(79, 70, 229, 0.08);
 }
 
 html {
@@ -62,13 +92,38 @@ html {
   scroll-behavior: smooth;
 }
 
+/*
+ * body and scrollbar — the custom dark scrollbar is one of those
+ * tiny details that separate a polished app from a prototype.
+ * without it the default chrome scrollbar breaks the whole dark
+ * theme illusion instantly.
+ */
 body {
   font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
 }
 
 a {
@@ -81,18 +136,49 @@ a:hover {
   color: var(--accent-hover);
 }
 
+/*
+ * glass-panel is the core reusable class for that frosted glass
+ * look. backdrop-filter: blur does the heavy lifting, the subtle
+ * border gives it a physical edge against the dark void. used on
+ * movers cards, portfolio summary, trade panel, watchlist table.
+ */
+.glass-panel {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: var(--radius-lg);
+}
+
+/*
+ * navbar — the sticky top bar is the first thing you see so it
+ * needs to feel solid. the bottom gradient line (pseudo-element)
+ * replaces the boring flat border and gives depth. blur on the
+ * background makes content scroll behind it smoothly.
+ */
 .navbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 2rem;
-  height: 64px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
+  height: 60px;
+  background: rgba(8, 11, 18, 0.85);
+  border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
   z-index: 100;
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.navbar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
 }
 
 .navbar-brand {
@@ -102,7 +188,7 @@ a:hover {
 }
 
 .navbar-logo {
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 800;
   letter-spacing: -0.5px;
 }
@@ -118,11 +204,12 @@ a:hover {
 .connection-status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  padding: 4px 10px;
+  gap: 5px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 10px;
   border-radius: 20px;
+  letter-spacing: 0.3px;
 }
 
 .connection-status.connected {
@@ -136,84 +223,119 @@ a:hover {
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: currentColor;
   animation: pulse 2s ease-in-out infinite;
 }
 
 @keyframes pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.4;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
+/*
+ * nav links — the active indicator uses a bottom border bar
+ * instead of just a color change. this is what Zerodha Kite
+ * does and it gives much clearer visual feedback about which
+ * page you're on, especially with 4+ nav items.
+ */
 .navbar-links {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0.5rem 1rem;
+  gap: 7px;
+  padding: 0.4rem 0.9rem;
   border-radius: var(--radius-sm);
-  font-size: 0.875rem;
+  font-size: 0.82rem;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   transition: var(--transition);
+  position: relative;
 }
 
 .nav-link:hover {
   color: var(--text-primary);
-  background: var(--bg-tertiary);
+  background: var(--bg-hover);
 }
 
 .nav-link.active {
   color: var(--accent);
-  background: var(--accent-glow);
+  background: var(--accent-subtle);
+}
+
+.nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
 }
 
 .navbar-right {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .theme-toggle {
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
+  padding: 7px;
   border-radius: 50%;
   transition: var(--transition);
 }
 
 .theme-toggle:hover {
   color: var(--text-primary);
-  background: var(--bg-tertiary);
+  background: var(--bg-hover);
 }
 
+.navbar-user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.navbar-username {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-hover);
+}
+
+/*
+ * wallet balance chip — the green glow border makes it
+ * stand out as the most important number on the navbar.
+ * monospace font ensures the digits dont jump around
+ * as the balance changes from trades.
+ */
 .navbar-balance {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.875rem;
+  font-size: 0.82rem;
   font-weight: 600;
+  font-family: var(--font-mono);
   color: var(--green);
-  padding: 6px 14px;
+  padding: 5px 12px;
   background: var(--green-bg);
   border-radius: var(--radius-sm);
   border: 1px solid var(--green-border);
@@ -222,13 +344,13 @@ a:hover {
 .btn-logout {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 16px;
+  gap: 5px;
+  padding: 5px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
   transition: var(--transition);
@@ -240,35 +362,51 @@ a:hover {
   background: var(--red-bg);
 }
 
+/*
+ * index ticker — the scrolling market indices strip. monospace
+ * font on the prices is critical here because the numbers update
+ * every 3 seconds via websocket and without tabular figures
+ * the whole strip would jitter left and right constantly.
+ */
 .index-ticker {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2.5rem;
-  padding: 0.5rem 2rem;
+  gap: 0;
+  padding: 0.45rem 2rem;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
   position: sticky;
-  top: 64px;
+  top: 60px;
   z-index: 99;
 }
 
 .ticker-item {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  font-size: 0.8rem;
+  gap: 0.55rem;
+  font-size: 0.78rem;
+  padding: 0 1.5rem;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.ticker-item:last-child {
+  border-right: none;
 }
 
 .ticker-label {
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   letter-spacing: 0.3px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
 }
 
 .ticker-price {
-  color: var(--text-secondary);
-  font-weight: 500;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
 }
 
 .ticker-change {
@@ -276,8 +414,9 @@ a:hover {
   align-items: center;
   gap: 3px;
   font-weight: 600;
-  font-size: 0.75rem;
-  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  padding: 2px 7px;
   border-radius: 4px;
 }
 
@@ -291,22 +430,26 @@ a:hover {
   background: var(--red-bg);
 }
 
+/*
+ * market status banner — thin ambient strip that communicates
+ * open/closed in a glanceable way. the pulse keyframe on the
+ * dot draws attention without being distracting.
+ */
 .market-banner {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 6px 16px;
-  font-size: 0.8rem;
+  padding: 5px 16px;
+  font-size: 0.75rem;
   letter-spacing: 0.3px;
   position: sticky;
-  top: 105px; 
+  top: 100px;
   z-index: 98;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .market-banner.open {
   background: var(--green-bg);
-  border-bottom-color: rgba(16, 185, 129, 0.2);
   color: var(--green);
 }
 
@@ -331,40 +474,68 @@ a:hover {
 
 @keyframes pulse-dot {
   0% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.8); }
+  50% { opacity: 0.4; transform: scale(0.8); }
   100% { opacity: 1; transform: scale(1); }
 }
 
 .banner-subtext {
-  opacity: 0.8;
+  opacity: 0.7;
   font-weight: 400;
-  margin-left: 4px;
 }
 
+/*
+ * main content container — the max-width cap prevents the layout
+ * from stretching absurdly wide on ultrawide monitors. padding
+ * gives breathing room on both sides.
+ */
 .main-content {
-  padding: 2rem;
-  max-width: 1400px;
+  padding: 1.5rem 2rem;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
+/*
+ * auth pages (login / signup) — the radial gradient creates a
+ * subtle spotlight effect drawing the eye toward the center
+ * where the auth card sits. the animated mesh overlay adds
+ * that premium "alive" feeling without being distracting.
+ */
 .auth-container {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--bg-primary);
-  background-image: radial-gradient(ellipse at top, rgba(99, 102, 241, 0.08), transparent 50%);
+  background-image:
+    radial-gradient(ellipse at 30% 20%, rgba(99, 102, 241, 0.08), transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(16, 185, 129, 0.04), transparent 50%);
   padding: 2rem;
+  position: relative;
+  overflow: hidden;
 }
 
 .auth-card {
   width: 100%;
-  max-width: 440px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  max-width: 420px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: 2.5rem;
   box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  position: relative;
+}
+
+.auth-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover), var(--green));
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .auth-header {
@@ -373,7 +544,7 @@ a:hover {
 }
 
 .auth-logo {
-  font-size: 2rem;
+  font-size: 1.8rem;
   font-weight: 800;
   letter-spacing: -1px;
   margin-bottom: 0.5rem;
@@ -381,11 +552,11 @@ a:hover {
 
 .auth-subtitle {
   color: var(--text-muted);
-  font-size: 0.875rem;
+  font-size: 0.85rem;
 }
 
 .auth-form h2 {
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   font-weight: 700;
   margin-bottom: 1.5rem;
   color: var(--text-primary);
@@ -393,7 +564,7 @@ a:hover {
 
 .signup-bonus {
   color: var(--green);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 500;
   background: var(--green-bg);
   border: 1px solid var(--green-border);
@@ -401,6 +572,7 @@ a:hover {
   border-radius: var(--radius-sm);
   margin-bottom: 1.5rem;
   text-align: center;
+  font-family: var(--font-mono);
 }
 
 .auth-error {
@@ -409,32 +581,37 @@ a:hover {
   color: var(--red);
   padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   margin-bottom: 1rem;
 }
 
+/*
+ * form inputs — the inner shadow on focus gives depth instead of
+ * just a flat color ring. its a tiny visual trick that makes the
+ * input feel physically "pressed in" like a real button.
+ */
 .form-group {
   margin-bottom: 1.25rem;
 }
 
 .form-group label {
   display: block;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   margin-bottom: 0.5rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
 }
 
 .form-group input {
   width: 100%;
-  padding: 0.75rem 1rem;
+  padding: 0.7rem 1rem;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-family: inherit;
   transition: var(--transition);
   outline: none;
@@ -442,7 +619,7 @@ a:hover {
 
 .form-group input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  box-shadow: 0 0 0 3px var(--accent-glow), inset 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .form-group input::placeholder {
@@ -451,34 +628,38 @@ a:hover {
 
 .btn-primary {
   width: 100%;
-  padding: 0.85rem 1.5rem;
+  padding: 0.8rem 1.5rem;
   background: var(--accent);
   color: white;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: var(--transition);
   margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px var(--accent-glow);
+  box-shadow: var(--shadow-glow);
 }
 
 .btn-primary:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .auth-switch {
   margin-top: 1.5rem;
   text-align: center;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
 }
 
@@ -488,12 +669,12 @@ a:hover {
 
 .btn-google {
   width: 100%;
-  padding: 0.85rem 1.5rem;
+  padding: 0.8rem 1.5rem;
   background: white;
   color: #3c4043;
   border: 1px solid #dadce0;
   border-radius: var(--radius-sm);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
@@ -507,11 +688,11 @@ a:hover {
 
 .btn-google:hover:not(:disabled) {
   background: #f8f9fa;
-  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.2);
 }
 
 .btn-google:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -521,7 +702,7 @@ a:hover {
   text-align: center;
   margin: 1.5rem 0;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.78rem;
 }
 
 .auth-divider::before,
@@ -532,39 +713,22 @@ a:hover {
 }
 
 .auth-divider span {
-  padding: 0 10px;
+  padding: 0 12px;
 }
 
-.navbar-user-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.navbar-username {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  background: var(--bg-card);
-  padding: 0.35rem 0.85rem;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-}
-
+/*
+ * dashboard — the main trading screen. the header uses flex
+ * with space-between to push the search bar to the right.
+ * the search gets a glow ring on focus to draw attention
+ * since its the primary interaction on this page.
+ */
 .dashboard {
   animation: fadeIn 0.3s ease;
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .dashboard-header {
@@ -575,9 +739,12 @@ a:hover {
 }
 
 .dashboard-header h1 {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: -0.5px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .search-bar {
@@ -594,14 +761,14 @@ a:hover {
 }
 
 .search-bar input {
-  padding: 0.6rem 1.2rem 0.6rem 2.2rem;
+  padding: 0.55rem 1rem 0.55rem 2.2rem;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 20px;
   color: var(--text-primary);
-  font-size: 0.875rem;
+  font-size: 0.82rem;
   font-family: inherit;
-  width: 280px;
+  width: 260px;
   transition: var(--transition);
   outline: none;
 }
@@ -609,8 +776,118 @@ a:hover {
 .search-bar input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
+  width: 320px;
 }
 
+/*
+ * market movers — the horizontal scrolling strip. each mover
+ * panel is a glass card that grows slightly on hover. the grid
+ * auto-fit ensures they wrap gracefully on smaller screens.
+ */
+.movers-section {
+  margin-bottom: 2rem;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.82rem;
+}
+
+.movers-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.movers-list {
+  padding: 1rem;
+}
+
+.movers-list h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.movers-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mover-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.7rem 0.85rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  border-left: 3px solid transparent;
+}
+
+.mover-card:hover {
+  background: var(--bg-card-hover);
+  border-left-color: var(--accent);
+  transform: translateX(2px);
+}
+
+.mover-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mover-symbol {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.mover-price {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.mover-change {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.mover-change-percent {
+  font-weight: 700;
+  font-size: 0.88rem;
+  font-family: var(--font-mono);
+}
+
+.mover-change-abs {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/*
+ * stock table — the main data grid. each row has a subtle left
+ * border that activates on hover so youir eye can track which
+ * row you're on. monospace font on price and change columns
+ * makes the numbers line up vertically like a real terminal.
+ */
 .stock-table-container {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -628,13 +905,13 @@ a:hover {
 }
 
 .stock-table th {
-  padding: 0.85rem 1.25rem;
+  padding: 0.75rem 1.25rem;
   text-align: left;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 1px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -649,7 +926,7 @@ a:hover {
 }
 
 .sort-icon.inactive {
-  opacity: 0.3;
+  opacity: 0.25;
 }
 
 .sort-icon.active {
@@ -663,26 +940,28 @@ a:hover {
 }
 
 .stock-table th.sortable:hover {
-  color: var(--text-primary);
+  color: var(--text-secondary);
 }
 
 .stock-table th.sortable:hover .sort-icon.inactive {
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .stock-table td {
-  padding: 0.85rem 1.25rem;
-  font-size: 0.9rem;
-  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1.25rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .stock-row {
   cursor: pointer;
   transition: var(--transition);
+  border-left: 3px solid transparent;
 }
 
 .stock-row:hover {
   background: var(--bg-card-hover);
+  border-left-color: var(--accent);
 }
 
 .stock-row:last-child td {
@@ -693,19 +972,23 @@ a:hover {
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0.3px;
+  font-size: 0.85rem;
 }
 
 .stock-name {
-  color: var(--text-secondary);
+  color: var(--text-muted);
+  font-size: 0.82rem;
 }
 
 .stock-price {
   font-weight: 600;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
 .stock-change {
   font-weight: 600;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -720,13 +1003,13 @@ a:hover {
 .btn-trade {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 16px;
-  background: var(--accent-glow);
+  gap: 5px;
+  padding: 5px 14px;
+  background: var(--accent-subtle);
   color: var(--accent);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  border-radius: var(--radius-sm);
-  font-size: 0.8rem;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 20px;
+  font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
@@ -736,8 +1019,17 @@ a:hover {
 .btn-trade:hover {
   background: var(--accent);
   color: white;
+  border-color: var(--accent);
 }
 
+/*
+ * stock detail page — the two-column grid puts the chart and
+ * data on the left with the trade panel sticky on the right.
+ * the large price uses mono font at 2.5rem to feel like a
+ * real market terminal. the range buttons are pill-shaped
+ * with a glow when active to clearly show which timeframe
+ * is selected.
+ */
 .stock-detail {
   animation: fadeIn 0.3s ease;
 }
@@ -745,14 +1037,17 @@ a:hover {
 .btn-back {
   background: transparent;
   border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 8px 16px;
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.82rem;
   cursor: pointer;
   transition: var(--transition);
   font-family: inherit;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .btn-back:hover {
@@ -761,88 +1056,96 @@ a:hover {
 }
 
 .stock-detail-header {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .stock-name-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.75rem;
 }
 
 .stock-info h1 {
-  font-size: 2rem;
+  font-size: 1.8rem;
   font-weight: 800;
   letter-spacing: -0.5px;
 }
 
 .company-name {
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .stock-price-large {
-  font-size: 2.5rem;
+  font-size: 2.2rem;
   font-weight: 700;
+  font-family: var(--font-mono);
   margin-top: 0.25rem;
   font-variant-numeric: tabular-nums;
 }
 
 .stock-change-large {
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
+  font-family: var(--font-mono);
   margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .stock-detail-content {
   display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 2rem;
+  grid-template-columns: 1fr 360px;
+  gap: 1.5rem;
   align-items: start;
 }
 
 .stock-detail-left {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
 .chart-section {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 1.5rem;
+  padding: 1.25rem;
 }
 
 .chart-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.85rem;
 }
 
 .chart-header h3 {
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .range-selector {
   display: flex;
-  gap: 4px;
+  gap: 3px;
   background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
+  border-radius: 20px;
   padding: 3px;
 }
 
 .range-btn {
-  padding: 6px 14px;
+  padding: 5px 12px;
   border: none;
-  border-radius: 6px;
+  border-radius: 16px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
@@ -857,7 +1160,7 @@ a:hover {
 .range-btn.active {
   background: var(--accent);
   color: white;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
 }
 
 .chart-container {
@@ -871,44 +1174,53 @@ a:hover {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
 }
 
+/*
+ * performance and fundamentals panels — clean data grids with
+ * the same bg-card treatment as the chart. the range bar for
+ * 52-week high/low is a gradient track with a dot marker
+ * showing where the current price sits.
+ */
 .performance-section,
 .fundamentals-section {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 1.5rem;
+  padding: 1.25rem;
 }
 
 .performance-section h3,
 .fundamentals-section h3 {
-  font-size: 1rem;
+  font-size: 0.88rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 1.25rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .perf-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
 }
 
 .perf-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 0.75rem;
+  padding: 0.65rem;
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
 }
 
 .perf-label {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -916,15 +1228,16 @@ a:hover {
 }
 
 .perf-value {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 700;
   color: var(--text-primary);
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
 .price-range-bar {
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--border);
 }
 
@@ -932,23 +1245,25 @@ a:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  font-size: 0.75rem;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
   color: var(--text-muted);
+  font-family: var(--font-mono);
 }
 
 .range-bar-title {
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
+  font-family: inherit;
 }
 
 .range-bar-track {
-  height: 6px;
+  height: 4px;
   background: var(--bg-tertiary);
-  border-radius: 3px;
+  border-radius: 2px;
   position: relative;
   overflow: visible;
 }
@@ -956,7 +1271,7 @@ a:hover {
 .range-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, var(--red), var(--yellow), var(--green));
-  border-radius: 3px;
+  border-radius: 2px;
   transition: width 0.3s ease;
 }
 
@@ -966,14 +1281,14 @@ a:hover {
 
 .range-bar-marker {
   position: absolute;
-  top: -4px;
+  top: -5px;
   width: 14px;
   height: 14px;
   background: var(--text-primary);
   border: 2px solid var(--bg-card);
   border-radius: 50%;
   transform: translateX(-50%);
-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
   transition: left 0.3s ease;
 }
 
@@ -987,8 +1302,8 @@ a:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.85rem 0;
-  border-bottom: 1px solid var(--border);
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .fund-item:last-child {
@@ -996,48 +1311,58 @@ a:hover {
 }
 
 .fund-label {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
 }
 
 .fund-value {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--text-primary);
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * trade panel — the sticky sidebar where you actually buy/sell.
+ * the glass background with a subtle glow on the execute button
+ * makes this feel like the "action center" of the page. bigger
+ * padding and spacing compared to other cards because usability
+ * matters most here — fat finger mistakes cost money.
+ */
 .trade-section {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 1.5rem;
+  padding: 1.25rem;
   height: fit-content;
   position: sticky;
-  top: 80px;
+  top: 140px;
 }
 
 .trade-section h3 {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 700;
   color: var(--text-secondary);
-  margin-bottom: 1.25rem;
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .order-type-toggle {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .toggle-btn {
-  padding: 0.65rem;
+  padding: 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition);
@@ -1049,42 +1374,50 @@ a:hover {
   background: var(--green-bg);
   border-color: var(--green-border);
   color: var(--green);
+  box-shadow: 0 0 12px var(--green-glow);
 }
 
 .toggle-btn.active-sell {
   background: var(--red-bg);
   border-color: var(--red-border);
   color: var(--red);
+  box-shadow: 0 0 12px var(--red-glow);
 }
 
 .trade-summary {
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
-  padding: 1rem;
-  margin: 1.25rem 0;
+  padding: 0.85rem;
+  margin: 1rem 0;
 }
 
 .summary-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.85rem;
-  padding: 0.35rem 0;
+  font-size: 0.8rem;
+  padding: 0.3rem 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.summary-row span:first-child {
+  font-family: inherit;
   color: var(--text-secondary);
 }
 
 .summary-row.total {
   border-top: 1px solid var(--border);
-  margin-top: 0.5rem;
-  padding-top: 0.75rem;
+  margin-top: 0.4rem;
+  padding-top: 0.6rem;
   font-weight: 700;
   color: var(--text-primary);
-  font-size: 0.95rem;
+  font-size: 0.88rem;
 }
 
 .trade-message {
   padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   margin-bottom: 1rem;
 }
 
@@ -1102,10 +1435,10 @@ a:hover {
 
 .btn-execute {
   width: 100%;
-  padding: 0.85rem;
+  padding: 0.75rem;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition);
@@ -1114,7 +1447,7 @@ a:hover {
 }
 
 .btn-execute:disabled {
-  opacity: 0.4;
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
@@ -1125,7 +1458,8 @@ a:hover {
 
 .btn-buy:hover:not(:disabled) {
   background: #0ea572;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 16px var(--green-glow);
+  transform: translateY(-1px);
 }
 
 .btn-sell {
@@ -1135,9 +1469,16 @@ a:hover {
 
 .btn-sell:hover:not(:disabled) {
   background: #dc2626;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 4px 16px var(--red-glow);
+  transform: translateY(-1px);
 }
 
+/*
+ * portfolio and orders pages — the summary cards use a 4-column
+ * grid that stacks to 2 then 1 on smaller screens. the p&l card
+ * gets a special glow treatment to immediately communicate if
+ * you're up or down without reading the number.
+ */
 .portfolio-page,
 .orders-page {
   animation: fadeIn 0.3s ease;
@@ -1145,7 +1486,7 @@ a:hover {
 
 .portfolio-page h1,
 .orders-page h1 {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: -0.5px;
   margin-bottom: 1.5rem;
@@ -1154,41 +1495,44 @@ a:hover {
 .portfolio-summary {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-  margin-bottom: 2rem;
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
 }
 
 .summary-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1.25rem;
+  padding: 1.1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .summary-card.pnl-positive {
   border-color: var(--green-border);
   background: var(--green-bg);
+  box-shadow: 0 0 20px var(--green-glow);
 }
 
 .summary-card.pnl-negative {
   border-color: var(--red-border);
   background: var(--red-bg);
+  box-shadow: 0 0 20px var(--red-glow);
 }
 
 .summary-label {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
 }
 
 .summary-value {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 700;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1200,6 +1544,12 @@ a:hover {
   color: var(--red);
 }
 
+/*
+ * holdings, orders, and watchlist tables — same visual treatment
+ * as the main dashboard stock table. consistent borders, font
+ * sizes, and hover effects across all pages so the app feels
+ * cohesive rather than like 5 different pages slapped together.
+ */
 .holdings-table-container,
 .orders-table-container {
   background: var(--bg-card);
@@ -1221,21 +1571,22 @@ a:hover {
 
 .holdings-table th,
 .orders-table th {
-  padding: 0.85rem 1.25rem;
+  padding: 0.75rem 1.25rem;
   text-align: left;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 1px;
   border-bottom: 1px solid var(--border);
 }
 
 .holdings-table td,
 .orders-table td {
-  padding: 0.85rem 1.25rem;
-  font-size: 0.9rem;
-  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1.25rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1246,10 +1597,10 @@ a:hover {
 
 .order-badge {
   padding: 3px 10px;
-  border-radius: 4px;
-  font-size: 0.7rem;
+  border-radius: 20px;
+  font-size: 0.65rem;
   font-weight: 700;
-  letter-spacing: 0.8px;
+  letter-spacing: 1px;
 }
 
 .badge-buy {
@@ -1264,27 +1615,34 @@ a:hover {
   border: 1px solid var(--red-border);
 }
 
+/*
+ * empty states — the centered layout with a muted icon and call
+ * to action keeps these pages from looking broken when theres
+ * no data yet. the background pattern adds some visual interest.
+ */
 .empty-state {
   text-align: center;
   padding: 4rem 2rem;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  background-image: radial-gradient(circle at 50% 50%, var(--accent-subtle), transparent 60%);
 }
 
 .empty-state h3 {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   margin-bottom: 0.5rem;
 }
 
 .empty-state p {
   color: var(--text-muted);
   margin-bottom: 1.5rem;
+  font-size: 0.88rem;
 }
 
 .empty-state .btn-primary {
   width: auto;
-  display: inline-block;
+  display: inline-flex;
 }
 
 .loading-screen {
@@ -1292,110 +1650,23 @@ a:hover {
   align-items: center;
   justify-content: center;
   min-height: 60vh;
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: var(--text-muted);
 }
 
-.movers-section {
-  margin-bottom: 2.5rem;
-}
-
-.section-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1.25rem;
-}
-
-.movers-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.movers-list {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem;
-}
-
-.movers-list h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.movers-cards {
+/*
+ * toast notifications — fixed bottom-right stack. the glass
+ * background with blur means they float above the page content
+ * without completely obscuring it. the left accent bar gives
+ * instant success/error feedback without reading the text.
+ */
+.toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-}
-
-.mover-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.85rem;
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.mover-card:hover {
-  background: var(--bg-card-hover);
-  transform: translateX(4px);
-  border-left: 3px solid var(--accent);
-}
-
-.mover-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.mover-symbol {
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: var(--text-primary);
-}
-
-.mover-price {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.mover-change {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-.mover-change-percent {
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-
-.mover-change-abs {
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-/* Toast Notifications */
-.toast-container {
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
   z-index: 9999;
   pointer-events: none;
 }
@@ -1403,19 +1674,19 @@ a:hover {
 .toast {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
-  padding: 1rem 1.25rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
+  gap: 0.75rem;
+  padding: 0.85rem 1.1rem;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   pointer-events: auto;
-  min-width: 250px;
-  max-width: 400px;
+  min-width: 240px;
+  max-width: 380px;
   position: relative;
   overflow: hidden;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .toast::before {
@@ -1424,7 +1695,7 @@ a:hover {
   left: 0;
   top: 0;
   bottom: 0;
-  width: 4px;
+  width: 3px;
 }
 
 .toast.success::before { background: var(--green); }
@@ -1443,7 +1714,7 @@ a:hover {
 
 .toast-text {
   flex: 1;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 500;
   color: var(--text-primary);
   line-height: 1.4;
@@ -1467,6 +1738,57 @@ a:hover {
   background: var(--bg-hover);
 }
 
+/*
+ * mobile bottom navigation — a fixed tab bar at the bottom of the
+ * screen for phones. hidden on desktop since the navbar handles it.
+ * the frosted glass background keeps it readable over scrolling
+ * content. only visible below 768px to avoid conflicting with
+ * the desktop navbar links.
+ */
+.mobile-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(8, 11, 18, 0.9);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border-subtle);
+  padding: 0.35rem 0.5rem;
+  padding-bottom: calc(0.35rem + env(safe-area-inset-bottom));
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.62rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: var(--transition);
+  padding: 0.3rem 0;
+  flex: 1;
+}
+
+.mobile-nav-item.active {
+  color: var(--accent);
+}
+
+.mobile-nav-item:hover {
+  color: var(--text-primary);
+}
+
+/*
+ * responsive breakpoints — the grid layouts progressively collapse
+ * from multi-column to single column as the screen shrinks. on
+ * mobile the navbar links hide and the bottom tab bar takes over,
+ * tables become scrollable, and padding tightens up so nothing
+ * overflows or gets cut off.
+ */
 @media (max-width: 1024px) {
   .stock-detail-content {
     grid-template-columns: 1fr;
@@ -1479,45 +1801,184 @@ a:hover {
   .portfolio-summary {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .movers-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 768px) {
+  .mobile-nav {
+    display: flex;
+  }
+
   .navbar {
     padding: 0 1rem;
-    gap: 0.5rem;
+    height: 56px;
   }
 
   .navbar-links {
     display: none;
   }
 
+  .navbar-username {
+    display: none;
+  }
+
+  .navbar-logo {
+    font-size: 1.1rem;
+  }
+
+  .index-ticker {
+    top: 56px;
+    padding: 0.4rem 0.75rem;
+    gap: 0;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  .ticker-item {
+    padding: 0 0.75rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .market-banner {
+    top: 92px;
+    font-size: 0.7rem;
+  }
+
   .main-content {
     padding: 1rem;
+    padding-bottom: 4.5rem;
   }
 
   .dashboard-header {
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.85rem;
     align-items: stretch;
+  }
+
+  .dashboard-header h1 {
+    font-size: 1.25rem;
   }
 
   .search-bar input {
     width: 100%;
   }
 
+  .search-bar input:focus {
+    width: 100%;
+  }
+
+  .movers-grid {
+    grid-template-columns: 1fr;
+  }
+
   .portfolio-summary {
     grid-template-columns: 1fr;
   }
 
+  .stock-table-container,
+  .holdings-table-container,
+  .orders-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .stock-table,
+  .holdings-table,
+  .orders-table {
+    min-width: 600px;
+  }
+
   .stock-price-large {
-    font-size: 1.8rem;
+    font-size: 1.6rem;
+  }
+
+  .stock-info h1 {
+    font-size: 1.4rem;
+  }
+
+  .chart-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .range-selector {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .range-btn {
+    padding: 5px 8px;
+    font-size: 0.68rem;
+  }
+
+  .perf-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .fund-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .toast-container {
+    left: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+  }
+
+  .toast {
+    max-width: 100%;
+    min-width: auto;
+  }
+
+  .empty-state {
+    padding: 2.5rem 1.5rem;
+  }
+
+  .btn-back {
+    font-size: 0.75rem;
+    padding: 5px 12px;
   }
 }
 
-/*
- * global stylesheet for the whole app. has css custom properties
- * for both dark and light themes at the top, then styles for
- * everything — navbar, auth pages, dashboard table, stock detail,
- * trade form, portfolio cards, order history, and the market
- * movers section. responsive breakpoints at the bottom.
- */
+@media (max-width: 480px) {
+  .navbar {
+    height: 50px;
+  }
+
+  .index-ticker {
+    top: 50px;
+  }
+
+  .market-banner {
+    top: 86px;
+  }
+
+  .ticker-label {
+    font-size: 0.65rem;
+  }
+
+  .ticker-price {
+    font-size: 0.72rem;
+  }
+
+  .ticker-change {
+    font-size: 0.65rem;
+  }
+
+  .summary-value {
+    font-size: 1rem;
+  }
+
+  .auth-card {
+    padding: 1.5rem;
+  }
+
+  .auth-logo {
+    font-size: 1.5rem;
+  }
+}
