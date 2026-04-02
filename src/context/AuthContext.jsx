@@ -63,8 +63,17 @@ const AuthProvider = ({ children }) => {
         setUser(null);
     };
 
+    const refreshBalance = async () => {
+        try {
+            const res = await api.get("/portfolio");
+            setUser((prev) => prev ? { ...prev, balancePaise: res.data.balancePaise } : prev);
+        } catch (err) {
+            /* silent — navbar balance stays stale until next load */
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, token, loading, login, signup, googleLogin, logout }}>
+        <AuthContext.Provider value={{ user, token, loading, login, signup, googleLogin, logout, refreshBalance }}>
             {children}
         </AuthContext.Provider>
     );
@@ -75,9 +84,10 @@ const useAuth = () => useContext(AuthContext);
 export { AuthProvider, useAuth };
 
 /*
- * auth state management. stores user, token, balance. has login,
- * signup, googleLogin, and logout. the googleLogin method sends
- * the credential from google's button to our backend which verifies
- * it and returns a jwt. on mount it validates stored token by
- * hitting /portfolio. everything that needs the user pulls from useAuth.
+ * auth context with login, signup, google oauth, logout, and
+ * refreshBalance. the refreshBalance function re-fetches the
+ * wallet from /portfolio so the navbar updates instantly after
+ * trades without needing a full page reload. user state includes
+ * balancePaise which gets hydrated from the portfolio endpoint
+ * on mount and after every refreshBalance call.
  */

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { createChart, CandlestickSeries, HistogramSeries } from "lightweight-charts";
 import { useMarket } from "../context/MarketContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 import api from "../services/api.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, TrendingUp, TrendingDown, Activity, BarChart2, Star } from "lucide-react";
@@ -162,6 +163,7 @@ const StockDetail = () => {
     const [tradeLoading, setTradeLoading] = useState(false);
     const [tradeMode, setTradeMode] = useState("INTRADAY");
     const { addToast } = useToast();
+    const { refreshBalance } = useAuth();
     const [inWatchlist, setInWatchlist] = useState(false);
 
     const toggleWatchlist = async () => {
@@ -248,6 +250,7 @@ const StockDetail = () => {
             const leverageTag = tradeMode === "INTRADAY" ? " (5x)" : "";
             addToast(`${orderType} ${qty} ${symbol} @ ${formatINR(execPrice)} = ${formatINR(total)} [${modeTag}${leverageTag}]`, "success");
             setQuantity("");
+            refreshBalance();
         } catch (err) {
             addToast(err.response?.data?.error || "Trade failed", "error");
         } finally {
