@@ -160,6 +160,7 @@ const StockDetail = () => {
     const [orderType, setOrderType] = useState("BUY");
     const [quantity, setQuantity] = useState("");
     const [tradeLoading, setTradeLoading] = useState(false);
+    const [tradeMode, setTradeMode] = useState("INTRADAY");
     const { addToast } = useToast();
     const [inWatchlist, setInWatchlist] = useState(false);
 
@@ -240,10 +241,12 @@ const StockDetail = () => {
 
         try {
             const endpoint = orderType === "BUY" ? "/trade/buy" : "/trade/sell";
-            const res = await api.post(endpoint, { symbol, quantity: qty });
+            const res = await api.post(endpoint, { symbol, quantity: qty, mode: tradeMode });
             const total = (res.data.totalCostPaise || res.data.totalValuePaise) / 100;
             const execPrice = (res.data.executionPricePaise) / 100;
-            addToast(`${orderType} ${qty} ${symbol} @ ${formatINR(execPrice)} = ${formatINR(total)}`, "success");
+            const modeTag = tradeMode === "INTRADAY" ? "MIS" : "CNC";
+            const leverageTag = tradeMode === "INTRADAY" ? " (5x)" : "";
+            addToast(`${orderType} ${qty} ${symbol} @ ${formatINR(execPrice)} = ${formatINR(total)} [${modeTag}${leverageTag}]`, "success");
             setQuantity("");
         } catch (err) {
             addToast(err.response?.data?.error || "Trade failed", "error");
@@ -254,6 +257,8 @@ const StockDetail = () => {
 
     const qty = parseInt(quantity) || 0;
     const estimatedCost = currentPrice * qty;
+    const isIntraday = tradeMode === "INTRADAY";
+    const marginRequired = isIntraday ? estimatedCost / 5 : estimatedCost;
 
     const perfItems = performance ? [
         { label: "Open", value: formatINR(performance.open) },
@@ -438,6 +443,27 @@ const StockDetail = () => {
                 <div className="trade-section">
                     <h3>Place Order</h3>
                     <div className="trade-form">
+                        <div className="trade-mode-toggle">
+                            <button
+                                className={`mode-btn ${tradeMode === "INTRADAY" ? "active-intraday" : ""}`}
+                                onClick={() => setTradeMode("INTRADAY")}
+                            >
+                                MIS (Intraday)
+                            </button>
+                            <button
+                                className={`mode-btn ${tradeMode === "DELIVERY" ? "active-delivery" : ""}`}
+                                onClick={() => setTradeMode("DELIVERY")}
+                            >
+                                CNC (Delivery)
+                            </button>
+                        </div>
+
+                        {isIntraday && (
+                            <div className="leverage-badge">
+                                <span>5× Leverage</span> — Only 20% margin required
+                            </div>
+                        )}
+
                         <div className="order-type-toggle">
                             <button
                                 className={`toggle-btn ${orderType === "BUY" ? "active-buy" : ""}`}
@@ -482,9 +508,15 @@ const StockDetail = () => {
                                 <span>Quantity</span>
                                 <span>{qty}</span>
                             </div>
+                            {isIntraday && qty > 0 && (
+                                <div className="summary-row leverage-row">
+                                    <span>Leverage</span>
+                                    <span>5×</span>
+                                </div>
+                            )}
                             <div className="summary-row total">
-                                <span>Estimated {orderType === "BUY" ? "Cost" : "Value"}</span>
-                                <span>{qty > 0 ? formatINR(estimatedCost * (orderType === "BUY" ? 1.001 : 0.999) + (orderType === "BUY" ? 20 : -20)) : "—"}</span>
+                                <span>{isIntraday ? "Margin Required" : (orderType === "BUY" ? "Estimated Cost" : "Estimated Value")}</span>
+                                <span>{qty > 0 ? formatINR(marginRequired * (orderType === "BUY" ? 1.001 : 0.999) + (orderType === "BUY" ? 20 : -20)) : "—"}</span>
                             </div>
                         </div>
 
@@ -508,7 +540,9 @@ export default StockDetail;
  * the individual stock page. shows a candlestick chart using
  * lightweight-charts with range buttons (1D to 5Y), performance
  * stats like open/close/high/low, fundamentals grid, and the
- * buy/sell trade panel on the right. fetches everything from
- * the /full endpoint in one shot. you get here by clicking a
- * stock on the dashboard.
+ * buy/sell trade panel on the right. the trade panel has an
+ * intraday/delivery toggle — intraday (MIS) gives 5x leverage
+ * and shows margin required instead of full cost. delivery (CNC)
+ * deducts the full amount. the mode gets sent to the backend
+ * in the trade request body.
  */

@@ -7,6 +7,7 @@ import { Briefcase, TrendingUp, TrendingDown, ExternalLink, Activity, FolderOpen
 const Portfolio = () => {
     const [portfolio, setPortfolio] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState("INTRADAY");
     const navigate = useNavigate();
 
     const fetchPortfolio = async () => {
@@ -58,6 +59,86 @@ const Portfolio = () => {
         show: { opacity: 1, scale: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
     };
 
+    const activeHoldings = activeTab === "INTRADAY"
+        ? portfolio.intradayHoldings
+        : portfolio.deliveryHoldings;
+
+    const intradayCount = portfolio.intradayHoldings?.length || 0;
+    const deliveryCount = portfolio.deliveryHoldings?.length || 0;
+
+    const renderHoldingsTable = (holdings, isIntraday) => {
+        if (!holdings || holdings.length === 0) {
+            return (
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="empty-state glass-panel"
+                >
+                    <FolderOpen size={48} className="empty-icon text-muted mb-4" style={{ color: 'var(--text-muted)' }} />
+                    <h3>No {isIntraday ? "Intraday" : "Delivery"} Holdings</h3>
+                    <p>{isIntraday ? "Your leveraged positions will show here." : "Start investing for long-term holdings!"}</p>
+                    <button className="btn-primary mt-4" onClick={() => navigate("/")}>
+                        <Activity size={18} className="inline mr-2" /> Browse Markets
+                    </button>
+                </motion.div>
+            );
+        }
+
+        return (
+            <div className="holdings-table-container glass-panel">
+                <table className="holdings-table stock-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Qty</th>
+                            <th>Avg Price</th>
+                            <th>Current Price</th>
+                            <th>{isIntraday ? "Margin Used" : "Invested"}</th>
+                            <th>Current Value</th>
+                            <th>P&L</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <motion.tbody variants={containerVariants} initial="hidden" animate="show">
+                        {holdings.map((h) => {
+                            const pnl = h.pnlPaise;
+                            const isPosH = pnl >= 0;
+                            return (
+                                <motion.tr variants={itemVariants} key={h.symbol + h.orderMode} className="stock-row" onClick={() => navigate(`/stock/${h.symbol}`)}>
+                                    <td className="stock-symbol">
+                                        {h.symbol}
+                                        <span className={`mode-badge ${isIntraday ? "badge-mis" : "badge-cnc"}`}>
+                                            {isIntraday ? "MIS" : "CNC"}
+                                        </span>
+                                    </td>
+                                    <td>{h.quantity}</td>
+                                    <td>{formatCurrency(h.avgPricePaise)}</td>
+                                    <td>{formatCurrency(h.currentPricePaise)}</td>
+                                    <td>{formatCurrency(isIntraday ? h.marginUsedPaise : h.investedPaise)}</td>
+                                    <td>{formatCurrency(h.currentValuePaise)}</td>
+                                    <td className={isPosH ? "positive" : "negative"}>
+                                        {isPosH ? "+" : ""}{formatCurrency(pnl)}
+                                    </td>
+                                    <td>
+                                        <button
+                                            className="btn-trade"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                navigate(`/stock/${h.symbol}`);
+                                            }}
+                                        >
+                                            <ExternalLink size={14} /> Trade
+                                        </button>
+                                    </td>
+                                </motion.tr>
+                            );
+                        })}
+                    </motion.tbody>
+                </table>
+            </div>
+        );
+    };
+
     return (
         <motion.div
             className="portfolio-page main-content"
@@ -91,67 +172,24 @@ const Portfolio = () => {
                 </motion.div>
             </motion.div>
 
-            {portfolio.holdings.length === 0 ? (
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="empty-state glass-panel"
+            <div className="portfolio-tabs">
+                <button
+                    className={`portfolio-tab ${activeTab === "INTRADAY" ? "active-tab" : ""}`}
+                    onClick={() => setActiveTab("INTRADAY")}
                 >
-                    <FolderOpen size={48} className="empty-icon text-muted mb-4" style={{ color: 'var(--text-muted)' }} />
-                    <h3>No Holdings</h3>
-                    <p>Start trading to build your portfolio!</p>
-                    <button className="btn-primary mt-4" onClick={() => navigate("/")}>
-                        <Activity size={18} className="inline mr-2" /> Browse Markets
-                    </button>
-                </motion.div>
-            ) : (
-                <div className="holdings-table-container glass-panel">
-                    <table className="holdings-table stock-table">
-                        <thead>
-                            <tr>
-                                <th>Symbol</th>
-                                <th>Qty</th>
-                                <th>Avg Price</th>
-                                <th>Current Price</th>
-                                <th>Invested</th>
-                                <th>Current Value</th>
-                                <th>P&L</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <motion.tbody variants={containerVariants} initial="hidden" animate="show">
-                            {portfolio.holdings.map((h) => {
-                                const pnl = h.pnlPaise;
-                                const isPosH = pnl >= 0;
-                                return (
-                                    <motion.tr variants={itemVariants} key={h.symbol} className="stock-row" onClick={() => navigate(`/stock/${h.symbol}`)}>
-                                        <td className="stock-symbol">{h.symbol}</td>
-                                        <td>{h.quantity}</td>
-                                        <td>{formatCurrency(h.avgPricePaise)}</td>
-                                        <td>{formatCurrency(h.currentPricePaise)}</td>
-                                        <td>{formatCurrency(h.investedPaise)}</td>
-                                        <td>{formatCurrency(h.currentValuePaise)}</td>
-                                        <td className={isPosH ? "positive" : "negative"}>
-                                            {isPosH ? "+" : ""}{formatCurrency(pnl)}
-                                        </td>
-                                        <td>
-                                            <button
-                                                className="btn-trade"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    navigate(`/stock/${h.symbol}`);
-                                                }}
-                                            >
-                                                <ExternalLink size={14} /> Trade
-                                            </button>
-                                        </td>
-                                    </motion.tr>
-                                );
-                            })}
-                        </motion.tbody>
-                    </table>
-                </div>
-            )}
+                    Intraday (MIS)
+                    {intradayCount > 0 && <span className="tab-count">{intradayCount}</span>}
+                </button>
+                <button
+                    className={`portfolio-tab ${activeTab === "DELIVERY" ? "active-tab" : ""}`}
+                    onClick={() => setActiveTab("DELIVERY")}
+                >
+                    Delivery (CNC)
+                    {deliveryCount > 0 && <span className="tab-count">{deliveryCount}</span>}
+                </button>
+            </div>
+
+            {renderHoldingsTable(activeHoldings, activeTab === "INTRADAY")}
         </motion.div>
     );
 };
@@ -159,9 +197,12 @@ const Portfolio = () => {
 export default Portfolio;
 
 /*
- * portfolio page. shows your wallet balance, how much you've
- * invested, current value, and total pnl in summary cards at
- * the top. below that is a table of all your holdings with
- * per-stock profit/loss. fetches from /api/portfolio on load.
- * clicking a row takes you to that stock's detail page.
+ * portfolio page with tabbed view for intraday and delivery
+ * holdings. intraday tab shows leveraged positions with the
+ * margin used column — these get auto squared off at 15:25 IST.
+ * delivery tab shows full-payment long-term holdings with the
+ * invested amount column. each holding shows a MIS or CNC badge
+ * next to the symbol. summary cards at the top still show the
+ * combined balance, invested value, current value, and total pnl
+ * across both modes. fetches from /api/portfolio every 5 seconds.
  */

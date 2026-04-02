@@ -1349,6 +1349,64 @@ a:hover {
   letter-spacing: 0.5px;
 }
 
+/*
+ * trade mode toggle — intraday vs delivery selector at the top
+ * of the trade panel. uses the same pill-button pattern as the
+ * buy/sell toggle but with distinct blue and purple colors.
+ */
+.trade-mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mode-btn {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.mode-btn.active-intraday {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #60a5fa;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.15);
+}
+
+.mode-btn.active-delivery {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.35);
+  color: #c084fc;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.15);
+}
+
+.leverage-badge {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
+  font-size: 0.72rem;
+  color: #93c5fd;
+  margin-bottom: 0.75rem;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.leverage-badge span {
+  font-weight: 700;
+  color: #60a5fa;
+}
+
 .order-type-toggle {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1412,6 +1470,15 @@ a:hover {
   font-weight: 700;
   color: var(--text-primary);
   font-size: 0.88rem;
+}
+
+.summary-row.leverage-row {
+  color: #60a5fa;
+}
+
+.summary-row.leverage-row span {
+  color: #60a5fa;
+  font-weight: 700;
 }
 
 .trade-message {
@@ -1613,6 +1680,89 @@ a:hover {
   background: var(--red-bg);
   color: var(--red);
   border: 1px solid var(--red-border);
+}
+
+.badge-mis {
+  background: rgba(59, 130, 246, 0.1);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.badge-cnc {
+  background: rgba(168, 85, 247, 0.1);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.25);
+}
+
+.mode-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/*
+ * portfolio tabs — intraday vs delivery section switcher.
+ * sits just below the summary cards with a subtle bottom
+ * border highlight on the active tab.
+ */
+.portfolio-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.portfolio-tab {
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+  position: relative;
+  letter-spacing: 0.3px;
+}
+
+.portfolio-tab:hover {
+  color: var(--text-secondary);
+}
+
+.portfolio-tab.active-tab {
+  color: var(--accent-hover);
+}
+
+.portfolio-tab.active-tab::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-subtle);
+  color: var(--accent-hover);
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  margin-left: 6px;
+  padding: 0 5px;
 }
 
 /*

@@ -85,6 +85,7 @@ const Orders = () => {
                                 <th>Date</th>
                                 <th>Symbol</th>
                                 <th>Type</th>
+                                <th>Mode</th>
                                 <th>Qty</th>
                                 <th>Price</th>
                                 <th>Total</th>
@@ -98,6 +99,11 @@ const Orders = () => {
                                     <td>
                                         <span className={`order-badge ${o.type === "BUY" ? "badge-buy" : "badge-sell"}`}>
                                             {o.type}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span className={`order-badge ${o.orderMode === "INTRADAY" ? "badge-mis" : "badge-cnc"}`}>
+                                            {o.orderMode === "INTRADAY" ? "MIS" : "CNC"}
                                         </span>
                                     </td>
                                     <td>{o.quantity}</td>
@@ -116,9 +122,10 @@ const Orders = () => {
 export default Orders;
 
 /*
- * order history page. lists all the buy and sell trades youve
- * made in a table with symbol, type, quantity, price, total
- * and timestamp. fetches from /api/orders. if you havent made
- * any trades yet it shows a nice animated empty state. accessible
- * from the orders link in the navbar.
+ * order history page with a new Mode column showing MIS or CNC
+ * badges for each trade. intraday orders show the blue MIS badge
+ * and delivery orders show the purple CNC badge. the rest stays
+ * the same — symbol, buy/sell type, quantity, price, total, and
+ * timestamp. fetches from /api/orders which now includes the
+ * orderMode field in every record.
  */
