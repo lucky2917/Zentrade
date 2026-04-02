@@ -2,6 +2,7 @@ import { Router } from "express";
 import redis from "../config/redis.js";
 import { STOCKS } from "../config/stocks.js";
 import logger from "../utils/logger.js";
+import yahooFinance from "yahoo-finance2";
 
 const router = Router();
 
@@ -316,15 +317,22 @@ router.get("/:symbol/full", async (req, res) => {
                 }
 
                 if (!fundamentals) {
+                    let quoteMeta = {};
+                    try {
+                        quoteMeta = await yahooFinance.quote(yahooSymbol, { return: "object" }) || {};
+                    } catch (e) {
+                         logger.error("StocksAPI", "Failed to fetch fundamentals from yahooFinance", { error: e.message });
+                    }
+
                     fundamentals = {
-                        marketCap: meta.marketCap || null,
-                        peRatio: meta.peRatio || null,
-                        pbRatio: meta.pbRatio || null,
-                        eps: meta.epsTrailingTwelveMonths || null,
-                        dividendYield: meta.dividendYield || null,
-                        bookValue: meta.bookValue || null,
-                        fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || null,
-                        fiftyTwoWeekLow: meta.fiftyTwoWeekLow || null,
+                        marketCap: quoteMeta.marketCap || meta.marketCap || null,
+                        peRatio: quoteMeta.trailingPE || meta.peRatio || null,
+                        pbRatio: quoteMeta.priceToBook || meta.pbRatio || null,
+                        eps: quoteMeta.epsTrailingTwelveMonths || meta.epsTrailingTwelveMonths || null,
+                        dividendYield: quoteMeta.trailingAnnualDividendYield || quoteMeta.dividendYield || meta.dividendYield || null,
+                        bookValue: quoteMeta.bookValue || meta.bookValue || null,
+                        fiftyTwoWeekHigh: quoteMeta.fiftyTwoWeekHigh || meta.fiftyTwoWeekHigh || null,
+                        fiftyTwoWeekLow: quoteMeta.fiftyTwoWeekLow || meta.fiftyTwoWeekLow || null,
                     };
                     await redis.setex(fundCacheKey, 3600, JSON.stringify(fundamentals));
                 }
