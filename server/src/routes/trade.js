@@ -9,10 +9,6 @@ const VALID_MODES = ["INTRADAY", "DELIVERY"];
 
 router.post("/buy", auth, async (req, res) => {
     try {
-        if (!isMarketOpen()) {
-            return res.status(400).json({ error: "Market is closed. Trading hours: 09:15 - 15:30 IST" });
-        }
-
         const { symbol, quantity, mode } = req.body;
         if (!symbol || !quantity) {
             return res.status(400).json({ error: "Symbol and quantity are required" });
@@ -21,6 +17,10 @@ router.post("/buy", auth, async (req, res) => {
         const orderMode = (mode || "INTRADAY").toUpperCase();
         if (!VALID_MODES.includes(orderMode)) {
             return res.status(400).json({ error: "Invalid mode. Use INTRADAY or DELIVERY." });
+        }
+
+        if (orderMode === "INTRADAY" && !isMarketOpen()) {
+            return res.status(400).json({ error: "Market is closed. Intraday trading: 09:15 - 15:30 IST. Use Delivery (CNC) for after-hours." });
         }
 
         const result = await executeBuy(req.userId, symbol.toUpperCase(), parseInt(quantity), orderMode);
@@ -32,10 +32,6 @@ router.post("/buy", auth, async (req, res) => {
 
 router.post("/sell", auth, async (req, res) => {
     try {
-        if (!isMarketOpen()) {
-            return res.status(400).json({ error: "Market is closed. Trading hours: 09:15 - 15:30 IST" });
-        }
-
         const { symbol, quantity, mode } = req.body;
         if (!symbol || !quantity) {
             return res.status(400).json({ error: "Symbol and quantity are required" });
@@ -44,6 +40,10 @@ router.post("/sell", auth, async (req, res) => {
         const orderMode = (mode || "INTRADAY").toUpperCase();
         if (!VALID_MODES.includes(orderMode)) {
             return res.status(400).json({ error: "Invalid mode. Use INTRADAY or DELIVERY." });
+        }
+
+        if (orderMode === "INTRADAY" && !isMarketOpen()) {
+            return res.status(400).json({ error: "Market is closed. Intraday trading: 09:15 - 15:30 IST. Use Delivery (CNC) for after-hours." });
         }
 
         const result = await executeSell(req.userId, symbol.toUpperCase(), parseInt(quantity), orderMode);
@@ -56,10 +56,10 @@ router.post("/sell", auth, async (req, res) => {
 export default router;
 
 /*
- * buy and sell endpoints. accepts a mode field in the request body
- * — either INTRADAY (5x leverage, auto square-off at EOD) or
- * DELIVERY (full payment, hold forever). defaults to INTRADAY if
- * not specified. validates the mode before passing it through to
- * the trading engine. both routes still check market hours first.
- * mounted at /api/trade in index.js.
+ * buy and sell endpoints. intraday (MIS) trades are blocked when
+ * the market is closed since they rely on live price movement.
+ * delivery (CNC) trades go through anytime — the last traded
+ * price from redis is used, just like how real brokers let you
+ * place AMO (after market orders) for delivery. mounted at
+ * /api/trade in index.js.
  */
