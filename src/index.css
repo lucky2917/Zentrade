@@ -2132,3 +2132,22 @@ a:hover {
     font-size: 1.5rem;
   }
 }
+.btn-login-google {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-login-google:hover {
+  background: var(--border-hover);
+}
+
