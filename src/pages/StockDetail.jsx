@@ -107,14 +107,16 @@ const ChartComponent = ({ chartData, selectedRange }) => {
                 scaleMargins: { top: 0.85, bottom: 0 },
             });
 
+            const IST_OFFSET = 19800; // 5.5 hours in seconds for IST
+
             const candles = chartData
                 .filter((c) => c.open != null && c.close != null && c.high != null && c.low != null)
-                .map((c) => ({ time: c.time, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
+                .map((c) => ({ time: c.time + IST_OFFSET, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
 
             const vols = chartData
                 .filter((c) => c.close != null && c.open != null)
                 .map((c) => ({
-                    time: c.time,
+                    time: c.time + IST_OFFSET,
                     value: +(c.volume || 0),
                     color: c.close >= c.open ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)",
                 }));
