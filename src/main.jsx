@@ -5,11 +5,9 @@ import App from "./App.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
 import "./index.css";
 
-const GOOGLE_CLIENT_ID = "739681231629-9gl01r7aunfsnrefvj224alh74ogi0c2.apps.googleusercontent.com";
-
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
       <ThemeProvider>
         <App />
       </ThemeProvider>

@@ -30,8 +30,9 @@ router.get("/", auth, async (req, res) => {
 
         holdingsResult.rows.forEach((h, i) => {
             const priceData = priceResults[i][1] ? JSON.parse(priceResults[i][1]) : null;
-            const currentPrice = priceData ? priceData.price : 0;
-            const currentPricePaise = Math.round(currentPrice * 100);
+            const currentPricePaise = priceData
+                ? Math.round(priceData.price * 100)
+                : Number(h.avg_price_paise);
             const avgPricePaise = Number(h.avg_price_paise);
             const marginUsedPaise = Number(h.margin_used_paise);
             const investedPaise = avgPricePaise * h.quantity;

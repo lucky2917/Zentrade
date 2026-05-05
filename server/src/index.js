@@ -14,6 +14,7 @@ import chartRoutes from "./routes/chart.js";
 import indicesRoutes from "./routes/indices.js";
 import marketRoutes from "./routes/market.js";
 import watchlistRoutes from "./routes/watchlist.js";
+import aiRoutes from "./routes/ai.js";
 import startMarketWorker from "./services/marketWorker.js";
 import startWebSocketBroadcaster from "./services/websocket.js";
 import { startSquareOffJob } from "./services/squareOff.js";
@@ -41,6 +42,7 @@ app.use("/api/chart", chartRoutes);
 app.use("/api/indices", indicesRoutes);
 app.use("/api/market", marketRoutes);
 app.use("/api/watchlist", watchlistRoutes);
+app.use("/api/ai", aiRoutes);
 
 app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: Date.now() });

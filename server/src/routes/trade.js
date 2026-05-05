@@ -1,5 +1,6 @@
 import { Router } from "express";
 import auth from "../middleware/auth.js";
+import { validate, required, positiveInt } from "../middleware/validate.js";
 import { executeBuy, executeSell } from "../services/tradingEngine.js";
 import { isMarketOpen } from "../utils/marketHours.js";
 
@@ -7,12 +8,11 @@ const router = Router();
 
 const VALID_MODES = ["INTRADAY", "DELIVERY"];
 
-router.post("/buy", auth, async (req, res) => {
+const tradeValidation = validate({ symbol: [required], quantity: [required, positiveInt] });
+
+router.post("/buy", auth, tradeValidation, async (req, res) => {
     try {
         const { symbol, quantity, mode } = req.body;
-        if (!symbol || !quantity) {
-            return res.status(400).json({ error: "Symbol and quantity are required" });
-        }
 
         const orderMode = (mode || "INTRADAY").toUpperCase();
         if (!VALID_MODES.includes(orderMode)) {
@@ -30,12 +30,9 @@ router.post("/buy", auth, async (req, res) => {
     }
 });
 
-router.post("/sell", auth, async (req, res) => {
+router.post("/sell", auth, tradeValidation, async (req, res) => {
     try {
         const { symbol, quantity, mode } = req.body;
-        if (!symbol || !quantity) {
-            return res.status(400).json({ error: "Symbol and quantity are required" });
-        }
 
         const orderMode = (mode || "INTRADAY").toUpperCase();
         if (!VALID_MODES.includes(orderMode)) {

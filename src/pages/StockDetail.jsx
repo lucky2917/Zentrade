@@ -8,6 +8,7 @@ import { useGoogleLogin } from "@react-oauth/google";
 import api from "../services/api.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, TrendingUp, TrendingDown, Activity, BarChart2, Star } from "lucide-react";
+import AISuggestion from "../components/AISuggestion.jsx";
 
 const RANGES = [
     { key: "1d", label: "1D" },
@@ -464,6 +465,10 @@ const StockDetail = () => {
                                 ))}
                             </motion.div>
                         </div>
+                    )}
+
+                    {token && (
+                        <AISuggestion symbol={symbol} stockName={companyName} />
                     )}
                 </div>
 

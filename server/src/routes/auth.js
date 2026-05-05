@@ -2,16 +2,13 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool } from "../config/db.js";
+import { validate, required, isEmail, minLength } from "../middleware/validate.js";
 
 const router = Router();
 
-router.post("/signup", async (req, res) => {
+router.post("/signup", validate({ email: [required, isEmail], password: [required, minLength(8)] }), async (req, res) => {
     try {
         const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ error: "Email and password are required" });
-        }
 
         const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
         if (existing.rows.length > 0) {
@@ -42,13 +39,9 @@ router.post("/signup", async (req, res) => {
     }
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", validate({ email: [required], password: [required] }), async (req, res) => {
     try {
         const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ error: "Email and password are required" });
-        }
 
         const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
         if (result.rows.length === 0) {
