@@ -47,11 +47,3 @@ const App = () => {
 };
 
 export default App;
-
-/*
- * root component that wires up the whole app. wraps everything in
- * toast, auth, and market providers so any child can fire toasts
- * or read live prices. the navbar, ticker, and routing are now globally
- * available whether authenticated or not. public routes include the dashboard
- * and stock detail pages.
- */

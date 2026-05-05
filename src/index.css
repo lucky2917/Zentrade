@@ -1,90 +1,86 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 
-*,
-*::before,
-*::after {
+*, *::before, *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-/*
- * design tokens for the dark theme — deeper blacks give that void-like
- * terminal feel you see in TradingView and Kite. added glass tokens
- * for the frosted panel effect, a dedicated mono font for all price
- * numbers, and glow shadows so accent elements actually pop against
- * the dark background instead of looking flat.
- */
 :root {
-  --bg-primary: #040609;
-  --bg-secondary: #080b12;
-  --bg-tertiary: #0f1319;
-  --bg-card: #0c1017;
-  --bg-card-hover: #131a26;
-  --bg-input: #0f1319;
-  --bg-hover: rgba(255, 255, 255, 0.04);
-  --border: #1a2030;
-  --border-hover: #2a3548;
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --text-primary: #e8ecf4;
-  --text-secondary: #8892a8;
-  --text-muted: #505a6e;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-glow: rgba(99, 102, 241, 0.12);
-  --accent-subtle: rgba(99, 102, 241, 0.06);
-  --green: #10b981;
-  --green-bg: rgba(16, 185, 129, 0.08);
-  --green-border: rgba(16, 185, 129, 0.2);
-  --green-glow: rgba(16, 185, 129, 0.15);
-  --red: #ef4444;
-  --red-bg: rgba(239, 68, 68, 0.08);
-  --red-border: rgba(239, 68, 68, 0.2);
-  --red-glow: rgba(239, 68, 68, 0.15);
-  --yellow: #f59e0b;
-  --yellow-bg: rgba(245, 158, 11, 0.08);
-  --glass: rgba(12, 16, 23, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.06);
-  --radius: 12px;
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.5), 0 4px 10px -4px rgba(0, 0, 0, 0.4);
-  --shadow-glow: 0 0 20px var(--accent-glow);
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
-  --transition: all 0.2s ease;
-  --transition-slow: all 0.35s ease;
+  --bg-primary: #080808;
+  --bg-secondary: #0f0f0f;
+  --bg-tertiary: #161618;
+  --bg-card: #111113;
+  --bg-card-hover: #1c1c1e;
+  --bg-input: #1c1c1e;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-hover: rgba(255, 255, 255, 0.18);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --text-primary: #f5f5f7;
+  --text-secondary: #a1a1a6;
+  --text-muted: #636366;
+  --accent: #e31937;
+  --accent-hover: #ff3347;
+  --accent-glow: rgba(227, 25, 55, 0.2);
+  --accent-subtle: rgba(227, 25, 55, 0.08);
+  --green: #30d158;
+  --green-bg: rgba(48, 209, 88, 0.08);
+  --green-border: rgba(48, 209, 88, 0.2);
+  --green-glow: rgba(48, 209, 88, 0.15);
+  --red: #ff3b30;
+  --red-bg: rgba(255, 59, 48, 0.08);
+  --red-border: rgba(255, 59, 48, 0.2);
+  --red-glow: rgba(255, 59, 48, 0.15);
+  --yellow: #ff9f0a;
+  --yellow-bg: rgba(255, 159, 10, 0.08);
+  --glass: rgba(17, 17, 19, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.7), 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 30px var(--accent-glow);
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
+  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/*
- * light theme overrides. keep these muted and professional, not the
- * eye-burning white that most apps default to. off-white backgrounds
- * with subtle gray borders are easier on the eyes during long sessions.
- */
 :root.light {
-  --bg-primary: #f5f7fa;
+  --bg-primary: #f5f5f7;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #edf0f5;
+  --bg-tertiary: #ebebed;
   --bg-card: #ffffff;
-  --bg-card-hover: #f5f7fa;
+  --bg-card-hover: #f9f9fb;
   --bg-input: #ffffff;
-  --bg-hover: rgba(0, 0, 0, 0.03);
-  --border: #dde1e8;
-  --border-hover: #c5cad4;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --border: rgba(0, 0, 0, 0.1);
+  --border-hover: rgba(0, 0, 0, 0.18);
   --border-subtle: rgba(0, 0, 0, 0.05);
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-glow: rgba(79, 70, 229, 0.12);
-  --accent-subtle: rgba(79, 70, 229, 0.06);
-  --glass: rgba(255, 255, 255, 0.8);
+  --text-primary: #1d1d1f;
+  --text-secondary: #424245;
+  --text-muted: #86868b;
+  --accent: #c8001c;
+  --accent-hover: #e31937;
+  --accent-glow: rgba(200, 0, 28, 0.12);
+  --accent-subtle: rgba(200, 0, 28, 0.06);
+  --green: #1c9e3e;
+  --green-bg: rgba(28, 158, 62, 0.08);
+  --green-border: rgba(28, 158, 62, 0.2);
+  --green-glow: rgba(28, 158, 62, 0.12);
+  --red: #d93025;
+  --red-bg: rgba(217, 48, 37, 0.08);
+  --red-border: rgba(217, 48, 37, 0.2);
+  --red-glow: rgba(217, 48, 37, 0.12);
+  --yellow: #b86e00;
+  --yellow-bg: rgba(184, 110, 0, 0.08);
+  --glass: rgba(255, 255, 255, 0.88);
   --glass-border: rgba(0, 0, 0, 0.06);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
-  --shadow-glow: 0 0 20px rgba(79, 70, 229, 0.08);
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-glow: 0 0 24px rgba(200, 0, 28, 0.1);
 }
 
 html {
@@ -92,39 +88,26 @@ html {
   scroll-behavior: smooth;
 }
 
-/*
- * body and scrollbar — the custom dark scrollbar is one of those
- * tiny details that separate a polished app from a prototype.
- * without it the default chrome scrollbar breaks the whole dark
- * theme illusion instantly.
- */
 body {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Helvetica Neue", Arial, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   min-height: 100vh;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+::selection {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
-}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
 a {
   color: var(--accent);
@@ -132,43 +115,40 @@ a {
   transition: var(--transition);
 }
 
-a:hover {
-  color: var(--accent-hover);
-}
+a:hover { color: var(--accent-hover); }
 
-/*
- * glass-panel is the core reusable class for that frosted glass
- * look. backdrop-filter: blur does the heavy lifting, the subtle
- * border gives it a physical edge against the dark void. used on
- * movers cards, portfolio summary, trade panel, watchlist table.
- */
+.font-semibold { font-weight: 600; }
+.flex { display: flex; }
+.inline { display: inline-flex; vertical-align: middle; }
+.items-center { align-items: center; }
+.gap-1 { gap: 0.25rem; }
+.gap-2 { gap: 0.5rem; }
+.mr-2 { margin-right: 0.5rem; }
+.mr-3 { margin-right: 0.75rem; }
+.mt-4 { margin-top: 1rem; }
+.mb-4 { margin-bottom: 1rem; }
+
 .glass-panel {
   background: var(--glass);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border-radius: var(--radius-lg);
 }
 
-/*
- * navbar — the sticky top bar is the first thing you see so it
- * needs to feel solid. the bottom gradient line (pseudo-element)
- * replaces the boring flat border and gives depth. blur on the
- * background makes content scroll behind it smoothly.
- */
 .navbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 2rem;
-  height: 60px;
-  background: rgba(8, 11, 18, 0.85);
+  height: 58px;
+  background: rgba(8, 8, 8, 0.9);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
   z-index: 100;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
 }
 
 .navbar::after {
@@ -178,7 +158,7 @@ a:hover {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
+  background: linear-gradient(90deg, transparent, rgba(227, 25, 55, 0.25), transparent);
 }
 
 .navbar-brand {
@@ -188,24 +168,32 @@ a:hover {
 }
 
 .navbar-logo {
-  font-size: 1.3rem;
-  font-weight: 800;
-  letter-spacing: -0.5px;
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  text-decoration: none;
 }
 
-.logo-zen {
-  color: var(--text-primary);
-}
-
-.logo-trade {
+.logo-z {
   color: var(--accent);
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -2px;
+  line-height: 1;
+}
+
+.logo-name {
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.3px;
 }
 
 .connection-status {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 600;
   padding: 3px 10px;
   border-radius: 20px;
@@ -235,28 +223,23 @@ a:hover {
   50% { opacity: 0.3; }
 }
 
-/*
- * nav links — the active indicator uses a bottom border bar
- * instead of just a color change. this is what Zerodha Kite
- * does and it gives much clearer visual feedback about which
- * page you're on, especially with 4+ nav items.
- */
 .navbar-links {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.2rem;
 }
 
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 0.4rem 0.9rem;
+  gap: 6px;
+  padding: 0.4rem 0.85rem;
   border-radius: var(--radius-sm);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 500;
   color: var(--text-muted);
   transition: var(--transition);
   position: relative;
+  letter-spacing: -0.1px;
 }
 
 .nav-link:hover {
@@ -265,8 +248,8 @@ a:hover {
 }
 
 .nav-link.active {
-  color: var(--accent);
-  background: var(--accent-subtle);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .nav-link.active::after {
@@ -275,8 +258,8 @@ a:hover {
   bottom: -1px;
   left: 50%;
   transform: translateX(-50%);
-  width: 60%;
-  height: 2px;
+  width: 50%;
+  height: 1.5px;
   background: var(--accent);
   border-radius: 1px;
 }
@@ -284,7 +267,7 @@ a:hover {
 .navbar-right {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
 }
 
 .theme-toggle {
@@ -308,30 +291,24 @@ a:hover {
 .navbar-user-info {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
 }
 
 .navbar-username {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 500;
   color: var(--text-secondary);
-  padding: 0.3rem 0.75rem;
+  padding: 0.28rem 0.7rem;
   border-radius: 20px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-hover);
 }
 
-/*
- * wallet balance chip — the green glow border makes it
- * stand out as the most important number on the navbar.
- * monospace font ensures the digits dont jump around
- * as the balance changes from trades.
- */
 .navbar-balance {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.82rem;
+  gap: 5px;
+  font-size: 0.78rem;
   font-weight: 600;
   font-family: var(--font-mono);
   color: var(--green);
@@ -350,10 +327,11 @@ a:hover {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
   transition: var(--transition);
+  font-family: inherit;
 }
 
 .btn-logout:hover {
@@ -362,43 +340,56 @@ a:hover {
   background: var(--red-bg);
 }
 
-/*
- * index ticker — the scrolling market indices strip. monospace
- * font on the prices is critical here because the numbers update
- * every 3 seconds via websocket and without tabular figures
- * the whole strip would jitter left and right constantly.
- */
+.btn-login-google {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.9rem;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+}
+
+.btn-login-google:hover {
+  background: var(--border);
+  border-color: var(--border-hover);
+}
+
 .index-ticker {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0;
-  padding: 0.45rem 2rem;
+  padding: 0.4rem 2rem;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
-  top: 60px;
+  top: 58px;
   z-index: 99;
 }
 
 .ticker-item {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  font-size: 0.78rem;
+  gap: 0.5rem;
+  font-size: 0.76rem;
   padding: 0 1.5rem;
   border-right: 1px solid var(--border-subtle);
 }
 
-.ticker-item:last-child {
-  border-right: none;
-}
+.ticker-item:last-child { border-right: none; }
 
 .ticker-label {
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 0.3px;
-  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  font-size: 0.66rem;
   text-transform: uppercase;
 }
 
@@ -406,7 +397,7 @@ a:hover {
   color: var(--text-primary);
   font-weight: 600;
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
 }
 
 .ticker-change {
@@ -414,10 +405,10 @@ a:hover {
   align-items: center;
   gap: 3px;
   font-weight: 600;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-family: var(--font-mono);
   padding: 2px 7px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 .ticker-change.positive {
@@ -430,20 +421,15 @@ a:hover {
   background: var(--red-bg);
 }
 
-/*
- * market status banner — thin ambient strip that communicates
- * open/closed in a glanceable way. the pulse keyframe on the
- * dot draws attention without being distracting.
- */
 .market-banner {
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 5px 16px;
-  font-size: 0.75rem;
-  letter-spacing: 0.3px;
+  font-size: 0.73rem;
+  letter-spacing: 0.2px;
   position: sticky;
-  top: 100px;
+  top: 96px;
   z-index: 98;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -461,16 +447,12 @@ a:hover {
 .banner-content {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
 
-.banner-icon {
-  flex-shrink: 0;
-}
+.banner-icon { flex-shrink: 0; }
 
-.pulse {
-  animation: pulse-dot 2s infinite;
-}
+.pulse { animation: pulse-dot 2s infinite; }
 
 @keyframes pulse-dot {
   0% { opacity: 1; transform: scale(1); }
@@ -479,27 +461,16 @@ a:hover {
 }
 
 .banner-subtext {
-  opacity: 0.7;
+  opacity: 0.65;
   font-weight: 400;
 }
 
-/*
- * main content container — the max-width cap prevents the layout
- * from stretching absurdly wide on ultrawide monitors. padding
- * gives breathing room on both sides.
- */
 .main-content {
   padding: 1.5rem 2rem;
   max-width: 1440px;
   margin: 0 auto;
 }
 
-/*
- * auth pages (login / signup) — the radial gradient creates a
- * subtle spotlight effect drawing the eye toward the center
- * where the auth card sits. the animated mesh overlay adds
- * that premium "alive" feeling without being distracting.
- */
 .auth-container {
   min-height: 100vh;
   display: flex;
@@ -507,8 +478,8 @@ a:hover {
   justify-content: center;
   background: var(--bg-primary);
   background-image:
-    radial-gradient(ellipse at 30% 20%, rgba(99, 102, 241, 0.08), transparent 50%),
-    radial-gradient(ellipse at 70% 80%, rgba(16, 185, 129, 0.04), transparent 50%);
+    radial-gradient(ellipse at 30% 20%, rgba(227, 25, 55, 0.07), transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(48, 209, 88, 0.04), transparent 50%);
   padding: 2rem;
   position: relative;
   overflow: hidden;
@@ -522,8 +493,8 @@ a:hover {
   border-radius: var(--radius-lg);
   padding: 2.5rem;
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   position: relative;
 }
 
@@ -533,8 +504,8 @@ a:hover {
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-hover), var(--green));
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
@@ -545,18 +516,18 @@ a:hover {
 
 .auth-logo {
   font-size: 1.8rem;
-  font-weight: 800;
-  letter-spacing: -1px;
+  font-weight: 900;
+  letter-spacing: -1.5px;
   margin-bottom: 0.5rem;
 }
 
 .auth-subtitle {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.84rem;
 }
 
 .auth-form h2 {
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   font-weight: 700;
   margin-bottom: 1.5rem;
   color: var(--text-primary);
@@ -564,7 +535,7 @@ a:hover {
 
 .signup-bonus {
   color: var(--green);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 500;
   background: var(--green-bg);
   border: 1px solid var(--green-border);
@@ -581,22 +552,15 @@ a:hover {
   color: var(--red);
   padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   margin-bottom: 1rem;
 }
 
-/*
- * form inputs — the inner shadow on focus gives depth instead of
- * just a flat color ring. its a tiny visual trick that makes the
- * input feel physically "pressed in" like a real button.
- */
-.form-group {
-  margin-bottom: 1.25rem;
-}
+.form-group { margin-bottom: 1.2rem; }
 
 .form-group label {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 0.5rem;
@@ -606,7 +570,7 @@ a:hover {
 
 .form-group input {
   width: 100%;
-  padding: 0.7rem 1rem;
+  padding: 0.72rem 1rem;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -619,12 +583,10 @@ a:hover {
 
 .form-group input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow), inset 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
-.form-group input::placeholder {
-  color: var(--text-muted);
-}
+.form-group input::placeholder { color: var(--text-muted); }
 
 .btn-primary {
   width: 100%;
@@ -633,7 +595,7 @@ a:hover {
   color: white;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -643,29 +605,28 @@ a:hover {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  letter-spacing: 0.1px;
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-glow);
+  box-shadow: 0 6px 20px var(--accent-glow);
 }
 
 .btn-primary:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
 .auth-switch {
   margin-top: 1.5rem;
   text-align: center;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
 }
 
-.auth-switch a {
-  font-weight: 600;
-}
+.auth-switch a { font-weight: 600; }
 
 .btn-google {
   width: 100%;
@@ -674,7 +635,7 @@ a:hover {
   color: #3c4043;
   border: 1px solid #dadce0;
   border-radius: var(--radius-sm);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
@@ -688,7 +649,7 @@ a:hover {
 
 .btn-google:hover:not(:disabled) {
   background: #f8f9fa;
-  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.2);
+  box-shadow: 0 1px 6px rgba(60, 64, 67, 0.2);
 }
 
 .btn-google:disabled {
@@ -702,7 +663,7 @@ a:hover {
   text-align: center;
   margin: 1.5rem 0;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
 }
 
 .auth-divider::before,
@@ -712,22 +673,12 @@ a:hover {
   border-bottom: 1px solid var(--border);
 }
 
-.auth-divider span {
-  padding: 0 12px;
-}
+.auth-divider span { padding: 0 12px; }
 
-/*
- * dashboard — the main trading screen. the header uses flex
- * with space-between to push the search bar to the right.
- * the search gets a glow ring on focus to draw attention
- * since its the primary interaction on this page.
- */
-.dashboard {
-  animation: fadeIn 0.3s ease;
-}
+.dashboard { animation: fadeIn 0.3s ease; }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -735,16 +686,14 @@ a:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.75rem;
 }
 
 .dashboard-header h1 {
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   font-weight: 800;
-  letter-spacing: -0.5px;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  letter-spacing: -0.8px;
+  color: var(--text-primary);
 }
 
 .search-bar {
@@ -766,7 +715,7 @@ a:hover {
   border: 1px solid var(--border);
   border-radius: 20px;
   color: var(--text-primary);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-family: inherit;
   width: 260px;
   transition: var(--transition);
@@ -779,26 +728,18 @@ a:hover {
   width: 320px;
 }
 
-/*
- * market movers — the horizontal scrolling strip. each mover
- * panel is a glass card that grows slightly on hover. the grid
- * auto-fit ensures they wrap gracefully on smaller screens.
- */
-.movers-section {
-  margin-bottom: 2rem;
-}
+.movers-section { margin-bottom: 2rem; }
 
 .section-title {
-  font-size: 1rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 1rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 0.82rem;
+  letter-spacing: 1px;
 }
 
 .movers-grid {
@@ -807,12 +748,10 @@ a:hover {
   gap: 1rem;
 }
 
-.movers-list {
-  padding: 1rem;
-}
+.movers-list { padding: 1.25rem; }
 
 .movers-list h3 {
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -823,25 +762,26 @@ a:hover {
 .movers-cards {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 
 .mover-card {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.7rem 0.85rem;
-  background: var(--bg-tertiary);
+  padding: 0.7rem 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
   border-radius: var(--radius-sm);
+  border: 1px solid transparent;
   cursor: pointer;
   transition: var(--transition);
-  border-left: 3px solid transparent;
 }
 
 .mover-card:hover {
   background: var(--bg-card-hover);
-  border-left-color: var(--accent);
-  transform: translateX(2px);
+  border-color: var(--border);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
 }
 
 .mover-info {
@@ -852,12 +792,13 @@ a:hover {
 
 .mover-symbol {
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--text-primary);
+  letter-spacing: 0.3px;
 }
 
 .mover-price {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-weight: 500;
@@ -872,22 +813,16 @@ a:hover {
 
 .mover-change-percent {
   font-weight: 700;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-family: var(--font-mono);
 }
 
 .mover-change-abs {
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   font-weight: 500;
   color: var(--text-muted);
 }
 
-/*
- * stock table — the main data grid. each row has a subtle left
- * border that activates on hover so youir eye can track which
- * row you're on. monospace font on price and change columns
- * makes the numbers line up vertically like a real terminal.
- */
 .stock-table-container {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -907,7 +842,7 @@ a:hover {
 .stock-table th {
   padding: 0.75rem 1.25rem;
   text-align: left;
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -918,20 +853,12 @@ a:hover {
 .th-content {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
-.sort-icon {
-  display: flex;
-}
-
-.sort-icon.inactive {
-  opacity: 0.25;
-}
-
-.sort-icon.active {
-  color: var(--accent);
-}
+.sort-icon { display: flex; }
+.sort-icon.inactive { opacity: 0.2; }
+.sort-icon.active { color: var(--accent); }
 
 .stock-table th.sortable {
   cursor: pointer;
@@ -939,13 +866,8 @@ a:hover {
   transition: var(--transition);
 }
 
-.stock-table th.sortable:hover {
-  color: var(--text-secondary);
-}
-
-.stock-table th.sortable:hover .sort-icon.inactive {
-  opacity: 0.5;
-}
+.stock-table th.sortable:hover { color: var(--text-secondary); }
+.stock-table th.sortable:hover .sort-icon.inactive { opacity: 0.45; }
 
 .sort-arrow {
   margin-left: 4px;
@@ -955,37 +877,27 @@ a:hover {
 }
 
 .stock-table td {
-  padding: 0.75rem 1.25rem;
-  font-size: 0.85rem;
+  padding: 0.72rem 1.25rem;
+  font-size: 0.83rem;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .stock-row {
   cursor: pointer;
   transition: var(--transition);
-  border-left: 3px solid transparent;
 }
 
-.stock-row:hover {
-  background: var(--bg-card-hover);
-  border-left-color: var(--accent);
-}
-
-.stock-row:last-child td {
-  border-bottom: none;
-}
+.stock-row:hover { background: var(--bg-card-hover); }
+.stock-row:last-child td { border-bottom: none; }
 
 .stock-symbol {
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0.3px;
-  font-size: 0.85rem;
+  font-size: 0.83rem;
 }
 
-.stock-name {
-  color: var(--text-muted);
-  font-size: 0.82rem;
-}
+.stock-name { color: var(--text-muted); font-size: 0.8rem; }
 
 .stock-price {
   font-weight: 600;
@@ -999,13 +911,8 @@ a:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.positive {
-  color: var(--green);
-}
-
-.negative {
-  color: var(--red);
-}
+.positive { color: var(--green); }
+.negative { color: var(--red); }
 
 .btn-trade {
   display: inline-flex;
@@ -1014,9 +921,9 @@ a:hover {
   padding: 5px 14px;
   background: var(--accent-subtle);
   color: var(--accent);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(227, 25, 55, 0.2);
   border-radius: 20px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
@@ -1027,19 +934,45 @@ a:hover {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
+  box-shadow: 0 4px 14px var(--accent-glow);
 }
 
-/*
- * stock detail page — the two-column grid puts the chart and
- * data on the left with the trade panel sticky on the right.
- * the large price uses mono font at 2.5rem to feel like a
- * real market terminal. the range buttons are pill-shaped
- * with a glow when active to clearly show which timeframe
- * is selected.
- */
-.stock-detail {
-  animation: fadeIn 0.3s ease;
+.btn-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
 }
+
+.btn-remove:hover {
+  background: var(--red);
+  color: white;
+  border-color: var(--red);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.dashboard-header h1 svg {
+  display: inline;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+.stock-detail { animation: fadeIn 0.3s ease; }
 
 .btn-back {
   background: transparent;
@@ -1047,7 +980,7 @@ a:hover {
   color: var(--text-muted);
   padding: 6px 14px;
   border-radius: 20px;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: var(--transition);
   font-family: inherit;
@@ -1062,9 +995,7 @@ a:hover {
   color: var(--accent);
 }
 
-.stock-detail-header {
-  margin-bottom: 1.25rem;
-}
+.stock-detail-header { margin-bottom: 1.25rem; }
 
 .stock-name-row {
   display: flex;
@@ -1075,13 +1006,14 @@ a:hover {
 .stock-info h1 {
   font-size: 1.8rem;
   font-weight: 800;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.8px;
 }
 
 .company-name {
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   color: var(--text-muted);
   font-weight: 400;
+  margin-top: 2px;
 }
 
 .stock-price-large {
@@ -1093,7 +1025,7 @@ a:hover {
 }
 
 .stock-change-large {
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 600;
   font-family: var(--font-mono);
   margin-top: 0.25rem;
@@ -1130,17 +1062,19 @@ a:hover {
 }
 
 .chart-header h3 {
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 600;
   color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .range-selector {
   display: flex;
-  gap: 3px;
+  gap: 2px;
   background: var(--bg-tertiary);
   border-radius: 20px;
   padding: 3px;
@@ -1152,22 +1086,20 @@ a:hover {
   border-radius: 16px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
   font-family: inherit;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
 }
 
-.range-btn:hover {
-  color: var(--text-primary);
-}
+.range-btn:hover { color: var(--text-primary); }
 
 .range-btn.active {
   background: var(--accent);
   color: white;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .chart-container {
@@ -1181,17 +1113,11 @@ a:hover {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.83rem;
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
 }
 
-/*
- * performance and fundamentals panels — clean data grids with
- * the same bg-card treatment as the chart. the range bar for
- * 52-week high/low is a gradient track with a dot marker
- * showing where the current price sits.
- */
 .performance-section,
 .fundamentals-section {
   background: var(--bg-card);
@@ -1202,7 +1128,7 @@ a:hover {
 
 .performance-section h3,
 .fundamentals-section h3 {
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   font-weight: 700;
   color: var(--text-primary);
   margin-bottom: 1rem;
@@ -1214,20 +1140,21 @@ a:hover {
 .perf-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 0.75rem;
+  gap: 0.7rem;
 }
 
 .perf-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 0.65rem;
+  padding: 0.7rem;
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
 }
 
 .perf-label {
-  font-size: 0.68rem;
+  font-size: 0.63rem;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -1235,7 +1162,7 @@ a:hover {
 }
 
 .perf-value {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 700;
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -1245,7 +1172,7 @@ a:hover {
 .price-range-bar {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .range-bar-labels {
@@ -1253,7 +1180,7 @@ a:hover {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 6px;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -1263,12 +1190,12 @@ a:hover {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-size: 0.68rem;
+  font-size: 0.63rem;
   font-family: inherit;
 }
 
 .range-bar-track {
-  height: 4px;
+  height: 3px;
   background: var(--bg-tertiary);
   border-radius: 2px;
   position: relative;
@@ -1289,8 +1216,8 @@ a:hover {
 .range-bar-marker {
   position: absolute;
   top: -5px;
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   background: var(--text-primary);
   border: 2px solid var(--bg-card);
   border-radius: 50%;
@@ -1313,30 +1240,21 @@ a:hover {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.fund-item:last-child {
-  border-bottom: none;
-}
+.fund-item:last-child { border-bottom: none; }
 
 .fund-label {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: var(--text-muted);
 }
 
 .fund-value {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * trade panel — the sticky sidebar where you actually buy/sell.
- * the glass background with a subtle glow on the execute button
- * makes this feel like the "action center" of the page. bigger
- * padding and spacing compared to other cards because usability
- * matters most here — fat finger mistakes cost money.
- */
 .trade-section {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -1348,19 +1266,14 @@ a:hover {
 }
 
 .trade-section h3 {
-  font-size: 0.85rem;
+  font-size: 0.76rem;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   margin-bottom: 1rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
 }
 
-/*
- * trade mode toggle — intraday vs delivery selector at the top
- * of the trade panel. uses the same pill-button pattern as the
- * buy/sell toggle but with distinct blue and purple colors.
- */
 .trade-mode-toggle {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1374,7 +1287,7 @@ a:hover {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition);
@@ -1384,26 +1297,26 @@ a:hover {
 }
 
 .mode-btn.active-intraday {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.35);
-  color: #60a5fa;
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.15);
+  background: rgba(10, 132, 255, 0.1);
+  border-color: rgba(10, 132, 255, 0.3);
+  color: #0a84ff;
+  box-shadow: 0 0 12px rgba(10, 132, 255, 0.15);
 }
 
 .mode-btn.active-delivery {
-  background: rgba(168, 85, 247, 0.1);
-  border-color: rgba(168, 85, 247, 0.35);
-  color: #c084fc;
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.15);
+  background: rgba(191, 90, 242, 0.1);
+  border-color: rgba(191, 90, 242, 0.3);
+  color: #bf5af2;
+  box-shadow: 0 0 12px rgba(191, 90, 242, 0.15);
 }
 
 .leverage-badge {
-  background: rgba(59, 130, 246, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: rgba(10, 132, 255, 0.07);
+  border: 1px solid rgba(10, 132, 255, 0.18);
   border-radius: var(--radius-sm);
   padding: 0.4rem 0.75rem;
-  font-size: 0.72rem;
-  color: #93c5fd;
+  font-size: 0.7rem;
+  color: #5ac8fa;
   margin-bottom: 0.75rem;
   text-align: center;
   font-family: var(--font-mono);
@@ -1411,7 +1324,7 @@ a:hover {
 
 .leverage-badge span {
   font-weight: 700;
-  color: #60a5fa;
+  color: #0a84ff;
 }
 
 .order-type-toggle {
@@ -1422,12 +1335,12 @@ a:hover {
 }
 
 .toggle-btn {
-  padding: 0.6rem;
+  padding: 0.65rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition);
@@ -1439,14 +1352,14 @@ a:hover {
   background: var(--green-bg);
   border-color: var(--green-border);
   color: var(--green);
-  box-shadow: 0 0 12px var(--green-glow);
+  box-shadow: 0 0 16px var(--green-glow);
 }
 
 .toggle-btn.active-sell {
   background: var(--red-bg);
   border-color: var(--red-border);
   color: var(--red);
-  box-shadow: 0 0 12px var(--red-glow);
+  box-shadow: 0 0 16px var(--red-glow);
 }
 
 .trade-summary {
@@ -1454,12 +1367,13 @@ a:hover {
   border-radius: var(--radius-sm);
   padding: 0.85rem;
   margin: 1rem 0;
+  border: 1px solid var(--border-subtle);
 }
 
 .summary-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   padding: 0.3rem 0;
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -1476,22 +1390,16 @@ a:hover {
   padding-top: 0.6rem;
   font-weight: 700;
   color: var(--text-primary);
-  font-size: 0.88rem;
+  font-size: 0.86rem;
 }
 
-.summary-row.leverage-row {
-  color: #60a5fa;
-}
-
-.summary-row.leverage-row span {
-  color: #60a5fa;
-  font-weight: 700;
-}
+.summary-row.leverage-row { color: #0a84ff; }
+.summary-row.leverage-row span { color: #0a84ff; font-weight: 700; }
 
 .trade-message {
   padding: 0.75rem 1rem;
   border-radius: var(--radius-sm);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   margin-bottom: 1rem;
 }
 
@@ -1509,30 +1417,30 @@ a:hover {
 
 .btn-execute {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0.8rem;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition);
   font-family: inherit;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
 }
 
 .btn-execute:disabled {
-  opacity: 0.3;
+  opacity: 0.28;
   cursor: not-allowed;
 }
 
 .btn-buy {
   background: var(--green);
-  color: white;
+  color: #080808;
 }
 
 .btn-buy:hover:not(:disabled) {
-  background: #0ea572;
-  box-shadow: 0 4px 16px var(--green-glow);
+  background: #28c54b;
+  box-shadow: 0 6px 20px var(--green-glow);
   transform: translateY(-1px);
 }
 
@@ -1542,17 +1450,11 @@ a:hover {
 }
 
 .btn-sell:hover:not(:disabled) {
-  background: #dc2626;
-  box-shadow: 0 4px 16px var(--red-glow);
+  background: #e8332a;
+  box-shadow: 0 6px 20px var(--red-glow);
   transform: translateY(-1px);
 }
 
-/*
- * portfolio and orders pages — the summary cards use a 4-column
- * grid that stacks to 2 then 1 on smaller screens. the p&l card
- * gets a special glow treatment to immediately communicate if
- * you're up or down without reading the number.
- */
 .portfolio-page,
 .orders-page {
   animation: fadeIn 0.3s ease;
@@ -1560,9 +1462,9 @@ a:hover {
 
 .portfolio-page h1,
 .orders-page h1 {
-  font-size: 1.5rem;
+  font-size: 1.55rem;
   font-weight: 800;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.8px;
   margin-bottom: 1.5rem;
 }
 
@@ -1577,7 +1479,7 @@ a:hover {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1.1rem;
+  padding: 1.1rem 1.2rem;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -1586,17 +1488,17 @@ a:hover {
 .summary-card.pnl-positive {
   border-color: var(--green-border);
   background: var(--green-bg);
-  box-shadow: 0 0 20px var(--green-glow);
+  box-shadow: 0 0 24px var(--green-glow);
 }
 
 .summary-card.pnl-negative {
   border-color: var(--red-border);
   background: var(--red-bg);
-  box-shadow: 0 0 20px var(--red-glow);
+  box-shadow: 0 0 24px var(--red-glow);
 }
 
 .summary-label {
-  font-size: 0.68rem;
+  font-size: 0.63rem;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -1604,26 +1506,15 @@ a:hover {
 }
 
 .summary-value {
-  font-size: 1.15rem;
+  font-size: 1.12rem;
   font-weight: 700;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-.pnl-positive .summary-value {
-  color: var(--green);
-}
+.pnl-positive .summary-value { color: var(--green); }
+.pnl-negative .summary-value { color: var(--red); }
 
-.pnl-negative .summary-value {
-  color: var(--red);
-}
-
-/*
- * holdings, orders, and watchlist tables — same visual treatment
- * as the main dashboard stock table. consistent borders, font
- * sizes, and hover effects across all pages so the app feels
- * cohesive rather than like 5 different pages slapped together.
- */
 .holdings-table-container,
 .orders-table-container {
   background: var(--bg-card);
@@ -1647,7 +1538,7 @@ a:hover {
 .orders-table th {
   padding: 0.75rem 1.25rem;
   text-align: left;
-  font-size: 0.68rem;
+  font-size: 0.63rem;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -1657,8 +1548,8 @@ a:hover {
 
 .holdings-table td,
 .orders-table td {
-  padding: 0.75rem 1.25rem;
-  font-size: 0.85rem;
+  padding: 0.72rem 1.25rem;
+  font-size: 0.83rem;
   border-bottom: 1px solid var(--border-subtle);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -1669,10 +1560,21 @@ a:hover {
   border-bottom: none;
 }
 
+.holdings-table tbody tr,
+.orders-table tbody tr {
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.holdings-table tbody tr:hover,
+.orders-table tbody tr:hover {
+  background: var(--bg-card-hover);
+}
+
 .order-badge {
   padding: 3px 10px;
   border-radius: 20px;
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 1px;
 }
@@ -1690,33 +1592,28 @@ a:hover {
 }
 
 .badge-mis {
-  background: rgba(59, 130, 246, 0.1);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.25);
+  background: rgba(10, 132, 255, 0.08);
+  color: #0a84ff;
+  border: 1px solid rgba(10, 132, 255, 0.22);
 }
 
 .badge-cnc {
-  background: rgba(168, 85, 247, 0.1);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.25);
+  background: rgba(191, 90, 242, 0.08);
+  color: #bf5af2;
+  border: 1px solid rgba(191, 90, 242, 0.22);
 }
 
 .mode-badge {
   display: inline-block;
   padding: 1px 6px;
   border-radius: 10px;
-  font-size: 0.55rem;
+  font-size: 0.5rem;
   font-weight: 700;
   letter-spacing: 0.8px;
   margin-left: 6px;
   vertical-align: middle;
 }
 
-/*
- * portfolio tabs — intraday vs delivery section switcher.
- * sits just below the summary cards with a subtle bottom
- * border highlight on the active tab.
- */
 .portfolio-tabs {
   display: flex;
   gap: 0;
@@ -1725,26 +1622,21 @@ a:hover {
 }
 
 .portfolio-tab {
-  padding: 0.75rem 1.5rem;
+  padding: 0.7rem 1.5rem;
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
   font-family: inherit;
   position: relative;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
 }
 
-.portfolio-tab:hover {
-  color: var(--text-secondary);
-}
-
-.portfolio-tab.active-tab {
-  color: var(--accent-hover);
-}
+.portfolio-tab:hover { color: var(--text-secondary); }
+.portfolio-tab.active-tab { color: var(--text-primary); }
 
 .portfolio-tab.active-tab::after {
   content: '';
@@ -1752,7 +1644,7 @@ a:hover {
   bottom: -1px;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 1.5px;
   background: var(--accent);
   border-radius: 2px 2px 0 0;
 }
@@ -1762,8 +1654,8 @@ a:hover {
   align-items: center;
   justify-content: center;
   background: var(--accent-subtle);
-  color: var(--accent-hover);
-  font-size: 0.65rem;
+  color: var(--accent);
+  font-size: 0.6rem;
   font-weight: 700;
   min-width: 18px;
   height: 18px;
@@ -1772,11 +1664,6 @@ a:hover {
   padding: 0 5px;
 }
 
-/*
- * empty states — the centered layout with a muted icon and call
- * to action keeps these pages from looking broken when theres
- * no data yet. the background pattern adds some visual interest.
- */
 .empty-state {
   text-align: center;
   padding: 4rem 2rem;
@@ -1786,15 +1673,12 @@ a:hover {
   background-image: radial-gradient(circle at 50% 50%, var(--accent-subtle), transparent 60%);
 }
 
-.empty-state h3 {
-  font-size: 1.15rem;
-  margin-bottom: 0.5rem;
-}
+.empty-state h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
 
 .empty-state p {
   color: var(--text-muted);
   margin-bottom: 1.5rem;
-  font-size: 0.88rem;
+  font-size: 0.86rem;
 }
 
 .empty-state .btn-primary {
@@ -1804,26 +1688,36 @@ a:hover {
 
 .loading-screen {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1rem;
   min-height: 60vh;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
 }
 
-/*
- * toast notifications — fixed bottom-right stack. the glass
- * background with blur means they float above the page content
- * without completely obscuring it. the left accent bar gives
- * instant success/error feedback without reading the text.
- */
+.loading-screen::before {
+  content: '';
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .toast-container {
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.7rem;
   z-index: 9999;
   pointer-events: none;
 }
@@ -1836,14 +1730,14 @@ a:hover {
   background: var(--glass);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   pointer-events: auto;
   min-width: 240px;
-  max-width: 380px;
+  max-width: 360px;
   position: relative;
   overflow: hidden;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
 }
 
 .toast::before {
@@ -1852,7 +1746,7 @@ a:hover {
   left: 0;
   top: 0;
   bottom: 0;
-  width: 3px;
+  width: 2.5px;
 }
 
 .toast.success::before { background: var(--green); }
@@ -1871,7 +1765,7 @@ a:hover {
 
 .toast-text {
   flex: 1;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 500;
   color: var(--text-primary);
   line-height: 1.4;
@@ -1895,13 +1789,6 @@ a:hover {
   background: var(--bg-hover);
 }
 
-/*
- * mobile bottom navigation — a fixed tab bar at the bottom of the
- * screen for phones. hidden on desktop since the navbar handles it.
- * the frosted glass background keeps it readable over scrolling
- * content. only visible below 768px to avoid conflicting with
- * the desktop navbar links.
- */
 .mobile-nav {
   display: none;
   position: fixed;
@@ -1909,252 +1796,110 @@ a:hover {
   left: 0;
   right: 0;
   z-index: 100;
-  background: rgba(8, 11, 18, 0.9);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(8, 8, 8, 0.96);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
   border-top: 1px solid var(--border-subtle);
-  padding: 0.35rem 0.5rem;
-  padding-bottom: calc(0.35rem + env(safe-area-inset-bottom));
+  padding: 0 0.5rem;
+  padding-bottom: env(safe-area-inset-bottom);
+  justify-content: space-around;
 }
 
 .mobile-nav-item {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 3px;
-  font-size: 0.62rem;
+  font-size: 0.59rem;
   font-weight: 500;
   color: var(--text-muted);
   text-decoration: none;
   transition: var(--transition);
-  padding: 0.3rem 0;
+  padding: 0.5rem 0;
+  min-height: 52px;
   flex: 1;
+  letter-spacing: 0.1px;
 }
 
-.mobile-nav-item.active {
-  color: var(--accent);
+.mobile-nav-item.active { color: var(--accent); }
+.mobile-nav-item:hover { color: var(--text-primary); }
+
+.mobile-nav-item.active svg {
+  filter: drop-shadow(0 0 6px var(--accent-glow));
 }
 
-.mobile-nav-item:hover {
-  color: var(--text-primary);
-}
-
-/*
- * responsive breakpoints — the grid layouts progressively collapse
- * from multi-column to single column as the screen shrinks. on
- * mobile the navbar links hide and the bottom tab bar takes over,
- * tables become scrollable, and padding tightens up so nothing
- * overflows or gets cut off.
- */
 @media (max-width: 1024px) {
-  .stock-detail-content {
-    grid-template-columns: 1fr;
-  }
-
-  .trade-section {
-    position: static;
-  }
-
-  .portfolio-summary {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .movers-grid {
-    grid-template-columns: 1fr 1fr;
-  }
+  .stock-detail-content { grid-template-columns: 1fr; }
+  .trade-section { position: static; }
+  .portfolio-summary { grid-template-columns: repeat(2, 1fr); }
+  .movers-grid { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 768px) {
-  .mobile-nav {
-    display: flex;
-  }
-
-  .navbar {
-    padding: 0 1rem;
-    height: 56px;
-  }
-
-  .navbar-links {
-    display: none;
-  }
-
-  .navbar-username {
-    display: none;
-  }
-
-  .navbar-logo {
-    font-size: 1.1rem;
-  }
-
-  .index-ticker {
-    top: 56px;
-    padding: 0.4rem 0.75rem;
-    gap: 0;
-    overflow-x: auto;
-    justify-content: flex-start;
-  }
-
-  .ticker-item {
-    padding: 0 0.75rem;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .market-banner {
-    top: 92px;
-    font-size: 0.7rem;
-  }
-
-  .main-content {
-    padding: 1rem;
-    padding-bottom: 4.5rem;
-  }
-
-  .dashboard-header {
-    flex-direction: column;
-    gap: 0.85rem;
-    align-items: stretch;
-  }
-
-  .dashboard-header h1 {
-    font-size: 1.25rem;
-  }
-
-  .search-bar input {
-    width: 100%;
-  }
-
-  .search-bar input:focus {
-    width: 100%;
-  }
-
+  .mobile-nav { display: flex; }
+  .hide-mobile { display: none; }
+  .navbar { padding: 0 1rem; height: 54px; }
+  .navbar-links { display: none; }
+  .navbar-username { display: none; }
+  .logo-z { font-size: 1.25rem; }
+  .logo-name { font-size: 0.92rem; }
+  .index-ticker { top: 54px; padding: 0.4rem 0.75rem; gap: 0; overflow-x: auto; justify-content: flex-start; scroll-behavior: smooth; }
+  .ticker-item { padding: 0 0.75rem; white-space: nowrap; flex-shrink: 0; }
+  .market-banner { top: 90px; font-size: 0.7rem; }
+  .main-content { padding: 1rem; padding-bottom: 5.5rem; }
+  .dashboard-header { flex-direction: column; gap: 0.85rem; align-items: stretch; }
+  .dashboard-header h1 { font-size: 1.3rem; }
+  .search-bar input { width: 100%; }
+  .search-bar input:focus { width: 100%; }
   .movers-grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    gap: 0.85rem;
+    padding-bottom: 0.35rem;
   }
-
-  .portfolio-summary {
-    grid-template-columns: 1fr;
+  .movers-list {
+    min-width: 240px;
+    flex-shrink: 0;
+    scroll-snap-align: start;
   }
-
+  .portfolio-summary { grid-template-columns: repeat(2, 1fr); }
   .stock-table-container,
   .holdings-table-container,
-  .orders-table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
+  .orders-table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .stock-table,
   .holdings-table,
-  .orders-table {
-    min-width: 600px;
-  }
-
-  .stock-price-large {
-    font-size: 1.6rem;
-  }
-
-  .stock-info h1 {
-    font-size: 1.4rem;
-  }
-
-  .chart-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-
-  .range-selector {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .range-btn {
-    padding: 5px 8px;
-    font-size: 0.68rem;
-  }
-
-  .perf-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .fund-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .toast-container {
-    left: 1rem;
-    right: 1rem;
-    bottom: 1rem;
-  }
-
-  .toast {
-    max-width: 100%;
-    min-width: auto;
-  }
-
-  .empty-state {
-    padding: 2.5rem 1.5rem;
-  }
-
-  .btn-back {
-    font-size: 0.75rem;
-    padding: 5px 12px;
-  }
+  .orders-table { min-width: 560px; }
+  .stock-table td:last-child,
+  .stock-table th:last-child { display: none; }
+  .stock-price-large { font-size: 1.6rem; }
+  .stock-info h1 { font-size: 1.4rem; }
+  .chart-header { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+  .range-selector { width: 100%; justify-content: space-between; }
+  .range-btn { padding: 5px 8px; font-size: 0.66rem; }
+  .perf-grid { grid-template-columns: repeat(2, 1fr); }
+  .fund-grid { grid-template-columns: 1fr; }
+  .toast-container { left: 1rem; right: 1rem; bottom: 5.5rem; }
+  .toast { max-width: 100%; min-width: auto; }
+  .empty-state { padding: 2.5rem 1.5rem; }
+  .btn-back { font-size: 0.75rem; padding: 5px 12px; }
 }
 
 @media (max-width: 480px) {
-  .navbar {
-    height: 50px;
-  }
-
-  .index-ticker {
-    top: 50px;
-  }
-
-  .market-banner {
-    top: 86px;
-  }
-
-  .ticker-label {
-    font-size: 0.65rem;
-  }
-
-  .ticker-price {
-    font-size: 0.72rem;
-  }
-
-  .ticker-change {
-    font-size: 0.65rem;
-  }
-
-  .summary-value {
-    font-size: 1rem;
-  }
-
-  .auth-card {
-    padding: 1.5rem;
-  }
-
-  .auth-logo {
-    font-size: 1.5rem;
-  }
+  .navbar { height: 50px; }
+  .index-ticker { top: 50px; }
+  .market-banner { top: 86px; }
+  .ticker-label { font-size: 0.63rem; }
+  .ticker-price { font-size: 0.7rem; }
+  .ticker-change { font-size: 0.63rem; }
+  .summary-value { font-size: 0.95rem; }
+  .auth-card { padding: 1.5rem; }
+  .auth-logo { font-size: 1.5rem; }
+  .movers-list { min-width: 210px; }
+  .portfolio-summary { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+  .summary-card { padding: 0.85rem 0.9rem; }
+  .dashboard-header h1 { font-size: 1.2rem; }
 }
-.btn-login-google {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.4rem 0.85rem;
-  background: var(--bg-hover);
-  border: 1px solid var(--border-hover);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.btn-login-google:hover {
-  background: var(--border-hover);
-}
-

@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useMarket } from "../context/MarketContext.jsx";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { useGoogleLogin } from "@react-oauth/google";
-import { Sun, Moon, LogOut, Activity, Briefcase, ListOrdered, Wallet, Star, LogIn } from "lucide-react";
+import { Sun, Moon, LogOut, Activity, Briefcase, ListOrdered, Wallet, Star } from "lucide-react";
 import { useToast } from "../context/ToastContext.jsx";
 
 const Navbar = () => {
@@ -47,8 +47,8 @@ const Navbar = () => {
         <nav className="navbar">
             <div className="navbar-brand">
                 <Link to="/" className="navbar-logo">
-                    <span className="logo-zen">Zen</span>
-                    <span className="logo-trade">Trade</span>
+                    <span className="logo-z">Z</span>
+                    <span className="logo-name">entrade</span>
                 </Link>
                 <div className={`connection-status ${connected ? "connected" : "disconnected"}`}>
                     <span className="status-dot"></span>
@@ -105,10 +105,3 @@ const Navbar = () => {
 };
 
 export default Navbar;
-
-/*
- * the top navbar. shows the zentrade logo, live/offline connection
- * dot, nav links to markets/watchlist/portfolio/orders, a sun/moon
- * toggle for theme switching, the user's wallet balance, and logout.
- * only renders when the user is logged in (App.jsx handles that).
- */

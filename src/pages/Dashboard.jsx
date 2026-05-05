@@ -1,7 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMarket } from "../context/MarketContext.jsx";
-import api from "../services/api.js";
 
 const STOCK_LIST = [
     { symbol: "RELIANCE", name: "Reliance Industries" },
@@ -316,11 +315,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
-/*
- * main dashboard page. shows the market movers section at the top
- * with top gainers, losers, and most active by volume. below that
- * is the full stock table which you can search and sort. clicking
- * any row or card takes you to that stock's detail page. all the
- * price data comes from MarketContext which updates via websocket.
- */

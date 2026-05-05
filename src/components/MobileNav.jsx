@@ -28,11 +28,3 @@ const MobileNav = () => {
 };
 
 export default MobileNav;
-
-/*
- * bottom tab bar that only shows up on mobile screens (below 768px).
- * mirrors the navbar links that get hidden on small screens so mobile
- * users can still navigate between markets, watchlist, portfolio and
- * orders without any hamburger menu nonsense. fixed to the bottom
- * of the viewport like how most native trading apps do it.
- */

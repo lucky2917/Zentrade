@@ -15,9 +15,3 @@ createRoot(document.getElementById("root")).render(
   </StrictMode>
 );
 
-/*
- * react entry point. wraps the whole app in StrictMode, GoogleOAuthProvider
- * (for the continue with google button), and ThemeProvider for dark/light
- * mode. the google client id is public so its fine to have it here.
- * this is what index.html points to via vite.
- */

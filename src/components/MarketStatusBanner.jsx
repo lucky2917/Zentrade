@@ -34,11 +34,3 @@ const MarketStatusBanner = () => {
 };
 
 export default MarketStatusBanner;
-
-/*
- * thin sticky banner that sits right below the index ticker strip.
- * reads the live isMarketOpen boolean from MarketContext and
- * displays either a green pulsing 'Market Open' state or a
- * grey/red 'Market Closed' warning so traders know if their
- * orders will actually execute or get rejected by the engine.
- */

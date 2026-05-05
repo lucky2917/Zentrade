@@ -44,11 +44,3 @@ const IndexTicker = () => {
 };
 
 export default IndexTicker;
-
-/*
- * the little ticker strip that sits right below the navbar showing
- * nifty 50, sensex, and bank nifty with their live prices and
- * change percentages. pulls data from MarketContext.indices which
- * gets updated via websocket every 3 seconds. renders nothing if
- * index data hasnt loaded yet.
- */

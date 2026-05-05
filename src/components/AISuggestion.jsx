@@ -9,21 +9,21 @@ import api from "../services/api.js";
 import RiskManager from "./RiskManager.jsx";
 
 const ACTION_CFG = {
-    BUY:  { color: "#10b981", bg: "rgba(16,185,129,0.12)",  border: "rgba(16,185,129,0.4)",  Icon: TrendingUp  },
-    SELL: { color: "#ef4444", bg: "rgba(239,68,68,0.12)",   border: "rgba(239,68,68,0.4)",   Icon: TrendingDown },
-    HOLD: { color: "#f59e0b", bg: "rgba(245,158,11,0.12)",  border: "rgba(245,158,11,0.4)",  Icon: Minus        },
+    BUY:  { color: "#30d158", bg: "rgba(48,209,88,0.1)",   border: "rgba(48,209,88,0.35)",  Icon: TrendingUp  },
+    SELL: { color: "#ff3b30", bg: "rgba(255,59,48,0.1)",   border: "rgba(255,59,48,0.35)",  Icon: TrendingDown },
+    HOLD: { color: "#ff9f0a", bg: "rgba(255,159,10,0.1)",  border: "rgba(255,159,10,0.35)", Icon: Minus        },
 };
-const SIGNAL_COLOR = { BULLISH: "#10b981", BEARISH: "#ef4444", NEUTRAL: "#94a3b8" };
-const CONF_COLOR   = { HIGH: "#10b981", MEDIUM: "#f59e0b", LOW: "#ef4444" };
-const RISK_COLOR   = { LOW: "#10b981", MEDIUM: "#f59e0b", HIGH: "#ef4444" };
+const SIGNAL_COLOR = { BULLISH: "#30d158", BEARISH: "#ff3b30", NEUTRAL: "#8e8e93" };
+const CONF_COLOR   = { HIGH: "#30d158", MEDIUM: "#ff9f0a", LOW: "#ff3b30" };
+const RISK_COLOR   = { LOW: "#30d158", MEDIUM: "#ff9f0a", HIGH: "#ff3b30" };
 const CONSENSUS_CFG = {
-    unanimous: { label: "Unanimous · 3/3",   color: "#10b981" },
-    majority:  { label: "Majority · 2/3",    color: "#10b981" },
-    leaning:   { label: "Leaning · 2 vs 1",  color: "#f59e0b" },
-    split:     { label: "Split · tied",      color: "#ef4444" },
+    unanimous: { label: "Unanimous · 3/3",   color: "#30d158" },
+    majority:  { label: "Majority · 2/3",    color: "#30d158" },
+    leaning:   { label: "Leaning · 2 vs 1",  color: "#ff9f0a" },
+    split:     { label: "Split · tied",      color: "#ff3b30" },
 };
 const MODE_CFG = {
-    INTRADAY: { label: "MIS · Intraday · Square off by 3:15 PM", color: "#818cf8" },
+    INTRADAY: { label: "MIS · Intraday · Square off by 3:15 PM", color: "#0a84ff" },
 };
 
 const fmt = (n) => n != null
@@ -39,11 +39,11 @@ function AgentChip({ icon: Icon, label, signal, confidence, riskLevel }) {
             background: `${color}10`, border: `1px solid ${color}30`,
             borderRadius: 7, padding: "0.45rem 0.6rem",
         }}>
-            <div style={{ fontSize: "0.65rem", color: "#64748b", display: "flex", alignItems: "center", gap: 3, marginBottom: 3 }}>
+            <div style={{ fontSize: "0.65rem", color: "#8e8e93", display: "flex", alignItems: "center", gap: 3, marginBottom: 3 }}>
                 <Icon size={10} />{label}
             </div>
             <div style={{ fontSize: "0.75rem", fontWeight: 700, color }}>{signal ?? `Risk: ${riskLevel}`}</div>
-            <div style={{ fontSize: "0.62rem", color: CONF_COLOR[confidence] ?? "#64748b", marginTop: 1 }}>{confidence}</div>
+            <div style={{ fontSize: "0.62rem", color: CONF_COLOR[confidence] ?? "#8e8e93", marginTop: 1 }}>{confidence}</div>
         </div>
     );
 }
@@ -51,7 +51,7 @@ function AgentChip({ icon: Icon, label, signal, confidence, riskLevel }) {
 function PriceLine({ label, value, pctValue, color, icon: Icon }) {
     return (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.55rem 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.78rem", color: "#64748b" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.78rem", color: "#8e8e93" }}>
                 {Icon && <Icon size={13} style={{ color }} />}{label}
             </div>
             <div style={{ textAlign: "right" }}>
@@ -68,11 +68,11 @@ function IntradaySetup({ intraday }) {
     if (!intraday) return null;
     const { gapPct, orStatus, intradayVwap, priceAboveVwap, rsi15m, emaSignal } = intraday;
 
-    const gapColor   = gapPct == null ? "#64748b" : gapPct > 0 ? "#10b981" : gapPct < 0 ? "#ef4444" : "#64748b";
-    const orColor    = orStatus?.includes("bullish") ? "#10b981" : orStatus?.includes("bearish") ? "#ef4444" : "#f59e0b";
-    const vwapColor  = priceAboveVwap == null ? "#64748b" : priceAboveVwap ? "#10b981" : "#ef4444";
-    const emaColor   = emaSignal === "BULLISH" ? "#10b981" : emaSignal === "BEARISH" ? "#ef4444" : "#94a3b8";
-    const rsiColor   = rsi15m == null ? "#64748b" : rsi15m > 60 ? "#10b981" : rsi15m < 40 ? "#ef4444" : "#f59e0b";
+    const gapColor   = gapPct == null ? "#8e8e93" : gapPct > 0 ? "#30d158" : gapPct < 0 ? "#ff3b30" : "#8e8e93";
+    const orColor    = orStatus?.includes("bullish") ? "#30d158" : orStatus?.includes("bearish") ? "#ff3b30" : "#ff9f0a";
+    const vwapColor  = priceAboveVwap == null ? "#8e8e93" : priceAboveVwap ? "#30d158" : "#ff3b30";
+    const emaColor   = emaSignal === "BULLISH" ? "#30d158" : emaSignal === "BEARISH" ? "#ff3b30" : "#8e8e93";
+    const rsiColor   = rsi15m == null ? "#8e8e93" : rsi15m > 60 ? "#30d158" : rsi15m < 40 ? "#ff3b30" : "#ff9f0a";
 
     return (
         <div style={{
