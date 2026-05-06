@@ -2,14 +2,6 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Download } from "lucide-react";
 
-const ShareIcon = () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" width="17" height="17" style={{ display: "inline", verticalAlign: "middle" }}>
-        <polyline points="16 8 12 4 8 8" />
-        <line x1="12" y1="4" x2="12" y2="16" />
-        <rect x="3" y="14" width="18" height="8" rx="2" />
-    </svg>
-);
-
 const PWAInstallPrompt = () => {
     const [show, setShow] = useState(false);
     const [platform, setPlatform] = useState(null);
@@ -48,6 +40,17 @@ const PWAInstallPrompt = () => {
         window.addEventListener("beforeinstallprompt", onBeforeInstall);
         return () => window.removeEventListener("beforeinstallprompt", onBeforeInstall);
     }, []);
+
+    const handleIOSInstall = async () => {
+        try {
+            await navigator.share({
+                title: "Zentrade",
+                url: window.location.href,
+            });
+        } catch {
+            // user cancelled share sheet — do nothing
+        }
+    };
 
     const handleInstall = async () => {
         if (!deferredPrompt) return;
@@ -96,27 +99,18 @@ const PWAInstallPrompt = () => {
                         </div>
 
                         {platform === "ios" ? (
-                            <div className="pwa-ios-steps">
-                                <div className="pwa-step">
-                                    <span className="pwa-step-num">1</span>
-                                    <span>Tap the <strong className="pwa-step-icon-label"><ShareIcon /> Share</strong> button in the Safari toolbar</span>
-                                </div>
-                                <div className="pwa-step">
-                                    <span className="pwa-step-num">2</span>
-                                    <span>Scroll down and tap <strong>"Add to Home Screen"</strong></span>
-                                </div>
-                                <div className="pwa-step">
-                                    <span className="pwa-step-num">3</span>
-                                    <span>Tap <strong>"Add"</strong> — done!</span>
-                                </div>
-                                <button className="pwa-btn-got-it" onClick={handleDismiss}>
-                                    Got it
+                            <div className="pwa-android-actions">
+                                <button className="pwa-btn-install" onClick={handleIOSInstall}>
+                                    <Download size={15} /> Install as App
+                                </button>
+                                <button className="pwa-btn-later" onClick={handleDismiss}>
+                                    Not Now
                                 </button>
                             </div>
                         ) : (
                             <div className="pwa-android-actions">
                                 <button className="pwa-btn-install" onClick={handleInstall}>
-                                    <Download size={15} /> Install App
+                                    <Download size={15} /> Install as App
                                 </button>
                                 <button className="pwa-btn-later" onClick={handleDismiss}>
                                     Not Now

@@ -2039,66 +2039,6 @@ a:hover { color: var(--accent-hover); }
   color: var(--text-muted);
 }
 
-.pwa-ios-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.pwa-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  font-size: 0.84rem;
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
-.pwa-step-num {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: white;
-  font-size: 0.68rem;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.pwa-step strong { color: var(--text-primary); }
-
-.pwa-step-icon-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--accent);
-}
-
-.pwa-btn-got-it {
-  margin-top: 0.5rem;
-  width: 100%;
-  padding: 0.78rem;
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: var(--transition);
-  font-family: inherit;
-  letter-spacing: 0.1px;
-}
-
-.pwa-btn-got-it:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 6px 20px var(--accent-glow);
-  transform: translateY(-1px);
-}
 
 .pwa-android-actions {
   display: flex;
