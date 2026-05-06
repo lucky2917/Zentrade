@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#0f0f0f"/>
+  <defs>
+    <linearGradient id="zg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e31937"/>
+      <stop offset="100%" stop-color="#b8001a"/>
+    </linearGradient>
+  </defs>
+  <polygon
+    points="80,90 432,90 432,150 210,362 432,362 432,422 80,422 80,362 302,150 80,150"
+    fill="url(#zg)"
+  />
+</svg>

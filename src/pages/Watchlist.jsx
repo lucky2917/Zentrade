@@ -72,7 +72,7 @@ const Watchlist = () => {
     if (!token) {
         return (
             <motion.div
-                className="watchlist-page main-content"
+                className="watchlist-page"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, ease: "easeOut" }}
@@ -117,7 +117,7 @@ const Watchlist = () => {
 
     return (
         <motion.div
-            className="watchlist-page main-content"
+            className="watchlist-page"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
@@ -155,7 +155,6 @@ const Watchlist = () => {
                             {watchlist.map((item) => {
                                 const liveData = prices[item.symbol];
                                 const currentPrice = liveData?.price || item.price;
-                                const currentChange = liveData?.change || item.change || 0;
                                 const currentChangePercent = liveData?.changePercent || item.changePercent || 0;
                                 const isPositive = currentChangePercent >= 0;
 
@@ -203,10 +202,3 @@ const Watchlist = () => {
 };
 
 export default Watchlist;
-
-/*
- * the watchlist page. pulls the user's saved stocks from the 
- * backend and combines it with the live websocket prices so the
- * numbers tick in real time. you can remove stocks from here 
- * directly or jump to their detail page to trade them.
- */

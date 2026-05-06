@@ -10,6 +10,7 @@ import Watchlist from "./pages/Watchlist.jsx";
 import IndexTicker from "./components/IndexTicker.jsx";
 import MarketStatusBanner from "./components/MarketStatusBanner.jsx";
 import MobileNav from "./components/MobileNav.jsx";
+import PWAInstallPrompt from "./components/PWAInstallPrompt.jsx";
 import { ToastProvider } from "./context/ToastContext.jsx";
 
 const AppContent = () => {
@@ -28,6 +29,7 @@ const AppContent = () => {
         </Routes>
       </main>
       <MobileNav />
+      <PWAInstallPrompt />
     </>
   );
 };

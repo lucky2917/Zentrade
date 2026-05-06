@@ -78,7 +78,7 @@ const ChartComponent = ({ chartData, selectedRange }) => {
                 height: 420,
                 layout: {
                     background: { color: "transparent" },
-                    textColor: "#64748b",
+                    textColor: "#636366",
                 },
                 grid: {
                     vertLines: { color: "var(--border)" },
@@ -91,12 +91,12 @@ const ChartComponent = ({ chartData, selectedRange }) => {
             });
 
             const cs = chart.addSeries(CandlestickSeries, {
-                upColor: "#10b981",
-                downColor: "#ef4444",
-                borderDownColor: "#ef4444",
-                borderUpColor: "#10b981",
-                wickDownColor: "#ef4444",
-                wickUpColor: "#10b981",
+                upColor: "#30d158",
+                downColor: "#ff3b30",
+                borderDownColor: "#ff3b30",
+                borderUpColor: "#30d158",
+                wickDownColor: "#ff3b30",
+                wickUpColor: "#30d158",
             });
 
             const vs = chart.addSeries(HistogramSeries, {
@@ -119,7 +119,7 @@ const ChartComponent = ({ chartData, selectedRange }) => {
                 .map((c) => ({
                     time: c.time + IST_OFFSET,
                     value: +(c.volume || 0),
-                    color: c.close >= c.open ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)",
+                    color: c.close >= c.open ? "rgba(48,209,88,0.3)" : "rgba(255,59,48,0.3)",
                 }));
 
             cs.setData(candles);
@@ -337,10 +337,9 @@ const StockDetail = () => {
                 <div className="stock-info">
                     <div className="stock-name-row flex items-center gap-2">
                         <h1>{symbol}</h1>
-                        <button 
+                        <button
                             className="btn-watchlist-toggle"
                             onClick={toggleWatchlist}
-                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex' }}
                             title={inWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
                         >
                             <Star 
@@ -584,14 +583,3 @@ const StockDetail = () => {
 };
 
 export default StockDetail;
-
-/*
- * the individual stock page. shows a candlestick chart using
- * lightweight-charts with range buttons (1D to 5Y), performance
- * stats like open/close/high/low, fundamentals grid, and the
- * buy/sell trade panel on the right. the trade panel has an
- * intraday/delivery toggle — intraday (MIS) gives 5x leverage
- * and shows margin required instead of full cost. delivery (CNC)
- * deducts the full amount. the mode gets sent to the backend
- * in the trade request body.
- */

@@ -65,7 +65,7 @@ const Portfolio = () => {
     if (!token) {
         return (
             <motion.div
-                className="portfolio-page main-content"
+                className="portfolio-page"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, ease: "easeOut" }}
@@ -186,7 +186,7 @@ const Portfolio = () => {
         if (allHoldings.length === 0) return null;
         
         const byValue = [...allHoldings].sort((a, b) => b.currentValuePaise - a.currentValuePaise);
-        const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#64748b'];
+        const colors = ['#0a84ff', '#30d158', '#bf5af2', '#ff9f0a', '#ff375f', '#8e8e93'];
         
         return (
             <motion.div variants={itemVariants} className="allocation-section glass-panel" style={{ marginTop: '1.5rem', marginBottom: '2rem', padding: '1.5rem' }}>
@@ -320,7 +320,7 @@ const Portfolio = () => {
 
     return (
         <motion.div
-            className="portfolio-page main-content"
+            className="portfolio-page"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
@@ -360,14 +360,14 @@ const Portfolio = () => {
                 </motion.div>
                 
                 {bestPerformer && (
-                    <motion.div variants={itemVariants} className="summary-card glass-panel pnl-positive" style={{ background: 'rgba(16, 185, 129, 0.05)', borderColor: 'rgba(16, 185, 129, 0.2)' }}>
+                    <motion.div variants={itemVariants} className="summary-card glass-panel pnl-positive">
                         <span className="summary-label flex items-center gap-1"><Star size={14}/> Top Gainer</span>
                         <span className="summary-value" style={{ fontSize: '1.25rem' }}>{bestPerformer.symbol}</span>
                         <span style={{ fontSize: '0.85rem', marginTop: '0.2rem' }}>+{bestPerformer.pnlPercent.toFixed(2)}%</span>
                     </motion.div>
                 )}
                 {worstPerformer && (
-                    <motion.div variants={itemVariants} className="summary-card glass-panel pnl-negative" style={{ background: 'rgba(239, 68, 68, 0.05)', borderColor: 'rgba(239, 68, 68, 0.2)' }}>
+                    <motion.div variants={itemVariants} className="summary-card glass-panel pnl-negative">
                         <span className="summary-label flex items-center gap-1"><AlertTriangle size={14}/> Top Loser</span>
                         <span className="summary-value" style={{ fontSize: '1.25rem' }}>{worstPerformer.symbol}</span>
                         <span style={{ fontSize: '0.85rem', marginTop: '0.2rem' }}>{worstPerformer.pnlPercent.toFixed(2)}%</span>
@@ -400,13 +400,4 @@ const Portfolio = () => {
 };
 
 export default Portfolio;
-
-/*
- * advanced portfolio page with deep analytics.
- * connects to live MarketContext to compute 1D returns in real-time.
- * adds visual asset allocation bar, best/worst performance tracking,
- * and robust sortable columns for deep dive into portfolio data.
- * intraday/delivery tabs isolate margin and leveraged holdings.
- * ui upgraded with inline databars for profit/loss visualizing.
- */
 

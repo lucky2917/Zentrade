@@ -66,7 +66,7 @@ const Orders = () => {
     if (!token) {
         return (
             <motion.div
-                className="orders-page main-content"
+                className="orders-page"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, ease: "easeOut" }}
@@ -111,7 +111,7 @@ const Orders = () => {
 
     return (
         <motion.div
-            className="orders-page main-content"
+            className="orders-page"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
@@ -173,12 +173,3 @@ const Orders = () => {
 };
 
 export default Orders;
-
-/*
- * order history page with a new Mode column showing MIS or CNC
- * badges for each trade. intraday orders show the blue MIS badge
- * and delivery orders show the purple CNC badge. the rest stays
- * the same — symbol, buy/sell type, quantity, price, total, and
- * timestamp. fetches from /api/orders which now includes the
- * orderMode field in every record.
- */
