@@ -202,13 +202,15 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
             creditPaise = grossValuePaise - BROKERAGE_PAISE;
         }
 
-        if (creditPaise <= 0) {
+        if (!isIntraday && creditPaise <= 0) {
             throw new Error("Trade value too small to cover brokerage");
         }
 
+        const actualCredit = Math.max(0, creditPaise);
+
         await client.query(
             "UPDATE users SET balance_paise = balance_paise + $1 WHERE id = $2",
-            [creditPaise, userId]
+            [actualCredit, userId]
         );
 
         const remainingQty = holdingQty - quantity;
@@ -227,7 +229,7 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
 
         await client.query(
             "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-            [userId, symbol, "SELL", quantity, executionPricePaise, creditPaise, BROKERAGE_PAISE, mode]
+            [userId, symbol, "SELL", quantity, executionPricePaise, actualCredit, BROKERAGE_PAISE, mode]
         );
 
         await client.query("COMMIT");
@@ -242,7 +244,7 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
             spread: "0.1%",
             brokerage: "₹20",
             leverage: isIntraday ? "5x" : "1x",
-            credited: creditPaise / 100,
+            credited: actualCredit / 100,
         });
 
         return {
@@ -253,7 +255,7 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
             ltpPaise: toPaise(price),
             executionPricePaise,
             brokeragePaise: BROKERAGE_PAISE,
-            totalValuePaise: creditPaise,
+            totalValuePaise: actualCredit,
             leverage: isIntraday ? INTRADAY_LEVERAGE : 1,
         };
     } catch (err) {
