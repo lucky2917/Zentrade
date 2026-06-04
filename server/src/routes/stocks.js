@@ -64,7 +64,7 @@ router.get("/:symbol/details", async (req, res) => {
         }
 
         const yahooSymbol = `${symbol.toUpperCase()}.NS`;
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=5d`;
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=5d`;
 
         const response = await fetch(url, {
             headers: {
@@ -125,7 +125,7 @@ router.get("/:symbol/fundamentals", async (req, res) => {
         }
 
         const yahooSymbol = `${symbol.toUpperCase()}.NS`;
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=1y`;
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1y`;
 
         const response = await fetch(url, {
             headers: {
@@ -180,7 +180,7 @@ router.get("/:symbol/performance", async (req, res) => {
         const live = priceData ? JSON.parse(priceData) : {};
 
         const yahooSymbol = `${symbol.toUpperCase()}.NS`;
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=1y`;
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1y`;
 
         let meta = {};
         try {
@@ -259,7 +259,7 @@ router.get("/:symbol/full", async (req, res) => {
 
             if (!chartData) {
                 fetchPromises.push(
-                    fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=${config.interval}&range=${config.period}`, {
+                    fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${config.interval}&range=${config.period}`, {
                         headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
                     }).then((r) => r.ok ? r.json() : null).catch(() => null)
                 );
@@ -269,7 +269,7 @@ router.get("/:symbol/full", async (req, res) => {
 
             if (!performance || !fundamentals) {
                 fetchPromises.push(
-                    fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=1y`, {
+                    fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1y`, {
                         headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
                     }).then((r) => r.ok ? r.json() : null).catch(() => null)
                 );

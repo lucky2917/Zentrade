@@ -31,7 +31,7 @@ router.get("/:symbol", async (req, res) => {
         }
 
         const yahooSymbol = `${symbol.toUpperCase()}.NS`;
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=${config.interval}&range=${config.period}`;
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${config.interval}&range=${config.period}`;
 
         const response = await fetch(url, {
             headers: {
