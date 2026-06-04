@@ -58,7 +58,7 @@ const squareOffAll = async () => {
 
                 await client.query(
                     "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-                    [holding.user_id, holding.symbol, "SELL", holding.quantity, executionPricePaise, creditPaise, 0, "INTRADAY"]
+                    [holding.user_id, holding.symbol, "SELL", holding.quantity, executionPricePaise, Math.max(0, creditPaise), 0, "INTRADAY"]
                 );
 
                 await client.query("COMMIT");
