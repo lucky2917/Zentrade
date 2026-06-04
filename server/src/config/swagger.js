@@ -1,4 +1,4 @@
-const serverUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 5000}`;
+const serverUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 5001}`;
 
 export const swaggerSpec = {
     openapi: "3.0.0",

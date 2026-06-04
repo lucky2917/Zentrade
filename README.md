@@ -1,33 +1,45 @@
-# Project Name - Zentrade
+# Zentrade
 
-## What it is
-so basically zentrade is a full-stack paper trading simulator. built to feel exactly like a real stock broker but powered by fake virtual money. you get real-time market data, live charts, portfolio tracking, and instant order execution. all running on a solid node/postgres/redis backend with a slick react frontend.
+Paper trading simulator for Indian stock markets. Real NSE prices, virtual money. Practice intraday and delivery trading without risking actual capital.
 
-## Problem
-look, facts say 90% of beginner intraday traders lose their capital in the initial days. they jump into the real market with zero experience, panic sell when they see red, and blow up their accounts. they need a place to practice strategies and get the feel of real market hours without actually going bankrupt.
+## The Problem
 
-## Solution
-zentrade is the exact sandbox for that. you get ₹10,00,000 virtual balance as soon as you step in. you can buy, sell, watch top movers, see your PnL jump around in real-time, and get used to how actual trading terminals work. if you lose all the money here, you just learn and adjust your strategy instead of losing your actual life savings.
+90% of beginner intraday traders blow up their accounts in the first few months. Not because markets are unfair, but because they go in blind. No experience with order flow, no discipline around stop-losses, no feel for how quickly things move during market hours. They learn the hard way and pay for it with real money.
 
-## Status
-just pushed the latest commit: **[main 59bd526] after all i rebuilt login.jsx and signup.jsx with continue with google, updated auth.js with /api/auth/google to route between new or old user via access token, updated nav with user name and updated db accordingly moreover css is perfectly fine for current changes my next chnages would be testing completelt and add small comps which i have missed from indrustry applications**
-platform is stable, oauth works, real-time data streaming is super smooth.
+---
 
-## Tech Stack
-* frontend: react, vite, framer-motion for that butter smooth ui, lucide-react, lightweight-charts
-* backend: node.js, express, socket.io (for those live ticking prices)
-* DBs: postgres for locking down your financial state (balance, orders, portfolio) and redis to cache the live market prices so the server doesn't choke.
+## The Solution
+
+Zentrade puts you in a real trading environment with ₹10,00,000 virtual balance. You trade actual NSE stocks at live prices, track your PnL in real-time, and experience exactly what a real broker feels like. If you blow up here, you just reset and learn. No real damage done.
+
+---
+
+## Stack
+
+- **Frontend** — React, Vite, Socket.io, Lightweight Charts
+- **Backend** — Node.js, Express, PostgreSQL, Redis
+- **Auth** — Google OAuth + JWT
+- **AI** — Groq (Llama 3.3 70B)
+- **Docs** — Swagger at `/api-docs`
 
 ## Features
-* **Google OAuth**: one-click "continue with google" login, or classic email/password if u prefer.
-* **Live Market Dash**: dynamic dashboard showing top gainers, losers, and most active stocks.
-* **Real-time Price Engine**: powers your portfolio PnL and stock detail pages with live yahoo finance data.
-* **Instant Orders**: buy/sell panel that calculates brokerage and updates ur virtual balance instantly, exactly like real brokers.
-* **Interactive Charts**: switch between 1d, 5d, 1mo, etc ranges built right into the app.
-* **Dark/Light Mode**: full glassmorphism UI with a custom theme context switcher so u don't burn ur eyes at night. 
 
-## Roadmap
-what's next on the plate:
-* gonna do some heavy testing of the complete flow to make sure nothing breaks under load
-* adding small industry standard components that are missing right now (like limit orders, stop-loss, market depth panel)
-* adding more detailed portfolio analytics so u can truly track ur progress.
+- Google OAuth login
+- Live NSE prices via Socket.io
+- Intraday (MIS 5x leverage) and Delivery (CNC) order modes
+- Real-time portfolio PnL
+- Order history, watchlist
+- AI stock analysis
+- Candlestick charts (1D to 1Y)
+- Auto square-off at 3:20 PM IST
+- PWA — installable on mobile
+
+## Future Scope
+
+- Limit orders and stop-loss triggers
+- Portfolio analytics and daily PnL history
+- Price alerts via push notifications
+- Leaderboard and trading competitions
+- **ZenBot** — an AI agent that reads market news and places real intraday trades autonomously using multi-model consensus (Groq + Gemini + Cerebras). Every user can watch the bot live — which stocks it scanned, how each model voted, and why it traded or skipped.
+
+

@@ -7,6 +7,9 @@ const isLocal = (process.env.DATABASE_URL ?? "").includes("localhost");
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isLocal ? false : { rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 10,
 });
 
 const initDB = async () => {
