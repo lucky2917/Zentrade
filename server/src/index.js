@@ -3,8 +3,10 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import swaggerUi from "swagger-ui-express";
 import { initDB } from "./config/db.js";
 import logger from "./utils/logger.js";
+import { swaggerSpec } from "./config/swagger.js";
 import authRoutes from "./routes/auth.js";
 import stockRoutes from "./routes/stocks.js";
 import tradeRoutes from "./routes/trade.js";
@@ -32,6 +34,11 @@ app.use(cors({
     origin: [process.env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"]
 }));
 app.use(express.json());
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: "Zentrade API Docs",
+    swaggerOptions: { persistAuthorization: true },
+}));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/stocks", stockRoutes);
