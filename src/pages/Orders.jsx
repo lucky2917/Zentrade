@@ -43,7 +43,7 @@ const Orders = () => {
             }
         };
         fetchOrders();
-    }, []);
+    }, [token]);
 
     const formatCurrency = (paise) => {
         return new Intl.NumberFormat("en-IN", {
