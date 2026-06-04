@@ -48,7 +48,7 @@ const Watchlist = () => {
 
     useEffect(() => {
         fetchWatchlist();
-    }, []);
+    }, [token]);
 
     const removeFromWatchlist = async (e, symbol) => {
         e.stopPropagation();
