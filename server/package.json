@@ -17,6 +17,7 @@
         "ioredis": "^5.4.2",
         "jsonwebtoken": "^9.0.2",
         "node-cron": "^3.0.3",
+        "nodemailer": "^9.0.1",
         "pg": "^8.13.1",
         "socket.io": "^4.8.1",
         "swagger-jsdoc": "^6.3.0",
