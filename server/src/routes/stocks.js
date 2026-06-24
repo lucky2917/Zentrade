@@ -2,8 +2,52 @@ import { Router } from "express";
 import redis from "../config/redis.js";
 import { STOCKS } from "../config/stocks.js";
 import logger from "../utils/logger.js";
+import { getCandlesForRange } from "../services/fyers/fyersREST.js";
+import { toFyersStockSymbol } from "../services/fyers/smartWall.js";
 
 const router = Router();
+
+async function fetchYahooFundamentals(symbol) {
+    const yahooSymbol = `${symbol}.NS`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1y`;
+
+    const response = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
+    });
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const meta = data.chart?.result?.[0]?.meta;
+
+    return {
+        marketCap: meta?.marketCap || null,
+        peRatio: meta?.peRatio || null,
+        pbRatio: meta?.pbRatio || null,
+        eps: meta?.epsTrailingTwelveMonths || null,
+        dividendYield: meta?.dividendYield || null,
+        bookValue: meta?.bookValue || null,
+        fiftyTwoWeekHigh: meta?.fiftyTwoWeekHigh || null,
+        fiftyTwoWeekLow: meta?.fiftyTwoWeekLow || null,
+        avgVolume: meta?.averageDailyVolume3Month || null,
+    };
+}
+
+function computePerformance(live, yearCandles) {
+    const highs = yearCandles.map((c) => c.high).filter((v) => v != null);
+    const lows = yearCandles.map((c) => c.low).filter((v) => v != null);
+    const latest = yearCandles[yearCandles.length - 1];
+    const prior = yearCandles[yearCandles.length - 2];
+
+    return {
+        open: live.open || latest?.open || 0,
+        previousClose: live.previousClose || prior?.close || 0,
+        dayHigh: live.dayHigh || latest?.high || 0,
+        dayLow: live.dayLow || latest?.low || 0,
+        fiftyTwoWeekHigh: highs.length ? Math.max(...highs) : null,
+        fiftyTwoWeekLow: lows.length ? Math.min(...lows) : null,
+        volume: live.volume || latest?.volume || 0,
+    };
+}
 
 router.get("/", async (req, res) => {
     try {
@@ -124,37 +168,19 @@ router.get("/:symbol/fundamentals", async (req, res) => {
             return res.json(JSON.parse(cached));
         }
 
-        const yahooSymbol = `${symbol.toUpperCase()}.NS`;
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1y`;
-
-        const response = await fetch(url, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            },
-        });
-
-        if (!response.ok) {
+        const yahooFund = await fetchYahooFundamentals(symbol.toUpperCase());
+        if (!yahooFund) {
             return res.status(502).json({ error: "Failed to fetch fundamentals" });
         }
 
-        const data = await response.json();
-        const meta = data.chart?.result?.[0]?.meta;
         const stockInfo = STOCKS.find((s) => s.symbol === symbol.toUpperCase());
 
         const fundamentals = {
             symbol: symbol.toUpperCase(),
             companyName: stockInfo?.name || symbol,
-            marketCap: meta?.marketCap || null,
-            peRatio: meta?.peRatio || null,
-            pbRatio: meta?.pbRatio || null,
+            ...yahooFund,
             roe: null,
-            eps: meta?.epsTrailingTwelveMonths || null,
-            dividendYield: meta?.dividendYield || null,
             debtToEquity: null,
-            bookValue: meta?.bookValue || null,
-            fiftyTwoWeekHigh: meta?.fiftyTwoWeekHigh || null,
-            fiftyTwoWeekLow: meta?.fiftyTwoWeekLow || null,
-            avgVolume: meta?.averageDailyVolume3Month || null,
         };
 
         await redis.setex(cacheKey, 3600, JSON.stringify(fundamentals));
@@ -179,33 +205,9 @@ router.get("/:symbol/performance", async (req, res) => {
         const priceData = await redis.get(`stock:${symbol.toUpperCase()}`);
         const live = priceData ? JSON.parse(priceData) : {};
 
-        const yahooSymbol = `${symbol.toUpperCase()}.NS`;
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1y`;
-
-        let meta = {};
-        try {
-            const response = await fetch(url, {
-                headers: {
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                },
-            });
-            if (response.ok) {
-                const data = await response.json();
-                meta = data.chart?.result?.[0]?.meta || {};
-            }
-        } catch {
-            meta = {};
-        }
-
-        const performance = {
-            open: live.open || meta.regularMarketOpen || 0,
-            previousClose: live.previousClose || meta.chartPreviousClose || 0,
-            dayHigh: live.dayHigh || meta.regularMarketDayHigh || 0,
-            dayLow: live.dayLow || meta.regularMarketDayLow || 0,
-            fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || null,
-            fiftyTwoWeekLow: meta.fiftyTwoWeekLow || null,
-            volume: live.volume || meta.regularMarketVolume || 0,
-        };
+        const fyersSymbol = toFyersStockSymbol(symbol.toUpperCase());
+        const yearCandles = await getCandlesForRange(fyersSymbol, "1y");
+        const performance = computePerformance(live, yearCandles);
 
         await redis.setex(cacheKey, 300, JSON.stringify(performance));
         res.json(performance);
@@ -225,18 +227,8 @@ router.get("/:symbol/full", async (req, res) => {
         const live = priceData ? JSON.parse(priceData) : {};
         const stockInfo = STOCKS.find((s) => s.symbol === upperSymbol);
 
-        const yahooSymbol = `${upperSymbol}.NS`;
-
-        const chartRange = range;
-        const RANGE_CONFIG = {
-            "1d": { interval: "1m", period: "1d" },
-            "5d": { interval: "5m", period: "5d" },
-            "1mo": { interval: "1h", period: "1mo" },
-            "3mo": { interval: "1d", period: "3mo" },
-            "1y": { interval: "1d", period: "1y" },
-            "5y": { interval: "1wk", period: "5y" },
-        };
-        const config = RANGE_CONFIG[chartRange] || RANGE_CONFIG["1d"];
+        const VALID_RANGES = ["1d", "5d", "1mo", "3mo", "1y", "5y"];
+        const chartRange = VALID_RANGES.includes(range) ? range : "1d";
 
         const chartCacheKey = `chart:${upperSymbol}:${chartRange}`;
         const perfCacheKey = `perf:${upperSymbol}`;
@@ -252,83 +244,27 @@ router.get("/:symbol/full", async (req, res) => {
         let performance = cachedPerf ? JSON.parse(cachedPerf) : null;
         let fundamentals = cachedFund ? JSON.parse(cachedFund) : null;
 
-        const needsYahoo = !chartData || !performance || !fundamentals;
+        const fyersSymbol = toFyersStockSymbol(upperSymbol);
 
-        if (needsYahoo) {
-            const fetchPromises = [];
+        const [chartResult, perfCandles, fundResult] = await Promise.all([
+            chartData ? Promise.resolve(null) : getCandlesForRange(fyersSymbol, chartRange).catch(() => null),
+            performance ? Promise.resolve(null) : getCandlesForRange(fyersSymbol, "1y").catch(() => null),
+            fundamentals ? Promise.resolve(null) : fetchYahooFundamentals(upperSymbol).catch(() => null),
+        ]);
 
-            if (!chartData) {
-                fetchPromises.push(
-                    fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${config.interval}&range=${config.period}`, {
-                        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
-                    }).then((r) => r.ok ? r.json() : null).catch(() => null)
-                );
-            } else {
-                fetchPromises.push(Promise.resolve(null));
-            }
+        if (!chartData && chartResult) {
+            chartData = chartResult;
+            await redis.setex(chartCacheKey, 600, JSON.stringify(chartData));
+        }
 
-            if (!performance || !fundamentals) {
-                fetchPromises.push(
-                    fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1y`, {
-                        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
-                    }).then((r) => r.ok ? r.json() : null).catch(() => null)
-                );
-            } else {
-                fetchPromises.push(Promise.resolve(null));
-            }
+        if (!performance && perfCandles) {
+            performance = computePerformance(live, perfCandles);
+            await redis.setex(perfCacheKey, 300, JSON.stringify(performance));
+        }
 
-            const [chartResponse, yearResponse] = await Promise.all(fetchPromises);
-
-            if (chartResponse && !chartData) {
-                const result = chartResponse.chart?.result?.[0];
-                if (result && result.timestamp) {
-                    const timestamps = result.timestamp;
-                    const ohlcv = result.indicators.quote[0];
-                    chartData = timestamps
-                        .map((t, i) => ({
-                            time: t,
-                            open: ohlcv.open[i],
-                            high: ohlcv.high[i],
-                            low: ohlcv.low[i],
-                            close: ohlcv.close[i],
-                            volume: ohlcv.volume[i],
-                        }))
-                        .filter((c) => c.open != null && c.close != null);
-
-                    await redis.setex(chartCacheKey, 600, JSON.stringify(chartData));
-                }
-            }
-
-            if (yearResponse) {
-                const meta = yearResponse.chart?.result?.[0]?.meta || {};
-
-                if (!performance) {
-                    performance = {
-                        open: live.open || meta.regularMarketOpen || 0,
-                        previousClose: live.previousClose || meta.chartPreviousClose || 0,
-                        dayHigh: live.dayHigh || meta.regularMarketDayHigh || 0,
-                        dayLow: live.dayLow || meta.regularMarketDayLow || 0,
-                        fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || null,
-                        fiftyTwoWeekLow: meta.fiftyTwoWeekLow || null,
-                        volume: live.volume || meta.regularMarketVolume || 0,
-                    };
-                    await redis.setex(perfCacheKey, 300, JSON.stringify(performance));
-                }
-
-                if (!fundamentals) {
-                    fundamentals = {
-                        marketCap: meta.marketCap || null,
-                        peRatio: meta.peRatio || null,
-                        pbRatio: meta.pbRatio || null,
-                        eps: meta.epsTrailingTwelveMonths || null,
-                        dividendYield: meta.dividendYield || null,
-                        bookValue: meta.bookValue || null,
-                        fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || null,
-                        fiftyTwoWeekLow: meta.fiftyTwoWeekLow || null,
-                    };
-                    await redis.setex(fundCacheKey, 3600, JSON.stringify(fundamentals));
-                }
-            }
+        if (!fundamentals && fundResult) {
+            fundamentals = fundResult;
+            await redis.setex(fundCacheKey, 3600, JSON.stringify(fundamentals));
         }
 
         res.json({
@@ -349,12 +285,3 @@ router.get("/:symbol/full", async (req, res) => {
 });
 
 export default router;
-
-/*
- * the big stocks route file. has endpoints to get all stocks,
- * a single stock, its details, fundamentals, performance stats,
- * and the /full endpoint which bundles chart + performance +
- * fundamentals into one call (thats what the StockDetail page
- * uses so it doesnt have to make three separate requests).
- * mounted at /api/stocks in index.js.
- */
