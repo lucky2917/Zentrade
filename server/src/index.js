@@ -17,9 +17,13 @@ import indicesRoutes from "./routes/indices.js";
 import marketRoutes from "./routes/market.js";
 import watchlistRoutes from "./routes/watchlist.js";
 import aiRoutes from "./routes/ai.js";
-import startMarketWorker from "./services/marketWorker.js";
+import startMarketWorker, { INDICES } from "./services/marketWorker.js";
 import startWebSocketBroadcaster from "./services/websocket.js";
 import { startSquareOffJob } from "./services/squareOff.js";
+import { initFyersAuth, isConfigured as isFyersConfigured } from "./services/fyers/fyersAuth.js";
+import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket } from "./services/fyers/fyersWebSocket.js";
+import { startAuthWatchdog } from "./services/fyers/authWatchdog.js";
+import { STOCKS } from "./config/stocks.js";
 
 const app = express();
 const server = createServer(app);
@@ -59,6 +63,16 @@ const PORT = process.env.PORT || 5000;
 
 const start = async () => {
     await initDB();
+
+    await initFyersAuth();
+    startAuthWatchdog();
+    if (isFyersConfigured()) {
+        await connectFyersWebSocket();
+        subscribeFyersWebSocket([...STOCKS.map((s) => s.symbol), ...INDICES.map((i) => i.symbol)]);
+    } else {
+        logger.info("Server", "Fyers not configured, fast-lane websocket disabled");
+    }
+
     startMarketWorker();
     startWebSocketBroadcaster(io);
     startSquareOffJob();
@@ -69,11 +83,3 @@ const start = async () => {
 };
 
 start();
-
-/*
- * main server entry point. sets up express, socket.io, cors, and
- * mounts all the api routes. on startup it inits the db schema,
- * kicks off the market data worker, starts the websocket price
- * broadcaster, and schedules the auto square-off cron job.
- * basically everything starts from here.
- */
