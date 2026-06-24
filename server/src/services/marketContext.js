@@ -1,29 +1,38 @@
 import logger from "../utils/logger.js";
+import { getCandles } from "./fyers/fyersREST.js";
 
 const CACHE_TTL = 300; // 5 min — index data changes slowly enough
 
+const YAHOO_TO_FYERS_INDEX = {
+    "^NSEI": "NSE:NIFTY50-INDEX",
+    "^NSEBANK": "NSE:NIFTYBANK-INDEX",
+    "^CNXENERGY": "NSE:NIFTYENERGY-INDEX",
+    "^CNXIT": "NSE:NIFTYIT-INDEX",
+    "^CNXFMCG": "NSE:NIFTYFMCG-INDEX",
+    "^CNXINFRA": "NSE:NIFTYINFRA-INDEX",
+    "^CNXAUTO": "NSE:NIFTYAUTO-INDEX",
+    "^CNXPHARMA": "NSE:NIFTYPHARMA-INDEX",
+    "^CNXMETAL": "NSE:NIFTYMETAL-INDEX",
+};
+
+const formatDate = (d) => d.toISOString().slice(0, 10);
+const daysAgo = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d;
+};
+
 async function fetchIndexQuote(yahooSymbol) {
-    const encoded = encodeURIComponent(yahooSymbol);
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=5d`;
+    const fyersSymbol = YAHOO_TO_FYERS_INDEX[yahooSymbol];
+    if (!fyersSymbol) return null;
+
     try {
-        const res = await fetch(url, {
-            headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
-            signal: AbortSignal.timeout(6000),
-        });
-        if (!res.ok) return null;
+        const candles = await getCandles(fyersSymbol, "D", formatDate(daysAgo(8)), formatDate(new Date()));
+        if (candles.length < 2) return null;
 
-        const data = await res.json();
-        const result = data.chart?.result?.[0];
-        const q = result?.indicators?.quote?.[0];
-        if (!result?.timestamp || !q) return null;
-
-        const len = result.timestamp.length;
-        const closes = q.close.filter(Boolean);
-        const opens   = q.open;
-
-        const todayClose   = q.close[len - 1];
-        const todayOpen    = opens[len - 1];
-        const prevClose    = len > 1 ? q.close[len - 2] : todayOpen;
+        const todayClose = candles[candles.length - 1].close;
+        const todayOpen   = candles[candles.length - 1].open;
+        const prevClose   = candles[candles.length - 2].close;
 
         if (!todayClose || !todayOpen || !prevClose) return null;
 
@@ -31,8 +40,8 @@ async function fetchIndexQuote(yahooSymbol) {
         const pctFromOpen    = Math.round(((todayClose - todayOpen) / todayOpen) * 10000) / 100;
         const aboveDailyOpen = todayClose > todayOpen;
 
-        // 5-day trend: compare today vs 5 sessions ago
-        const oldest = closes[0];
+        const recent5 = candles.slice(-5);
+        const oldest = recent5[0]?.close;
         const trend5d = oldest
             ? Math.round(((todayClose - oldest) / oldest) * 10000) / 100
             : 0;
