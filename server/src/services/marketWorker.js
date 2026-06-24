@@ -1,154 +1,76 @@
 import redis from "../config/redis.js";
 import { STOCKS } from "../config/stocks.js";
 import logger from "../utils/logger.js";
+import { isMarketOpen } from "../utils/marketHours.js";
+import { getQuotes } from "./fyers/fyersREST.js";
+import { sanitiseTick, toFyersStockSymbol, FYERS_INDEX_SYMBOLS, INDICES } from "./fyers/smartWall.js";
 
-const INDICES = [
-    { symbol: "NIFTY50", yahooSymbol: "^NSEI", name: "NIFTY 50" },
-    { symbol: "SENSEX", yahooSymbol: "^BSESN", name: "SENSEX" },
-    { symbol: "BANKNIFTY", yahooSymbol: "^NSEBANK", name: "BANK NIFTY" },
-];
+const QUOTE_BATCH_SIZE = 50;
+const SLOW_LANE_INTERVAL_MS = 5 * 60 * 1000;
 
-const fetchChartMeta = async (yahooSymbol) => {
-    try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1d`;
-        const response = await fetch(url, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            },
-        });
+const flattenQuoteEntry = (entry) => ({ ...entry, ...entry.v });
 
-        if (!response.ok) return null;
+const cacheQuoteEntries = async (entries, keyPrefix) => {
+    const pipeline = redis.pipeline();
+    let updated = 0;
 
-        const data = await response.json();
-        const result = data.chart?.result?.[0];
-        if (!result) return null;
-
-        const meta = result.meta;
-        if (!meta || !meta.regularMarketPrice) return null;
-
-        const indicators = result.indicators?.quote?.[0];
-        let dayHigh = meta.regularMarketDayHigh || 0;
-        let dayLow = meta.regularMarketDayLow || 0;
-        let volume = meta.regularMarketVolume || 0;
-
-        if (indicators && indicators.high) {
-            const highs = indicators.high.filter((v) => v != null);
-            const lows = indicators.low.filter((v) => v != null);
-            if (highs.length > 0 && dayHigh === 0) dayHigh = Math.max(...highs);
-            if (lows.length > 0 && dayLow === 0) dayLow = Math.min(...lows);
+    for (const entry of entries) {
+        if (entry.s !== "ok" || !entry.v) continue;
+        const sanitised = sanitiseTick(flattenQuoteEntry(entry));
+        if (sanitised) {
+            pipeline.set(`${keyPrefix}:${sanitised.symbol}`, JSON.stringify(sanitised));
+            updated++;
         }
-
-        return {
-            price: meta.regularMarketPrice,
-            previousClose: meta.chartPreviousClose || meta.previousClose || 0,
-            open: meta.regularMarketOpen || 0,
-            dayHigh,
-            dayLow,
-            volume,
-            marketState: meta.marketState || "CLOSED",
-        };
-    } catch {
-        return null;
     }
+
+    await pipeline.exec();
+    return updated;
 };
 
 const fetchAndCacheStockPrices = async () => {
+    if (!isMarketOpen()) return;
+
     try {
-        const batchSize = 5;
-        const pipeline = redis.pipeline();
         let updated = 0;
 
-        for (let i = 0; i < STOCKS.length; i += batchSize) {
-            const batch = STOCKS.slice(i, i + batchSize);
-            const results = await Promise.all(
-                batch.map(async (stock) => {
-                    const meta = await fetchChartMeta(stock.yahooSymbol);
-                    if (!meta) return null;
+        for (let i = 0; i < STOCKS.length; i += QUOTE_BATCH_SIZE) {
+            const batch = STOCKS.slice(i, i + QUOTE_BATCH_SIZE);
+            const fyersSymbols = batch.map((stock) => toFyersStockSymbol(stock.symbol));
+            const response = await getQuotes(fyersSymbols);
 
-                    const change = meta.previousClose > 0
-                        ? Math.round(((meta.price - meta.previousClose) / meta.previousClose) * 10000) / 100
-                        : 0;
-
-                    return {
-                        symbol: stock.symbol,
-                        name: stock.name,
-                        price: meta.price,
-                        change: meta.price - meta.previousClose,
-                        changePercent: change,
-                        open: meta.open,
-                        previousClose: meta.previousClose,
-                        dayHigh: meta.dayHigh,
-                        dayLow: meta.dayLow,
-                        volume: meta.volume,
-                        marketState: meta.marketState,
-                        timestamp: Date.now(),
-                    };
-                })
-            );
-
-            for (const result of results) {
-                if (result) {
-                    pipeline.set(`stock:${result.symbol}`, JSON.stringify(result));
-                    updated++;
-                }
-            }
+            if (!response || response.s !== "ok" || !Array.isArray(response.d)) continue;
+            updated += await cacheQuoteEntries(response.d, "stock");
         }
 
-        await pipeline.exec();
-        logger.market("MarketWorker", `Updated ${updated}/${STOCKS.length} stock prices`);
+        logger.market("MarketWorker", `Slow-lane refresh: updated ${updated}/${STOCKS.length} stock prices`);
     } catch (err) {
         logger.error("MarketWorker", "Stock price fetch failed", { error: err.message });
     }
 };
 
 const fetchAndCacheIndices = async () => {
+    if (!isMarketOpen()) return;
+
     try {
-        const pipeline = redis.pipeline();
-        let updated = 0;
+        const fyersSymbols = INDICES.map((index) => FYERS_INDEX_SYMBOLS[index.symbol]).filter(Boolean);
+        const response = await getQuotes(fyersSymbols);
 
-        for (const index of INDICES) {
-            const meta = await fetchChartMeta(index.yahooSymbol);
-            if (!meta) continue;
+        if (!response || response.s !== "ok" || !Array.isArray(response.d)) return;
+        const updated = await cacheQuoteEntries(response.d, "index");
 
-            const change = meta.previousClose > 0
-                ? Math.round(((meta.price - meta.previousClose) / meta.previousClose) * 10000) / 100
-                : 0;
-
-            const data = {
-                symbol: index.symbol,
-                name: index.name,
-                price: meta.price,
-                change: meta.price - meta.previousClose,
-                changePercent: change,
-                timestamp: Date.now(),
-            };
-
-            pipeline.set(`index:${index.symbol}`, JSON.stringify(data));
-            updated++;
-        }
-
-        await pipeline.exec();
-        logger.market("MarketWorker", `Updated ${updated}/${INDICES.length} indices`);
+        logger.market("MarketWorker", `Slow-lane refresh: updated ${updated}/${INDICES.length} indices`);
     } catch (err) {
         logger.error("MarketWorker", "Index fetch failed", { error: err.message });
     }
 };
 
 const startMarketWorker = () => {
-    logger.info("MarketWorker", "Starting market data worker");
+    logger.info("MarketWorker", "Starting market data worker (fyers REST slow-lane backstop)");
     fetchAndCacheStockPrices();
     fetchAndCacheIndices();
-    setInterval(fetchAndCacheStockPrices, 5000);
-    setInterval(fetchAndCacheIndices, 10000);
+    setInterval(fetchAndCacheStockPrices, SLOW_LANE_INTERVAL_MS);
+    setInterval(fetchAndCacheIndices, SLOW_LANE_INTERVAL_MS);
 };
 
 export { INDICES };
 export default startMarketWorker;
-
-/*
- * background worker that keeps stock prices fresh. fetches from
- * yahoo finance every 5 seconds for stocks and every 10 for indices,
- * shoves it all into redis. also exports the INDICES array since
- * the indices route and websocket broadcaster need that list too.
- * index.js starts this on boot.
- */
