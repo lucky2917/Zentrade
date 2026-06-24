@@ -4,6 +4,8 @@ import logger from "../utils/logger.js";
 import { computeIndicators, computeIntradayContext } from "./technicalIndicators.js";
 import { fetchStockNews } from "./newsService.js";
 import { getMarketContext, describeMarketContext, macroSignal } from "./marketContext.js";
+import { getCandles } from "./fyers/fyersREST.js";
+import { toFyersStockSymbol } from "./fyers/smartWall.js";
 
 const CACHE_TTL = 1800;
 const GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions";
@@ -59,51 +61,27 @@ async function callGroqSafe(model, prompt, temperature, maxTokens) {
 
 // ─── Data fetch ───────────────────────────────────────────────────────────────
 
-async function fetchOHLCV(yahooSymbol) {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=1y`;
-    const res = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
-        signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error("Yahoo Finance unavailable");
+const daysAgo = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d;
+};
+const formatDate = (d) => d.toISOString().slice(0, 10);
 
-    const data = await res.json();
-    const result = data.chart?.result?.[0];
-    if (!result?.timestamp) return [];
-
-    const q = result.indicators.quote[0];
-    return result.timestamp
-        .map((_, i) => ({
-            open:   q.open[i],
-            high:   q.high[i],
-            low:    q.low[i],
-            close:  q.close[i],
-            volume: q.volume[i],
-        }))
+async function fetchOHLCV(symbol) {
+    const fyersSymbol = toFyersStockSymbol(symbol);
+    const candles = await getCandles(fyersSymbol, "D", formatDate(daysAgo(365)), formatDate(new Date()));
+    return candles
+        .map(({ open, high, low, close, volume }) => ({ open, high, low, close, volume }))
         .filter((c) => c.close != null);
 }
 
-async function fetchIntraday(yahooSymbol) {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=15m&range=5d`;
+async function fetchIntraday(symbol) {
     try {
-        const res = await fetch(url, {
-            headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
-            signal: AbortSignal.timeout(8000),
-        });
-        if (!res.ok) return [];
-        const data = await res.json();
-        const result = data.chart?.result?.[0];
-        if (!result?.timestamp) return [];
-        const q = result.indicators.quote[0];
-        return result.timestamp
-            .map((ts, i) => ({
-                ts,
-                open:   q.open[i],
-                high:   q.high[i],
-                low:    q.low[i],
-                close:  q.close[i],
-                volume: q.volume[i],
-            }))
+        const fyersSymbol = toFyersStockSymbol(symbol);
+        const candles = await getCandles(fyersSymbol, "15", formatDate(daysAgo(5)), formatDate(new Date()));
+        return candles
+            .map(({ time, open, high, low, close, volume }) => ({ ts: time, open, high, low, close, volume }))
             .filter((c) => c.close != null);
     } catch {
         return [];
@@ -440,8 +418,8 @@ export async function analyseStock(symbol) {
 
     // Fetch everything in parallel — daily + 15-min + news + macro all at once
     const [candles, candles15m, news, rawPrice, mktCtx] = await Promise.all([
-        fetchOHLCV(stockInfo.yahooSymbol),
-        fetchIntraday(stockInfo.yahooSymbol),
+        fetchOHLCV(symbol),
+        fetchIntraday(symbol),
         fetchStockNews(stockInfo.yahooSymbol),
         redis.get(`stock:${symbol}`),
         getMarketContext(stockInfo.sectorIndex, redis),
