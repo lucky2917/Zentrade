@@ -83,6 +83,55 @@ export function computeVWAP(candles, period = 20) {
     return sumV > 0 ? Math.round((sumPV / sumV) * 100) / 100 : null;
 }
 
+function computeATR(candles, period) {
+    if (candles.length < period + 1) return null;
+    const trueRanges = [];
+    for (let i = 1; i < candles.length; i++) {
+        const { high, low } = candles[i];
+        const prevClose = candles[i - 1].close;
+        trueRanges.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+    }
+    let atr = trueRanges.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < trueRanges.length; i++) {
+        atr = (atr * (period - 1) + trueRanges[i]) / period;
+    }
+    return atr;
+}
+
+export function computeSuperTrend(candles, period = 10, multiplier = 3) {
+    if (candles.length < period + 2) return null;
+    const atr = computeATR(candles, period);
+    if (atr == null) return null;
+
+    let finalUpperBand = null;
+    let finalLowerBand = null;
+    let trendUp = true;
+
+    for (let i = 1; i < candles.length; i++) {
+        const { high, low, close } = candles[i];
+        const mid = (high + low) / 2;
+        const basicUpperBand = mid + multiplier * atr;
+        const basicLowerBand = mid - multiplier * atr;
+        const prevClose = candles[i - 1].close;
+
+        const upperBand = finalUpperBand == null
+            ? basicUpperBand
+            : (basicUpperBand < finalUpperBand || prevClose > finalUpperBand ? basicUpperBand : finalUpperBand);
+        const lowerBand = finalLowerBand == null
+            ? basicLowerBand
+            : (basicLowerBand > finalLowerBand || prevClose < finalLowerBand ? basicLowerBand : finalLowerBand);
+
+        if (close > upperBand) trendUp = true;
+        else if (close < lowerBand) trendUp = false;
+
+        finalUpperBand = upperBand;
+        finalLowerBand = lowerBand;
+    }
+
+    const value = trendUp ? finalLowerBand : finalUpperBand;
+    return { value: Math.round(value * 100) / 100, bullish: trendUp };
+}
+
 export function computeIndicators(candles) {
     const closes  = candles.map((c) => c.close).filter((v) => v != null);
     const volumes = candles.map((c) => c.volume).filter((v) => v != null);
