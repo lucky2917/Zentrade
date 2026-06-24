@@ -7,6 +7,7 @@ import StockDetail from "./pages/StockDetail.jsx";
 import Portfolio from "./pages/Portfolio.jsx";
 import Orders from "./pages/Orders.jsx";
 import Watchlist from "./pages/Watchlist.jsx";
+import Reauth from "./pages/Reauth.jsx";
 import IndexTicker from "./components/IndexTicker.jsx";
 import MarketStatusBanner from "./components/MarketStatusBanner.jsx";
 import MobileNav from "./components/MobileNav.jsx";
@@ -26,6 +27,7 @@ const AppContent = () => {
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/watchlist" element={<Watchlist />} />
           <Route path="/orders" element={<Orders />} />
+          <Route path="/reauth" element={<Reauth />} />
         </Routes>
       </main>
       <MobileNav />

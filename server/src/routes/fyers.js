@@ -1,11 +1,16 @@
 import { Router } from "express";
-import { generateAuthCodeUrl, generateAccessToken } from "../services/fyers/fyersAuth.js";
+import { generateAuthCodeUrl, generateAccessToken, getTokenExpiry, isConfigured } from "../services/fyers/fyersAuth.js";
 import { connect as connectFyersWebSocket, stop as stopFyersWebSocket } from "../services/fyers/fyersWebSocket.js";
 import { sendReauthSuccessEmail } from "../services/fyers/authWatchdog.js";
 import logger from "../utils/logger.js";
 
 const router = Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+router.get("/status", async (req, res) => {
+    const expiresAt = await getTokenExpiry();
+    res.json({ configured: isConfigured(), expiresAt });
+});
 
 router.get("/reauth", (req, res) => {
     try {

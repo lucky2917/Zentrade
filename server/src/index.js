@@ -22,7 +22,10 @@ import startWebSocketBroadcaster from "./services/websocket.js";
 import { startSquareOffJob } from "./services/squareOff.js";
 import { initFyersAuth, isConfigured as isFyersConfigured } from "./services/fyers/fyersAuth.js";
 import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket } from "./services/fyers/fyersWebSocket.js";
-import { startAuthWatchdog } from "./services/fyers/authWatchdog.js";
+import { startWatchdog } from "./services/fyers/authWatchdog.js";
+import { startAllLanes } from "./services/fyers/laneManager.js";
+import { startPreMarketScanner } from "./services/fyers/preMarketScanner.js";
+import fyersRoutes from "./routes/fyers.js";
 import { STOCKS } from "./config/stocks.js";
 
 const app = express();
@@ -54,6 +57,7 @@ app.use("/api/indices", indicesRoutes);
 app.use("/api/market", marketRoutes);
 app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/fyers", fyersRoutes);
 
 app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: Date.now() });
@@ -65,10 +69,12 @@ const start = async () => {
     await initDB();
 
     await initFyersAuth();
-    startAuthWatchdog();
+    startWatchdog();
     if (isFyersConfigured()) {
         await connectFyersWebSocket();
         subscribeFyersWebSocket([...STOCKS.map((s) => s.symbol), ...INDICES.map((i) => i.symbol)]);
+        startAllLanes();
+        startPreMarketScanner();
     } else {
         logger.info("Server", "Fyers not configured, fast-lane websocket disabled");
     }
