@@ -7,28 +7,59 @@ import { toFyersStockSymbol } from "../services/fyers/smartWall.js";
 
 const router = Router();
 
+const YAHOO_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36";
+
+let yahooCrumbCache = null;
+
+async function getYahooCrumb() {
+    if (yahooCrumbCache && yahooCrumbCache.expiresAt > Date.now()) {
+        return yahooCrumbCache;
+    }
+
+    const cookieRes = await fetch("https://fc.yahoo.com", { headers: { "User-Agent": YAHOO_UA } });
+    const cookie = (cookieRes.headers.getSetCookie?.() || [])
+        .map((c) => c.split(";")[0])
+        .join("; ");
+
+    const crumbRes = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+        headers: { "User-Agent": YAHOO_UA, Cookie: cookie },
+    });
+    const crumb = await crumbRes.text();
+
+    yahooCrumbCache = { cookie, crumb, expiresAt: Date.now() + 60 * 60 * 1000 };
+    return yahooCrumbCache;
+}
+
 async function fetchYahooFundamentals(symbol) {
     const yahooSymbol = `${symbol}.NS`;
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1y`;
+    const { cookie, crumb } = await getYahooCrumb();
+    const modules = "defaultKeyStatistics,summaryDetail,assetProfile";
+    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(yahooSymbol)}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`;
 
-    const response = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
-    });
+    const response = await fetch(url, { headers: { "User-Agent": YAHOO_UA, Cookie: cookie } });
     if (!response.ok) return null;
 
     const data = await response.json();
-    const meta = data.chart?.result?.[0]?.meta;
+    const result = data.quoteSummary?.result?.[0];
+    if (!result) return null;
+
+    const sd = result.summaryDetail || {};
+    const ks = result.defaultKeyStatistics || {};
+    const ap = result.assetProfile || {};
+    const raw = (field) => (field && typeof field === "object" ? field.raw ?? null : field ?? null);
 
     return {
-        marketCap: meta?.marketCap || null,
-        peRatio: meta?.peRatio || null,
-        pbRatio: meta?.pbRatio || null,
-        eps: meta?.epsTrailingTwelveMonths || null,
-        dividendYield: meta?.dividendYield || null,
-        bookValue: meta?.bookValue || null,
-        fiftyTwoWeekHigh: meta?.fiftyTwoWeekHigh || null,
-        fiftyTwoWeekLow: meta?.fiftyTwoWeekLow || null,
-        avgVolume: meta?.averageDailyVolume3Month || null,
+        marketCap: raw(sd.marketCap),
+        peRatio: raw(sd.trailingPE),
+        pbRatio: raw(ks.priceToBook),
+        eps: raw(ks.trailingEps),
+        dividendYield: raw(sd.dividendYield) != null ? raw(sd.dividendYield) * 100 : null,
+        bookValue: raw(ks.bookValue),
+        fiftyTwoWeekHigh: raw(sd.fiftyTwoWeekHigh),
+        fiftyTwoWeekLow: raw(sd.fiftyTwoWeekLow),
+        avgVolume: raw(sd.averageVolume),
+        sector: ap.sector || null,
+        industry: ap.industry || null,
     };
 }
 
