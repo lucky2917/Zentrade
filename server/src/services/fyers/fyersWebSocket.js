@@ -96,6 +96,18 @@ const subscribe = (symbols) => {
     }
 };
 
+const subscribeRaw = (fyersSymbols) => {
+    const next = new Set([...subscribedSymbols, ...fyersSymbols]);
+    if (next.size > MAX_SYMBOLS) {
+        throw new Error(`Cannot subscribe: would exceed Fyers' ${MAX_SYMBOLS}-symbol limit per connection`);
+    }
+
+    subscribedSymbols = next;
+    if (socket && socket.isConnected && socket.isConnected()) {
+        socket.subscribe(fyersSymbols);
+    }
+};
+
 const unsubscribe = (symbols) => {
     const toRemove = new Set(
         symbols.map((s) => (STOCK_MAP.has(s) ? toFyersStockSymbol(s) : FYERS_INDEX_SYMBOLS[s]))
@@ -115,4 +127,4 @@ const stop = () => {
     if (socket) socket.close();
 };
 
-export { connect, subscribe, unsubscribe, stop };
+export { connect, subscribe, subscribeRaw, unsubscribe, stop };
