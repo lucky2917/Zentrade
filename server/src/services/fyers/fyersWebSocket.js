@@ -1,7 +1,7 @@
 import { fyersDataSocket } from "fyers-api-v3";
 import redis from "../../config/redis.js";
 import { getWebSocketToken } from "./fyersAuth.js";
-import { sanitiseTick } from "./smartWall.js";
+import { sanitiseTick, toFyersStockSymbol, FYERS_INDEX_SYMBOLS } from "./smartWall.js";
 import { STOCK_MAP } from "../../config/stocks.js";
 import logger from "../../utils/logger.js";
 
@@ -9,17 +9,6 @@ const MAX_SYMBOLS = 200;
 const PRICE_CHANNEL = "price:update";
 const MAX_BACKOFF_MS = 30000;
 const LOG_PATH = process.env.FYERS_WS_LOG_PATH || "./logs";
-
-const toFyersStockSymbol = (symbol) => `NSE:${symbol}-EQ`;
-
-const FYERS_INDEX_SYMBOLS = {
-    NIFTY50: "NSE:NIFTY50-INDEX",
-    BANKNIFTY: "NSE:NIFTYBANK-INDEX",
-    SENSEX: "BSE:SENSEX-INDEX",
-};
-const REVERSE_INDEX_SYMBOLS = Object.fromEntries(
-    Object.entries(FYERS_INDEX_SYMBOLS).map(([k, v]) => [v, k])
-);
 
 let socket = null;
 let subscribedSymbols = new Set();
@@ -126,4 +115,4 @@ const stop = () => {
     if (socket) socket.close();
 };
 
-export { connect, subscribe, unsubscribe, stop, toFyersStockSymbol, FYERS_INDEX_SYMBOLS, REVERSE_INDEX_SYMBOLS };
+export { connect, subscribe, unsubscribe, stop };

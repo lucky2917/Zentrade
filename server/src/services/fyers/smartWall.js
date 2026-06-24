@@ -1,9 +1,22 @@
 import { STOCK_MAP } from "../../config/stocks.js";
-import { INDICES } from "../marketWorker.js";
 import logger from "../../utils/logger.js";
+
+const INDICES = [
+    { symbol: "NIFTY50", yahooSymbol: "^NSEI", name: "NIFTY 50" },
+    { symbol: "SENSEX", yahooSymbol: "^BSESN", name: "SENSEX" },
+    { symbol: "BANKNIFTY", yahooSymbol: "^NSEBANK", name: "BANK NIFTY" },
+];
 
 const stripFyersSymbol = (fyersSymbol) =>
     fyersSymbol.replace(/^(NSE|BSE):/, "").replace(/-(EQ|INDEX)$/, "");
+
+const toFyersStockSymbol = (symbol) => `NSE:${symbol}-EQ`;
+
+const FYERS_INDEX_SYMBOLS = {
+    NIFTY50: "NSE:NIFTY50-INDEX",
+    BANKNIFTY: "NSE:NIFTYBANK-INDEX",
+    SENSEX: "BSE:SENSEX-INDEX",
+};
 
 const INDEX_MAP = new Map(INDICES.map((i) => [i.symbol, i]));
 
@@ -71,4 +84,4 @@ const sanitiseTick = (rawTick) => {
     return null;
 };
 
-export { sanitiseTick, stripFyersSymbol };
+export { sanitiseTick, stripFyersSymbol, toFyersStockSymbol, FYERS_INDEX_SYMBOLS, INDICES };
