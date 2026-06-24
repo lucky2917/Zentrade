@@ -33,7 +33,7 @@ router.get("/callback", async (req, res) => {
 
         await sendReauthSuccessEmail();
 
-        res.redirect(`${FRONTEND_URL}/dashboard?reauth=success`);
+        res.redirect(`${FRONTEND_URL}/reauth?reauth=success`);
     } catch (err) {
         logger.error("FyersRoutes", "Failed to exchange auth code", { error: err.message });
         res.redirect(`${FRONTEND_URL}/reauth?error=exchange_failed`);
