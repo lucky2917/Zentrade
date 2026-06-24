@@ -1,25 +1,26 @@
 import { Router } from "express";
 import redis from "../config/redis.js";
 import logger from "../utils/logger.js";
+import { getCandlesForRange } from "../services/fyers/fyersREST.js";
+import { toFyersStockSymbol } from "../services/fyers/smartWall.js";
 
 const router = Router();
 
-const RANGE_CONFIG = {
-    "1d": { interval: "1m", period: "1d", cacheTTL: 300 },
-    "5d": { interval: "5m", period: "5d", cacheTTL: 600 },
-    "1mo": { interval: "1h", period: "1mo", cacheTTL: 600 },
-    "3mo": { interval: "1d", period: "3mo", cacheTTL: 600 },
-    "1y": { interval: "1d", period: "1y", cacheTTL: 600 },
-    "5y": { interval: "1wk", period: "5y", cacheTTL: 600 },
+const CACHE_TTL = {
+    "1d": 300,
+    "5d": 600,
+    "1mo": 600,
+    "3mo": 600,
+    "1y": 600,
+    "5y": 600,
 };
 
 router.get("/:symbol", async (req, res) => {
     try {
         const { symbol } = req.params;
         const range = req.query.range || "1d";
-        const config = RANGE_CONFIG[range];
 
-        if (!config) {
+        if (!CACHE_TTL[range]) {
             return res.status(400).json({ error: "Invalid range. Supported: 1d, 5d, 1mo, 3mo, 1y, 5y" });
         }
 
@@ -30,41 +31,10 @@ router.get("/:symbol", async (req, res) => {
             return res.json(JSON.parse(cached));
         }
 
-        const yahooSymbol = `${symbol.toUpperCase()}.NS`;
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${config.interval}&range=${config.period}`;
+        const fyersSymbol = toFyersStockSymbol(symbol.toUpperCase());
+        const candles = await getCandlesForRange(fyersSymbol, range);
 
-        const response = await fetch(url, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            },
-        });
-
-        if (!response.ok) {
-            return res.status(502).json({ error: "Failed to fetch chart data from provider" });
-        }
-
-        const data = await response.json();
-        const result = data.chart?.result?.[0];
-
-        if (!result || !result.timestamp) {
-            return res.json([]);
-        }
-
-        const timestamps = result.timestamp;
-        const ohlcv = result.indicators.quote[0];
-
-        const candles = timestamps
-            .map((t, i) => ({
-                time: t,
-                open: ohlcv.open[i],
-                high: ohlcv.high[i],
-                low: ohlcv.low[i],
-                close: ohlcv.close[i],
-                volume: ohlcv.volume[i],
-            }))
-            .filter((c) => c.open != null && c.close != null);
-
-        await redis.setex(cacheKey, config.cacheTTL, JSON.stringify(candles));
+        await redis.setex(cacheKey, CACHE_TTL[range], JSON.stringify(candles));
 
         logger.info("ChartService", `Fetched ${candles.length} candles for ${symbol} (${range})`);
         res.json(candles);
@@ -75,11 +45,3 @@ router.get("/:symbol", async (req, res) => {
 });
 
 export default router;
-
-/*
- * chart data endpoint. takes a symbol and range (1d, 5d, 1mo etc)
- * and fetches OHLCV candle data from yahoo finance. caches everything
- * in redis so we dont hammer yahoo on every request. the frontend
- * StockDetail page hits this for rendering the candlestick chart.
- * mounted at /api/chart in index.js.
- */
