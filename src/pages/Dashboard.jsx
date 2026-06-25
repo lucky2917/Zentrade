@@ -1,58 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMarket } from "../context/MarketContext.jsx";
-
-const STOCK_LIST = [
-    { symbol: "RELIANCE", name: "Reliance Industries" },
-    { symbol: "TCS", name: "Tata Consultancy Services" },
-    { symbol: "HDFCBANK", name: "HDFC Bank" },
-    { symbol: "INFY", name: "Infosys" },
-    { symbol: "ICICIBANK", name: "ICICI Bank" },
-    { symbol: "HINDUNILVR", name: "Hindustan Unilever" },
-    { symbol: "SBIN", name: "State Bank of India" },
-    { symbol: "BHARTIARTL", name: "Bharti Airtel" },
-    { symbol: "ITC", name: "ITC" },
-    { symbol: "KOTAKBANK", name: "Kotak Mahindra Bank" },
-    { symbol: "LT", name: "Larsen & Toubro" },
-    { symbol: "HCLTECH", name: "HCL Technologies" },
-    { symbol: "AXISBANK", name: "Axis Bank" },
-    { symbol: "ASIANPAINT", name: "Asian Paints" },
-    { symbol: "MARUTI", name: "Maruti Suzuki" },
-    { symbol: "SUNPHARMA", name: "Sun Pharmaceutical" },
-    { symbol: "TITAN", name: "Titan Company" },
-    { symbol: "BAJFINANCE", name: "Bajaj Finance" },
-    { symbol: "DMART", name: "Avenue Supermarts" },
-    { symbol: "WIPRO", name: "Wipro" },
-    { symbol: "ULTRACEMCO", name: "UltraTech Cement" },
-    { symbol: "ONGC", name: "Oil & Natural Gas Corp" },
-    { symbol: "NTPC", name: "NTPC" },
-    { symbol: "TATAMOTORS", name: "Tata Motors" },
-    { symbol: "TATASTEEL", name: "Tata Steel" },
-    { symbol: "POWERGRID", name: "Power Grid Corp" },
-    { symbol: "M&M", name: "Mahindra & Mahindra" },
-    { symbol: "JSWSTEEL", name: "JSW Steel" },
-    { symbol: "ADANIENT", name: "Adani Enterprises" },
-    { symbol: "ADANIPORTS", name: "Adani Ports" },
-    { symbol: "TECHM", name: "Tech Mahindra" },
-    { symbol: "HDFCLIFE", name: "HDFC Life Insurance" },
-    { symbol: "BAJAJFINSV", name: "Bajaj Finserv" },
-    { symbol: "SBILIFE", name: "SBI Life Insurance" },
-    { symbol: "GRASIM", name: "Grasim Industries" },
-    { symbol: "DIVISLAB", name: "Divi's Laboratories" },
-    { symbol: "DRREDDY", name: "Dr. Reddy's Labs" },
-    { symbol: "CIPLA", name: "Cipla" },
-    { symbol: "EICHERMOT", name: "Eicher Motors" },
-    { symbol: "APOLLOHOSP", name: "Apollo Hospitals" },
-    { symbol: "COALINDIA", name: "Coal India" },
-    { symbol: "BPCL", name: "Bharat Petroleum" },
-    { symbol: "BRITANNIA", name: "Britannia Industries" },
-    { symbol: "NESTLEIND", name: "Nestle India" },
-    { symbol: "TATACONSUM", name: "Tata Consumer Products" },
-    { symbol: "HEROMOTOCO", name: "Hero MotoCorp" },
-    { symbol: "INDUSINDBK", name: "IndusInd Bank" },
-    { symbol: "HINDALCO", name: "Hindalco Industries" },
-    { symbol: "UPL", name: "UPL" },
-];
+import api from "../services/api.js";
 
 import { motion } from "framer-motion";
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, TrendingUp, TrendingDown, Activity, Zap } from "lucide-react";
@@ -71,6 +20,13 @@ const Dashboard = () => {
     const [search, setSearch] = useState("");
     const [sortBy, setSortBy] = useState("symbol");
     const [sortDir, setSortDir] = useState("asc");
+    const [stockList, setStockList] = useState([]);
+
+    useEffect(() => {
+        api.get("/stocks")
+            .then((res) => setStockList(res.data.map((s) => ({ symbol: s.symbol, name: s.name }))))
+            .catch(() => console.error("Failed to load stock list"));
+    }, []);
 
     const formatPrice = (price) => {
         if (!price) return "—";
@@ -82,7 +38,7 @@ const Dashboard = () => {
     };
 
     const filteredStocks = useMemo(() => {
-        let result = STOCK_LIST.filter(
+        let result = stockList.filter(
             (s) =>
                 s.symbol.toLowerCase().includes(search.toLowerCase()) ||
                 s.name.toLowerCase().includes(search.toLowerCase())
@@ -108,12 +64,12 @@ const Dashboard = () => {
         });
 
         return result;
-    }, [search, sortBy, sortDir, prices]);
+    }, [search, sortBy, sortDir, prices, stockList]);
 
     const movers = useMemo(() => {
         if (!prices) return { gainers: [], losers: [], active: [] };
-        
-        const stocksWithData = STOCK_LIST.map(s => {
+
+        const stocksWithData = stockList.map(s => {
             const p = prices[s.symbol];
             return {
                 ...s,
@@ -132,7 +88,7 @@ const Dashboard = () => {
             losers: sorted.filter(s => s.changePercent < 0).reverse().slice(0, 4),
             active: sortedByVolume.slice(0, 4),
         };
-    }, [prices]);
+    }, [prices, stockList]);
 
     const handleSort = (col) => {
         if (sortBy === col) {
