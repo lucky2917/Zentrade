@@ -10,7 +10,7 @@ router.get("/analyse/:symbol", auth, async (req, res) => {
 
     if (!STOCK_MAP.has(symbol)) {
         return res.status(400).json({
-            error: `${symbol} is not available on Zentrade. Only our 50 stocks are supported.`,
+            error: `${symbol} is not available on Zentrade.`,
         });
     }
 

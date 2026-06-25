@@ -7,7 +7,7 @@ export const swaggerSpec = {
         version: "1.0.0",
         description:
             "REST API for Zentrade — a real-time paper trading simulator for Indian stock markets. " +
-            "Users get ₹10 lakh virtual balance to practice intraday (5x leverage) and delivery trading on 50+ NSE stocks.",
+            "Users get ₹10 lakh virtual balance to practice intraday (5x leverage) and delivery trading on 200+ NSE stocks.",
     },
     servers: [{ url: serverUrl, description: "API Server" }],
     components: {
@@ -305,8 +305,8 @@ export const swaggerSpec = {
         "/api/stocks": {
             get: {
                 tags: ["Stocks"],
-                summary: "Get all 50+ NSE stocks with live prices",
-                description: "Returns cached prices from Redis. Updated every 3 seconds by the market worker.",
+                summary: "Get all 200+ NSE stocks with live prices",
+                description: "Returns cached prices from Redis, refreshed in real time over WebSocket and backstopped every 5 minutes by the market worker.",
                 responses: {
                     200: {
                         description: "List of stocks",

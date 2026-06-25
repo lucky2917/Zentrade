@@ -17,7 +17,7 @@ import indicesRoutes from "./routes/indices.js";
 import marketRoutes from "./routes/market.js";
 import watchlistRoutes from "./routes/watchlist.js";
 import aiRoutes from "./routes/ai.js";
-import startMarketWorker, { INDICES } from "./services/marketWorker.js";
+import startMarketWorker from "./services/marketWorker.js";
 import startWebSocketBroadcaster from "./services/websocket.js";
 import { startSquareOffJob } from "./services/squareOff.js";
 import { initFyersAuth, isConfigured as isFyersConfigured } from "./services/fyers/fyersAuth.js";
@@ -72,7 +72,7 @@ const start = async () => {
     startWatchdog();
     if (isFyersConfigured()) {
         await connectFyersWebSocket();
-        subscribeFyersWebSocket([...STOCKS.map((s) => s.symbol), ...INDICES.map((i) => i.symbol)]);
+        subscribeFyersWebSocket(STOCKS.map((s) => s.symbol));
         startAllLanes();
         startPreMarketScanner();
     } else {
