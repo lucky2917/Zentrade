@@ -3,10 +3,12 @@ import { STOCKS } from "../config/stocks.js";
 import logger from "../utils/logger.js";
 import { isMarketOpen } from "../utils/marketHours.js";
 import { getQuotes } from "./fyers/fyersREST.js";
+import { isRestAllowed } from "./fyers/rateLimiter.js";
 import { sanitiseTick, toFyersStockSymbol, FYERS_INDEX_SYMBOLS, INDICES } from "./fyers/smartWall.js";
 
 const QUOTE_BATCH_SIZE = 50;
 const SLOW_LANE_INTERVAL_MS = 5 * 60 * 1000;
+const PRICE_CHANNEL = "price:update";
 
 const flattenQuoteEntry = (entry) => ({ ...entry, ...entry.v });
 
@@ -18,7 +20,9 @@ const cacheQuoteEntries = async (entries, keyPrefix) => {
         if (entry.s !== "ok" || !entry.v) continue;
         const sanitised = sanitiseTick(flattenQuoteEntry(entry));
         if (sanitised) {
-            pipeline.set(`${keyPrefix}:${sanitised.symbol}`, JSON.stringify(sanitised));
+            const payload = JSON.stringify(sanitised);
+            pipeline.set(`${keyPrefix}:${sanitised.symbol}`, payload);
+            pipeline.publish(PRICE_CHANNEL, payload);
             updated++;
         }
     }
@@ -35,6 +39,13 @@ const fetchAndCacheStockPrices = async () => {
 
         for (let i = 0; i < STOCKS.length; i += QUOTE_BATCH_SIZE) {
             const batch = STOCKS.slice(i, i + QUOTE_BATCH_SIZE);
+
+            const allowed = await isRestAllowed();
+            if (!allowed) {
+                logger.error("MarketWorker", "Stock price refresh aborted, REST budget exhausted");
+                break;
+            }
+
             const fyersSymbols = batch.map((stock) => toFyersStockSymbol(stock.symbol));
             const response = await getQuotes(fyersSymbols);
 
@@ -52,6 +63,12 @@ const fetchAndCacheIndices = async () => {
     if (!isMarketOpen()) return;
 
     try {
+        const allowed = await isRestAllowed();
+        if (!allowed) {
+            logger.error("MarketWorker", "Index refresh aborted, REST budget exhausted");
+            return;
+        }
+
         const fyersSymbols = INDICES.map((index) => FYERS_INDEX_SYMBOLS[index.symbol]).filter(Boolean);
         const response = await getQuotes(fyersSymbols);
 

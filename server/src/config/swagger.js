@@ -241,8 +241,8 @@ export const swaggerSpec = {
                 },
                 responses: {
                     201: { description: "Account created", content: { "application/json": { schema: { $ref: "#/components/schemas/AuthResponse" } } } },
+                    400: { description: "Validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
                     409: { description: "Email already registered", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-                    422: { description: "Validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
                     500: { description: "Server error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
                 },
             },
@@ -602,7 +602,7 @@ export const swaggerSpec = {
             get: {
                 tags: ["Indices"],
                 summary: "Get NIFTY 50, SENSEX, and BANK NIFTY",
-                description: "Reads from Redis cache populated every 10 seconds by the market worker.",
+                description: "Reads from Redis cache, refreshed in real time over WebSocket and backstopped every 5 minutes by the market worker.",
                 responses: {
                     200: {
                         description: "Index data",

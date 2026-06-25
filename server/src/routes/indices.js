@@ -32,7 +32,7 @@ export default router;
 
 /*
  * returns nifty 50, sensex, and bank nifty data from redis.
- * the marketWorker populates this data every 10 seconds so
+ * the marketWorker refreshes this data every 5 minutes so
  * this route just reads whats already cached. mounted at
  * /api/indices in index.js.
  */

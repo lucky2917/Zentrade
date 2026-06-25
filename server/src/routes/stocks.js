@@ -138,14 +138,18 @@ router.get("/:symbol/details", async (req, res) => {
             return res.json(JSON.parse(cached));
         }
 
-        const yahooSymbol = `${symbol.toUpperCase()}.NS`;
+        const upperSymbol = symbol.toUpperCase();
+        const yahooSymbol = `${upperSymbol}.NS`;
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=5d`;
 
-        const response = await fetch(url, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            },
-        });
+        const [response, fundamentals] = await Promise.all([
+            fetch(url, {
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                },
+            }),
+            fetchYahooFundamentals(upperSymbol).catch(() => null),
+        ]);
 
         if (!response.ok) {
             return res.status(502).json({ error: "Failed to fetch stock details" });
@@ -153,13 +157,13 @@ router.get("/:symbol/details", async (req, res) => {
 
         const data = await response.json();
         const meta = data.chart?.result?.[0]?.meta;
-        const stockInfo = STOCKS.find((s) => s.symbol === symbol.toUpperCase());
+        const stockInfo = STOCKS.find((s) => s.symbol === upperSymbol);
 
-        const priceData = await redis.get(`stock:${symbol.toUpperCase()}`);
+        const priceData = await redis.get(`stock:${upperSymbol}`);
         const livePrice = priceData ? JSON.parse(priceData) : {};
 
         const details = {
-            symbol: symbol.toUpperCase(),
+            symbol: upperSymbol,
             companyName: stockInfo?.name || symbol,
             price: livePrice.price || meta?.regularMarketPrice || 0,
             change: livePrice.change || 0,
@@ -169,13 +173,13 @@ router.get("/:symbol/details", async (req, res) => {
             dayHigh: livePrice.dayHigh || meta?.regularMarketDayHigh || 0,
             dayLow: livePrice.dayLow || meta?.regularMarketDayLow || 0,
             volume: livePrice.volume || meta?.regularMarketVolume || 0,
-            marketCap: meta?.marketCap || null,
-            peRatio: meta?.peRatio || null,
-            dividendYield: meta?.dividendYield || null,
-            sector: meta?.sector || null,
-            industry: meta?.industry || null,
-            fiftyTwoWeekHigh: meta?.fiftyTwoWeekHigh || null,
-            fiftyTwoWeekLow: meta?.fiftyTwoWeekLow || null,
+            marketCap: fundamentals?.marketCap ?? null,
+            peRatio: fundamentals?.peRatio ?? null,
+            dividendYield: fundamentals?.dividendYield ?? null,
+            sector: fundamentals?.sector ?? null,
+            industry: fundamentals?.industry ?? null,
+            fiftyTwoWeekHigh: fundamentals?.fiftyTwoWeekHigh ?? meta?.fiftyTwoWeekHigh ?? null,
+            fiftyTwoWeekLow: fundamentals?.fiftyTwoWeekLow ?? meta?.fiftyTwoWeekLow ?? null,
             exchangeName: meta?.exchangeName || "NSE",
             currency: meta?.currency || "INR",
         };

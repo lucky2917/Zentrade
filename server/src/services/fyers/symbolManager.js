@@ -4,7 +4,7 @@ import logger from "../../utils/logger.js";
 import { isMarketOpen } from "../../utils/marketHours.js";
 import { getQuotes, getCandles } from "./fyersREST.js";
 import { stripFyersSymbol } from "./smartWall.js";
-import { getRateLimiter, isRestAllowed, trackCall } from "./rateLimiter.js";
+import { isRestAllowed } from "./rateLimiter.js";
 import { TIER_1, TIER_2, TIER_3 } from "../../config/watchlist.js";
 
 const TIER1_KEY = "fyers:tier1_symbols";
@@ -185,8 +185,7 @@ const fetchQuotesInBatches = async (symbols) => {
             break;
         }
 
-        const response = await getRateLimiter().schedule(() => getQuotes(batch));
-        await trackCall();
+        const response = await getQuotes(batch);
 
         if (!response || response.s !== "ok" || !Array.isArray(response.d)) continue;
 

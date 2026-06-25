@@ -4,7 +4,7 @@ import logger from "../../utils/logger.js";
 import { isMarketOpen } from "../../utils/marketHours.js";
 import { getQuotes, getMarketDepth } from "./fyersREST.js";
 import { sanitiseTick } from "./smartWall.js";
-import { getRateLimiter, isRestAllowed, trackCall, getCurrentMode } from "./rateLimiter.js";
+import { isRestAllowed, getCurrentMode } from "./rateLimiter.js";
 import { getCurrentTier1 } from "./symbolManager.js";
 import { screenSymbol } from "../screener.js";
 import { sendTradeAlert, passesAlertThreshold } from "../alertService.js";
@@ -39,8 +39,7 @@ const fetchAllQuotesInBatches = async (symbols) => {
             break;
         }
 
-        const response = await getRateLimiter().schedule(() => getQuotes(batch));
-        await trackCall();
+        const response = await getQuotes(batch);
         if (!response || response.s !== "ok" || !Array.isArray(response.d)) continue;
 
         results.push(...response.d);
@@ -88,8 +87,7 @@ const fetchDepthForBatch = async (batch) => {
         }
 
         try {
-            const response = await getRateLimiter().schedule(() => getMarketDepth(fyersSymbol));
-            await trackCall();
+            const response = await getMarketDepth(fyersSymbol);
             if (response && response.s === "ok") {
                 await redis.set(`depth:${toRootSymbol(fyersSymbol)}`, JSON.stringify(response), "EX", DEPTH_TTL);
             }

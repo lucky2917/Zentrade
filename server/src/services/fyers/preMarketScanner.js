@@ -2,7 +2,7 @@ import cron from "node-cron";
 import redis from "../../config/redis.js";
 import logger from "../../utils/logger.js";
 import { getQuotes } from "./fyersREST.js";
-import { getRateLimiter, isRestAllowed, trackCall } from "./rateLimiter.js";
+import { isRestAllowed } from "./rateLimiter.js";
 import { getCurrentTier1, getCurrentTier2 } from "./symbolManager.js";
 
 const QUOTE_BATCH_SIZE = 50;
@@ -39,8 +39,7 @@ const fetchQuotesInBatches = async (symbols) => {
             break;
         }
 
-        const response = await getRateLimiter().schedule(() => getQuotes(batch));
-        await trackCall();
+        const response = await getQuotes(batch);
         if (!response || response.s !== "ok" || !Array.isArray(response.d)) continue;
 
         results.push(...response.d);

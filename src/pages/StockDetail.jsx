@@ -286,7 +286,10 @@ const StockDetail = () => {
     const qty = parseInt(quantity) || 0;
     const estimatedCost = currentPrice * qty;
     const isIntraday = tradeMode === "INTRADAY";
-    const marginRequired = isIntraday ? estimatedCost / 5 : estimatedCost;
+    const spreadMultiplier = orderType === "BUY" ? 1.001 : 0.999;
+    const brokerageSigned = orderType === "BUY" ? 20 : -20;
+    const totalWithSpreadAndBrokerage = estimatedCost * spreadMultiplier + brokerageSigned;
+    const marginRequired = isIntraday ? totalWithSpreadAndBrokerage / 5 : totalWithSpreadAndBrokerage;
 
     const perfItems = performance ? [
         { label: "Open", value: formatINR(performance.open) },
@@ -548,7 +551,7 @@ const StockDetail = () => {
                             )}
                             <div className="summary-row total">
                                 <span>{isIntraday ? "Margin Required" : (orderType === "BUY" ? "Estimated Cost" : "Estimated Value")}</span>
-                                <span>{qty > 0 ? formatINR(marginRequired * (orderType === "BUY" ? 1.001 : 0.999) + (orderType === "BUY" ? 20 : -20)) : "—"}</span>
+                                <span>{qty > 0 ? formatINR(marginRequired) : "—"}</span>
                             </div>
                         </div>
 

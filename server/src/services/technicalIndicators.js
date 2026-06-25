@@ -134,12 +134,14 @@ export function computeSuperTrend(candles, period = 10, multiplier = 3) {
 
 export function computeIndicators(candles) {
     const closes  = candles.map((c) => c.close).filter((v) => v != null);
+    const highs   = candles.map((c) => c.high).filter((v) => v != null);
+    const lows    = candles.map((c) => c.low).filter((v) => v != null);
     const volumes = candles.map((c) => c.volume).filter((v) => v != null);
 
-    const yearHigh = Math.round(Math.max(...closes) * 100) / 100;
-    const yearLow  = Math.round(Math.min(...closes) * 100) / 100;
+    const yearHigh = highs.length ? Math.round(Math.max(...highs) * 100) / 100 : null;
+    const yearLow  = lows.length ? Math.round(Math.min(...lows) * 100) / 100 : null;
     const current  = closes[closes.length - 1];
-    const positionIn52W = yearHigh !== yearLow
+    const positionIn52W = yearHigh != null && yearLow != null && yearHigh !== yearLow
         ? Math.round(((current - yearLow) / (yearHigh - yearLow)) * 100)
         : 50;
 

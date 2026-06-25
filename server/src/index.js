@@ -25,6 +25,7 @@ import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket 
 import { startWatchdog } from "./services/fyers/authWatchdog.js";
 import { startAllLanes } from "./services/fyers/laneManager.js";
 import { startPreMarketScanner } from "./services/fyers/preMarketScanner.js";
+import { startSymbolManager } from "./services/fyers/symbolManager.js";
 import fyersRoutes from "./routes/fyers.js";
 import { STOCKS } from "./config/stocks.js";
 
@@ -73,6 +74,7 @@ const start = async () => {
     if (isFyersConfigured()) {
         await connectFyersWebSocket();
         subscribeFyersWebSocket(STOCKS.map((s) => s.symbol));
+        await startSymbolManager();
         startAllLanes();
         startPreMarketScanner();
     } else {

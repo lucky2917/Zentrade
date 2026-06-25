@@ -187,7 +187,8 @@ const Portfolio = () => {
         
         const byValue = [...allHoldings].sort((a, b) => b.currentValuePaise - a.currentValuePaise);
         const colors = ['#0a84ff', '#30d158', '#bf5af2', '#ff9f0a', '#ff375f', '#8e8e93'];
-        
+        const pctOfTotal = (val) => liveTotalCurrent > 0 ? (val / liveTotalCurrent) * 100 : 0;
+
         return (
             <motion.div variants={itemVariants} className="allocation-section glass-panel" style={{ marginTop: '1.5rem', marginBottom: '2rem', padding: '1.5rem' }}>
                 <h3 style={{ fontSize: '1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center' }}>
@@ -195,13 +196,13 @@ const Portfolio = () => {
                 </h3>
                 <div className="allocation-bar-wrapper" style={{ display: 'flex', height: '14px', borderRadius: '8px', overflow: 'hidden', marginBottom: '1.25rem', backgroundColor: 'var(--bg-secondary)' }}>
                     {byValue.map((h, i) => {
-                        const width = (h.currentValuePaise / liveTotalCurrent) * 100;
+                        const width = pctOfTotal(h.currentValuePaise);
                         return (
-                            <div 
+                            <div
                                 key={h.symbol}
                                 title={`${h.symbol}: ${width.toFixed(1)}%`}
-                                style={{ 
-                                    width: `${width}%`, 
+                                style={{
+                                    width: `${width}%`,
                                     backgroundColor: colors[i % colors.length],
                                     transition: 'width 0.5s ease',
                                     borderRight: i < byValue.length - 1 ? '2px solid var(--bg-card)' : 'none'
@@ -215,7 +216,7 @@ const Portfolio = () => {
                         <div key={h.symbol} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: colors[i % colors.length] }} />
                             <span style={{ color: 'var(--text-muted)' }}>{h.symbol}</span>
-                            <span style={{ fontWeight: '600' }}>{((h.currentValuePaise / liveTotalCurrent) * 100).toFixed(1)}%</span>
+                            <span style={{ fontWeight: '600' }}>{pctOfTotal(h.currentValuePaise).toFixed(1)}%</span>
                         </div>
                     ))}
                     {byValue.length > 5 && (

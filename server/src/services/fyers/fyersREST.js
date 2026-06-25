@@ -1,32 +1,6 @@
-import Bottleneck from "bottleneck";
 import { fyers, getAccessToken } from "./fyersAuth.js";
+import { getRateLimiter, isRestAllowed, trackCall } from "./rateLimiter.js";
 import logger from "../../utils/logger.js";
-
-const MINUTE_LIMIT = 200;
-const DAY_LIMIT = 100000;
-
-const limiter = new Bottleneck({
-    reservoir: 10,
-    reservoirRefreshAmount: 10,
-    reservoirRefreshInterval: 1000,
-    maxConcurrent: 10,
-});
-
-let minuteCount = 0;
-let dayCount = 0;
-setInterval(() => { minuteCount = 0; }, 60 * 1000);
-setInterval(() => { dayCount = 0; }, 24 * 60 * 60 * 1000);
-
-const trackUsage = () => {
-    minuteCount++;
-    dayCount++;
-    if (minuteCount === Math.floor(MINUTE_LIMIT * 0.8)) {
-        logger.warn("FyersREST", `Approaching per-minute rate limit: ${minuteCount}/${MINUTE_LIMIT}`);
-    }
-    if (dayCount === Math.floor(DAY_LIMIT * 0.8)) {
-        logger.warn("FyersREST", `Approaching daily rate limit: ${dayCount}/${DAY_LIMIT}`);
-    }
-};
 
 const ensureAuthenticated = async () => {
     const token = await getAccessToken();
@@ -34,11 +8,20 @@ const ensureAuthenticated = async () => {
     fyers.setAccessToken(token);
 };
 
-const call = (fn) => limiter.schedule(async () => {
-    await ensureAuthenticated();
-    trackUsage();
-    return fn();
-});
+const call = async (fn) => {
+    const allowed = await isRestAllowed();
+    if (!allowed) {
+        logger.error("FyersREST", "Call blocked, REST budget exhausted");
+        return null;
+    }
+
+    return getRateLimiter().schedule(async () => {
+        await ensureAuthenticated();
+        const result = await fn();
+        await trackCall();
+        return result;
+    });
+};
 
 const getQuotes = async (symbols) => {
     if (symbols.length > 50) {
