@@ -1,7 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMarket } from "../context/MarketContext.jsx";
+import { useToast } from "../context/ToastContext.jsx";
 import api from "../services/api.js";
+import { formatRupees } from "../utils/format.js";
+import { staggerContainer, fadeUpItem } from "../utils/motionVariants.js";
 
 import { motion } from "framer-motion";
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, TrendingUp, TrendingDown, Activity, Zap } from "lucide-react";
@@ -21,6 +24,7 @@ const Dashboard = () => {
     const [sortBy, setSortBy] = useState("symbol");
     const [sortDir, setSortDir] = useState("asc");
     const [stockList, setStockList] = useState([]);
+    const { addToast } = useToast();
 
     useEffect(() => {
         api.get("/stocks")
@@ -32,17 +36,10 @@ const Dashboard = () => {
                 changePercent: s.changePercent,
                 volume: s.volume,
             }))))
-            .catch(() => console.error("Failed to load stock list"));
-    }, []);
+            .catch(() => addToast("Failed to load stock list", "error"));
+    }, [addToast]);
 
-    const formatPrice = (price) => {
-        if (!price) return "—";
-        return new Intl.NumberFormat("en-IN", {
-            style: "currency",
-            currency: "INR",
-            maximumFractionDigits: 2,
-        }).format(price);
-    };
+    const formatPrice = (price) => (price ? formatRupees(price) : "—");
 
     const filteredStocks = useMemo(() => {
         let result = stockList.filter(
@@ -111,20 +108,8 @@ const Dashboard = () => {
         return sortDir === "asc" ? <ArrowUp size={14} className="sort-icon active" /> : <ArrowDown size={14} className="sort-icon active" />;
     };
 
-    const containerVariants = {
-        hidden: { opacity: 0 },
-        show: {
-            opacity: 1,
-            transition: {
-                staggerChildren: 0.05
-            }
-        }
-    };
-
-    const itemVariants = {
-        hidden: { opacity: 0, y: 10 },
-        show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
-    };
+    const containerVariants = staggerContainer;
+    const itemVariants = fadeUpItem;
 
     return (
         <motion.div

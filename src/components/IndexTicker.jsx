@@ -1,4 +1,5 @@
 import { useMarket } from "../context/MarketContext.jsx";
+import { formatNumber as formatPrice } from "../utils/format.js";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
 const INDEX_ORDER = [
@@ -6,14 +7,6 @@ const INDEX_ORDER = [
     { key: "SENSEX", label: "SENSEX" },
     { key: "BANKNIFTY", label: "BANK NIFTY" },
 ];
-
-const formatPrice = (val) => {
-    if (val == null) return "—";
-    return new Intl.NumberFormat("en-IN", {
-        maximumFractionDigits: 2,
-        minimumFractionDigits: 2,
-    }).format(val);
-};
 
 const IndexTicker = () => {
     const { indices } = useMarket();

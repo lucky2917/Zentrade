@@ -1,11 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { AlertTriangle, ShieldCheck, DollarSign, Hash } from "lucide-react";
 import api from "../services/api.js";
+import { formatRupees } from "../utils/format.js";
 
-const fmt = (n) =>
-    n != null
-        ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n)
-        : "—";
+const fmt = (n) => formatRupees(n, { fractionDigits: 0 });
 
 const RiskManager = ({ entry, stopLoss, action }) => {
     const [riskPct, setRiskPct]         = useState(1.0);

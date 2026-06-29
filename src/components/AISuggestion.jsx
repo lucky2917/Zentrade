@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import api from "../services/api.js";
 import RiskManager from "./RiskManager.jsx";
+import { formatRupees as fmt } from "../utils/format.js";
 
 const ACTION_CFG = {
     BUY:  { color: "#30d158", bg: "rgba(48,209,88,0.1)",   border: "rgba(48,209,88,0.35)",  Icon: TrendingUp  },
@@ -26,9 +27,6 @@ const MODE_CFG = {
     INTRADAY: { label: "MIS · Intraday · Square off by 3:15 PM", color: "#0a84ff" },
 };
 
-const fmt = (n) => n != null
-    ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n)
-    : "—";
 const pct = (n) => n != null ? (n > 0 ? "+" : "") + n.toFixed(2) + "%" : "—";
 const sign = (n) => n > 0 ? "+" : "";
 
