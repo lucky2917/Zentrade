@@ -277,16 +277,16 @@ export const swaggerSpec = {
             post: {
                 tags: ["Auth"],
                 summary: "Login or register with Google OAuth",
-                description: "Pass the access token from Google's sign-in popup. Creates a new account if the email doesn't exist.",
+                description: "Pass the authorization code from Google's auth-code popup flow. The server exchanges it server-side using the client secret. Creates a new account if the email doesn't exist.",
                 requestBody: {
                     required: true,
                     content: {
                         "application/json": {
                             schema: {
                                 type: "object",
-                                required: ["accessToken"],
+                                required: ["code"],
                                 properties: {
-                                    accessToken: { type: "string", example: "ya29.a0AfB_..." },
+                                    code: { type: "string", example: "4/0AY0e-g7..." },
                                 },
                             },
                         },
@@ -294,8 +294,8 @@ export const swaggerSpec = {
                 },
                 responses: {
                     200: { description: "Auth successful", content: { "application/json": { schema: { $ref: "#/components/schemas/AuthResponse" } } } },
-                    400: { description: "Missing or invalid token", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-                    401: { description: "Google token verification failed", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+                    400: { description: "Missing or invalid code", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+                    401: { description: "Google code exchange failed", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
                     500: { description: "Server error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
                 },
             },

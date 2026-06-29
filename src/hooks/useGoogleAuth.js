@@ -7,10 +7,10 @@ const useGoogleAuth = (onLoginSuccess) => {
     const { addToast } = useToast();
 
     return useGoogleLogin({
-        flow: "implicit",
-        onSuccess: async (tokenResponse) => {
+        flow: "auth-code",
+        onSuccess: async (codeResponse) => {
             try {
-                await googleLogin(tokenResponse.access_token);
+                await googleLogin(codeResponse.code);
                 addToast("Logged in successfully", "success");
                 onLoginSuccess?.();
             } catch (err) {

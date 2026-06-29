@@ -76,11 +76,29 @@ router.post("/login", validate({ email: [required], password: [required] }), asy
 
 router.post("/google", async (req, res) => {
     try {
-        const { accessToken } = req.body;
+        const { code } = req.body;
 
-        if (!accessToken) {
-            return res.status(400).json({ error: "Google access token is required" });
+        if (!code) {
+            return res.status(400).json({ error: "Google authorization code is required" });
         }
+
+        const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                code,
+                client_id: process.env.GOOGLE_CLIENT_ID,
+                client_secret: process.env.GOOGLE_CLIENT_SECRET,
+                redirect_uri: "postmessage",
+                grant_type: "authorization_code",
+            }),
+        });
+
+        if (!tokenRes.ok) {
+            return res.status(401).json({ error: "Invalid Google authorization code" });
+        }
+
+        const { access_token: accessToken } = await tokenRes.json();
 
         const profileRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
             headers: { Authorization: `Bearer ${accessToken}` },
@@ -151,7 +169,8 @@ export default router;
 
 /*
  * auth routes — handles signup, login, and google oauth. the /google
- * endpoint takes the access token from google's sign-in popup, hits
+ * endpoint takes the auth code from google's sign-in popup, exchanges
+ * it server-side for an access token using the client secret, hits
  * google's userinfo api to get the user's email and name, then either
  * finds or creates the user in our db. new users get ten lakh virtual
  * balance automatically. all three endpoints return a jwt + user object.

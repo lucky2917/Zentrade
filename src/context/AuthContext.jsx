@@ -47,8 +47,8 @@ const AuthProvider = ({ children }) => {
         return res.data;
     };
 
-    const googleLogin = async (accessToken) => {
-        const res = await api.post("/auth/google", { accessToken });
+    const googleLogin = async (code) => {
+        const res = await api.post("/auth/google", { code });
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("user", JSON.stringify(res.data.user));
         setToken(res.data.token);
