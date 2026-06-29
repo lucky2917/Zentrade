@@ -82,7 +82,7 @@ const startWatchdog = () => {
     cron.schedule("30 2 * * 1-5", () => sendReauthEmail("CRITICAL"), { timezone: "Asia/Kolkata" });
     cron.schedule("31 3 * * 1-5", resetDailyBudget, { timezone: "Asia/Kolkata" });
 
-    logger.info("AuthWatchdog", "Scheduled gmail reminders at 8pm, 11pm, 2:30am IST, daily REST budget reset at 3:31am");
+    logger.info("AuthWatchdog", "Scheduled email reminders at 8pm, 11pm, 2:30am IST, daily REST budget reset at 3:31am");
 };
 
 export { startWatchdog, sendReauthEmail, sendBudgetAlert, sendReauthSuccessEmail };

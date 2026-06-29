@@ -5,15 +5,15 @@ let transporter = null;
 
 const getTransporter = () => {
     if (transporter) return transporter;
-    if (!process.env.WATCHDOG_GMAIL_USER || !process.env.WATCHDOG_GMAIL_PASS) return null;
+    if (!process.env.WATCHDOG_EMAIL_USER || !process.env.WATCHDOG_EMAIL_PASS) return null;
 
     transporter = nodemailer.createTransport({
         host: "smtp.mail.me.com",
         port: 587,
         secure: false,
         auth: {
-            user: process.env.WATCHDOG_GMAIL_USER,
-            pass: process.env.WATCHDOG_GMAIL_PASS,
+            user: process.env.WATCHDOG_EMAIL_USER,
+            pass: process.env.WATCHDOG_EMAIL_PASS,
         },
     });
     return transporter;
@@ -22,12 +22,12 @@ const getTransporter = () => {
 const sendMail = async (to, subject, html) => {
     const transport = getTransporter();
     if (!transport) {
-        logger.warn("Mailer", "Gmail not configured, skipping email", { to, subject });
+        logger.warn("Mailer", "Email sender not configured, skipping email", { to, subject });
         return false;
     }
 
     try {
-        await transport.sendMail({ from: process.env.WATCHDOG_GMAIL_USER, to, subject, html });
+        await transport.sendMail({ from: process.env.WATCHDOG_EMAIL_USER, to, subject, html });
         logger.info("Mailer", `Email sent: ${subject}`);
         return true;
     } catch (err) {
