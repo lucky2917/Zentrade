@@ -1,155 +1,18 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { createChart, CandlestickSeries, HistogramSeries } from "lightweight-charts";
 import { useMarket } from "../context/MarketContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { useGoogleLogin } from "@react-oauth/google";
+import useGoogleAuth from "../hooks/useGoogleAuth.js";
 import api from "../services/api.js";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, TrendingUp, TrendingDown, Activity, BarChart2, Star } from "lucide-react";
+import { formatRupees as formatINR } from "../utils/format.js";
+import { motion } from "framer-motion";
 import AISuggestion from "../components/AISuggestion.jsx";
-
-const RANGES = [
-    { key: "1d", label: "1D" },
-    { key: "5d", label: "5D" },
-    { key: "1mo", label: "1M" },
-    { key: "3mo", label: "3M" },
-    { key: "1y", label: "1Y" },
-    { key: "5y", label: "5Y" },
-];
-
-const formatINR = (value) => {
-    if (value == null) return "—";
-    return new Intl.NumberFormat("en-IN", {
-        style: "currency",
-        currency: "INR",
-        maximumFractionDigits: 2,
-    }).format(value);
-};
-
-const formatVolume = (vol) => {
-    if (vol == null || vol === 0) return "—";
-    if (vol >= 10000000) return (vol / 10000000).toFixed(2) + " Cr";
-    if (vol >= 100000) return (vol / 100000).toFixed(2) + " L";
-    if (vol >= 1000) return (vol / 1000).toFixed(1) + " K";
-    return vol.toLocaleString("en-IN");
-};
-
-const formatMarketCap = (cap) => {
-    if (cap == null) return "—";
-    if (cap >= 10000000000000) return "₹" + (cap / 10000000000000).toFixed(2) + " L Cr";
-    if (cap >= 100000000000) return "₹" + (cap / 100000000000).toFixed(2) + " K Cr";
-    if (cap >= 10000000) return "₹" + (cap / 10000000).toFixed(2) + " Cr";
-    return "₹" + cap.toLocaleString("en-IN");
-};
-
-const ChartComponent = ({ chartData, selectedRange }) => {
-    const wrapperRef = useRef(null);
-    const chartInstanceRef = useRef(null);
-    const timerRef = useRef(null);
-
-    useEffect(() => {
-        if (!wrapperRef.current || chartData.length === 0) return;
-
-        const wrapper = wrapperRef.current;
-
-        if (chartInstanceRef.current) {
-            try {
-                window.removeEventListener("resize", chartInstanceRef.current._rh);
-                chartInstanceRef.current.remove();
-            } catch { }
-            chartInstanceRef.current = null;
-        }
-
-        const chartHost = document.createElement("div");
-        chartHost.style.width = "100%";
-        chartHost.style.height = "420px";
-        wrapper.innerHTML = "";
-        wrapper.appendChild(chartHost);
-
-        timerRef.current = setTimeout(() => {
-            if (!wrapper.isConnected) return;
-
-            const w = chartHost.offsetWidth || wrapper.offsetWidth || 600;
-
-            const chart = createChart(chartHost, {
-                width: w,
-                height: 420,
-                layout: {
-                    background: { color: "transparent" },
-                    textColor: "#636366",
-                },
-                grid: {
-                    vertLines: { color: "var(--border)" },
-                    horzLines: { color: "var(--border)" },
-                },
-                timeScale: {
-                    timeVisible: selectedRange === "1d" || selectedRange === "5d",
-                    secondsVisible: false,
-                },
-            });
-
-            const cs = chart.addSeries(CandlestickSeries, {
-                upColor: "#30d158",
-                downColor: "#ff3b30",
-                borderDownColor: "#ff3b30",
-                borderUpColor: "#30d158",
-                wickDownColor: "#ff3b30",
-                wickUpColor: "#30d158",
-            });
-
-            const vs = chart.addSeries(HistogramSeries, {
-                priceFormat: { type: "volume" },
-                priceScaleId: "vol",
-            });
-
-            chart.priceScale("vol").applyOptions({
-                scaleMargins: { top: 0.85, bottom: 0 },
-            });
-
-            const IST_OFFSET = 19800; // 5.5 hours in seconds for IST
-
-            const candles = chartData
-                .filter((c) => c.open != null && c.close != null && c.high != null && c.low != null)
-                .map((c) => ({ time: c.time + IST_OFFSET, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
-
-            const vols = chartData
-                .filter((c) => c.close != null && c.open != null)
-                .map((c) => ({
-                    time: c.time + IST_OFFSET,
-                    value: +(c.volume || 0),
-                    color: c.close >= c.open ? "rgba(48,209,88,0.3)" : "rgba(255,59,48,0.3)",
-                }));
-
-            cs.setData(candles);
-            vs.setData(vols);
-            chart.timeScale().fitContent();
-
-            const rh = () => {
-                if (chartInstanceRef.current && chartHost.offsetWidth > 0) {
-                    chartInstanceRef.current.applyOptions({ width: chartHost.offsetWidth });
-                }
-            };
-            window.addEventListener("resize", rh);
-            chart._rh = rh;
-            chartInstanceRef.current = chart;
-        }, 150);
-
-        return () => {
-            clearTimeout(timerRef.current);
-            if (chartInstanceRef.current) {
-                try {
-                    window.removeEventListener("resize", chartInstanceRef.current._rh);
-                    chartInstanceRef.current.remove();
-                } catch { }
-                chartInstanceRef.current = null;
-            }
-        };
-    }, [chartData, selectedRange]);
-
-    return <div ref={wrapperRef} style={{ width: "100%", minHeight: "420px" }}></div>;
-};
+import StockHeader from "../components/stockDetail/StockHeader.jsx";
+import PriceChart from "../components/stockDetail/PriceChart.jsx";
+import PerformanceSection from "../components/stockDetail/PerformanceSection.jsx";
+import FundamentalsSection from "../components/stockDetail/FundamentalsSection.jsx";
+import TradePanel from "../components/stockDetail/TradePanel.jsx";
 
 const StockDetail = () => {
     const { symbol } = useParams();
@@ -168,23 +31,10 @@ const StockDetail = () => {
     const [tradeLoading, setTradeLoading] = useState(false);
     const [tradeMode, setTradeMode] = useState("INTRADAY");
     const { addToast } = useToast();
-    const { token, googleLogin, refreshBalance } = useAuth();
+    const { token, refreshBalance } = useAuth();
     const [inWatchlist, setInWatchlist] = useState(false);
 
-    const handleGoogleAuth = useGoogleLogin({
-        flow: "implicit",
-        onSuccess: async (tokenResponse) => {
-            try {
-                await googleLogin(tokenResponse.access_token);
-                addToast("Logged in successfully", "success");
-            } catch (err) {
-                addToast(err.response?.data?.error || "Login failed", "error");
-            }
-        },
-        onError: () => {
-            addToast("Login cancelled", "error");
-        },
-    });
+    const handleGoogleAuth = useGoogleAuth();
 
     const toggleWatchlist = async () => {
         if (!token) {
@@ -202,7 +52,7 @@ const StockDetail = () => {
                 addToast("Added to watchlist", "success");
             }
         } catch (err) {
-            console.error("Watchlist action failed");
+            addToast(err.response?.data?.error || "Watchlist action failed", "error");
         }
     };
 
@@ -245,8 +95,8 @@ const StockDetail = () => {
                 const wlRes = await api.get("/watchlist");
                 setInWatchlist(wlRes.data.some((item) => item.symbol === symbol));
             }
-        } catch (err) {
-            console.error("Failed to fetch full stock data", err);
+        } catch {
+            addToast("Failed to load stock data", "error");
         } finally {
             setChartLoading(false);
         }
@@ -287,48 +137,6 @@ const StockDetail = () => {
         }
     };
 
-    const qty = parseInt(quantity) || 0;
-    const estimatedCost = currentPrice * qty;
-    const isIntraday = tradeMode === "INTRADAY";
-    const spreadMultiplier = orderType === "BUY" ? 1.001 : 0.999;
-    const brokerageSigned = orderType === "BUY" ? 20 : -20;
-    const totalWithSpreadAndBrokerage = estimatedCost * spreadMultiplier + brokerageSigned;
-    const marginRequired = isIntraday ? totalWithSpreadAndBrokerage / 5 : totalWithSpreadAndBrokerage;
-
-    const perfItems = performance ? [
-        { label: "Open", value: formatINR(performance.open) },
-        { label: "Previous Close", value: formatINR(performance.previousClose) },
-        { label: "Day High", value: formatINR(performance.dayHigh), positive: true },
-        { label: "Day Low", value: formatINR(performance.dayLow), negative: true },
-        { label: "52W High", value: formatINR(performance.fiftyTwoWeekHigh), positive: true },
-        { label: "52W Low", value: formatINR(performance.fiftyTwoWeekLow), negative: true },
-        { label: "Volume", value: formatVolume(performance.volume) },
-    ] : [];
-
-    const fundItems = fundamentals ? [
-        { label: "Market Cap", value: formatMarketCap(fundamentals.marketCap) },
-        { label: "P/E Ratio", value: fundamentals.peRatio != null ? fundamentals.peRatio.toFixed(2) : "—" },
-        { label: "P/B Ratio", value: fundamentals.pbRatio != null ? fundamentals.pbRatio.toFixed(2) : "—" },
-        { label: "EPS", value: fundamentals.eps != null ? formatINR(fundamentals.eps) : "—" },
-        { label: "Book Value", value: fundamentals.bookValue != null ? formatINR(fundamentals.bookValue) : "—" },
-        { label: "Div Yield", value: fundamentals.dividendYield != null ? fundamentals.dividendYield.toFixed(2) + "%" : "—" },
-        { label: "52W High", value: formatINR(fundamentals.fiftyTwoWeekHigh) },
-        { label: "52W Low", value: formatINR(fundamentals.fiftyTwoWeekLow) },
-    ] : [];
-
-    const containerVariants = {
-        hidden: { opacity: 0 },
-        show: {
-            opacity: 1,
-            transition: { staggerChildren: 0.05 }
-        }
-    };
-
-    const itemVariants = {
-        hidden: { opacity: 0, scale: 0.95 },
-        show: { opacity: 1, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } }
-    };
-
     return (
         <motion.div
             className="stock-detail"
@@ -336,254 +144,51 @@ const StockDetail = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
         >
-            <button className="btn-back" onClick={() => navigate("/")}>
-                <ArrowLeft size={16} /> Back to Markets
-            </button>
-
-            <div className="stock-detail-header">
-                <div className="stock-info">
-                    <div className="stock-name-row flex items-center gap-2">
-                        <h1>{symbol}</h1>
-                        <button
-                            className="btn-watchlist-toggle"
-                            onClick={toggleWatchlist}
-                            title={inWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
-                        >
-                            <Star 
-                                size={22} 
-                                style={{ color: inWatchlist ? 'var(--yellow)' : 'var(--text-muted)' }} 
-                                fill={inWatchlist ? 'var(--yellow)' : 'none'} 
-                            />
-                        </button>
-                        {companyName && <span className="company-name">{companyName}</span>}
-                    </div>
-                    <div className="stock-price-large">
-                        {currentPrice > 0 ? formatINR(currentPrice) : "Loading..."}
-                    </div>
-                    {currentData && (
-                        <div className={`stock-change-large ${isPositive ? "positive" : "negative"}`}>
-                            {isPositive ? <TrendingUp size={18} className="mr-2" /> : <TrendingDown size={18} className="mr-2" />}
-                            {isPositive ? "+" : ""}{formatINR(Math.abs(change))} ({isPositive ? "+" : ""}{changePercent.toFixed(2)}%)
-                        </div>
-                    )}
-                </div>
-            </div>
+            <StockHeader
+                symbol={symbol}
+                companyName={companyName}
+                currentPrice={currentPrice}
+                currentData={currentData}
+                change={change}
+                changePercent={changePercent}
+                isPositive={isPositive}
+                inWatchlist={inWatchlist}
+                onToggleWatchlist={toggleWatchlist}
+                onBack={() => navigate("/")}
+            />
 
             <div className="stock-detail-content">
                 <div className="stock-detail-left">
-                    <div className="chart-section">
-                        <div className="chart-header">
-                            <h3><BarChart2 size={16} className="mr-2" /> Price Chart</h3>
-                            <div className="range-selector">
-                                {RANGES.map((r) => (
-                                    <button
-                                        key={r.key}
-                                        className={`range-btn ${selectedRange === r.key ? "active" : ""}`}
-                                        onClick={() => handleRangeChange(r.key)}
-                                    >
-                                        {r.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        {chartLoading ? (
-                            <div className="chart-loading">Loading chart...</div>
-                        ) : chartData.length === 0 ? (
-                            <div className="chart-loading">No chart data available</div>
-                        ) : (
-                            <ChartComponent chartData={chartData} selectedRange={selectedRange} />
-                        )}
-                    </div>
+                    <PriceChart
+                        chartData={chartData}
+                        chartLoading={chartLoading}
+                        selectedRange={selectedRange}
+                        onRangeChange={handleRangeChange}
+                    />
 
-                    {perfItems.length > 0 && (
-                        <div className="performance-section">
-                            <h3><Activity size={16} className="mr-2" /> Performance</h3>
-                            <motion.div className="perf-grid" variants={containerVariants} initial="hidden" animate="show">
-                                {perfItems.map((item) => (
-                                    <motion.div variants={itemVariants} key={item.label} className="perf-item glass-panel">
-                                        <span className="perf-label">{item.label}</span>
-                                        <span className={`perf-value ${item.positive ? "positive" : ""} ${item.negative ? "negative" : ""}`}>
-                                            {item.value}
-                                        </span>
-                                    </motion.div>
-                                ))}
-                            </motion.div>
+                    <PerformanceSection performance={performance} currentPrice={currentPrice} />
 
-                            {performance.dayLow > 0 && performance.dayHigh > 0 && currentPrice > 0 && (
-                                <motion.div variants={itemVariants} className="price-range-bar">
-                                    <div className="range-bar-labels">
-                                        <span>{formatINR(performance.dayLow)}</span>
-                                        <span className="range-bar-title">Today's Range</span>
-                                        <span>{formatINR(performance.dayHigh)}</span>
-                                    </div>
-                                    <div className="range-bar-track">
-                                        <div
-                                            className="range-bar-fill"
-                                            style={{
-                                                width: `${Math.min(100, Math.max(0, ((currentPrice - performance.dayLow) / (performance.dayHigh - performance.dayLow)) * 100))}%`,
-                                            }}
-                                        ></div>
-                                        <div
-                                            className="range-bar-marker"
-                                            style={{
-                                                left: `${Math.min(100, Math.max(0, ((currentPrice - performance.dayLow) / (performance.dayHigh - performance.dayLow)) * 100))}%`,
-                                            }}
-                                        ></div>
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {performance.fiftyTwoWeekLow && performance.fiftyTwoWeekHigh && currentPrice > 0 && (
-                                <motion.div variants={itemVariants} className="price-range-bar">
-                                    <div className="range-bar-labels">
-                                        <span>{formatINR(performance.fiftyTwoWeekLow)}</span>
-                                        <span className="range-bar-title">52 Week Range</span>
-                                        <span>{formatINR(performance.fiftyTwoWeekHigh)}</span>
-                                    </div>
-                                    <div className="range-bar-track">
-                                        <div
-                                            className="range-bar-fill fifty-two"
-                                            style={{
-                                                width: `${Math.min(100, Math.max(0, ((currentPrice - performance.fiftyTwoWeekLow) / (performance.fiftyTwoWeekHigh - performance.fiftyTwoWeekLow)) * 100))}%`,
-                                            }}
-                                        ></div>
-                                        <div
-                                            className="range-bar-marker"
-                                            style={{
-                                                left: `${Math.min(100, Math.max(0, ((currentPrice - performance.fiftyTwoWeekLow) / (performance.fiftyTwoWeekHigh - performance.fiftyTwoWeekLow)) * 100))}%`,
-                                            }}
-                                        ></div>
-                                    </div>
-                                </motion.div>
-                            )}
-                        </div>
-                    )}
-
-                    {fundItems.length > 0 && (
-                        <div className="fundamentals-section">
-                            <h3><Activity size={16} className="mr-2" /> Fundamentals</h3>
-                            <motion.div className="fund-grid" variants={containerVariants} initial="hidden" animate="show">
-                                {fundItems.map((item) => (
-                                    <motion.div variants={itemVariants} key={item.label} className="fund-item">
-                                        <span className="fund-label">{item.label}</span>
-                                        <span className="fund-value">{item.value}</span>
-                                    </motion.div>
-                                ))}
-                            </motion.div>
-                        </div>
-                    )}
+                    <FundamentalsSection fundamentals={fundamentals} />
 
                     {token && (
                         <AISuggestion symbol={symbol} stockName={companyName} />
                     )}
                 </div>
 
-                <div className="trade-section">
-                    <h3>Place Order</h3>
-                    {token ? (
-                        <div className="trade-form">
-                        <div className="trade-mode-toggle">
-                            <button
-                                className={`mode-btn ${tradeMode === "INTRADAY" ? "active-intraday" : ""}`}
-                                onClick={() => setTradeMode("INTRADAY")}
-                            >
-                                MIS (Intraday)
-                            </button>
-                            <button
-                                className={`mode-btn ${tradeMode === "DELIVERY" ? "active-delivery" : ""}`}
-                                onClick={() => setTradeMode("DELIVERY")}
-                            >
-                                CNC (Delivery)
-                            </button>
-                        </div>
-
-                        {isIntraday && (
-                            <div className="leverage-badge">
-                                <span>5× Leverage</span> — Only 20% margin required
-                            </div>
-                        )}
-
-                        <div className="order-type-toggle">
-                            <button
-                                className={`toggle-btn ${orderType === "BUY" ? "active-buy" : ""}`}
-                                onClick={() => setOrderType("BUY")}
-                            >
-                                BUY
-                            </button>
-                            <button
-                                className={`toggle-btn ${orderType === "SELL" ? "active-sell" : ""}`}
-                                onClick={() => setOrderType("SELL")}
-                            >
-                                SELL
-                            </button>
-                        </div>
-
-                        <div className="form-group">
-                            <label>Quantity</label>
-                            <input
-                                type="number"
-                                value={quantity}
-                                onChange={(e) => setQuantity(e.target.value)}
-                                placeholder="Enter quantity"
-                                min="1"
-                                max="10000"
-                            />
-                        </div>
-
-                        <div className="trade-summary">
-                            <div className="summary-row">
-                                <span>Market Price</span>
-                                <span>{currentPrice > 0 ? formatINR(currentPrice) : "—"}</span>
-                            </div>
-                            <div className="summary-row">
-                                <span>Spread (0.1%)</span>
-                                <span>{qty > 0 ? (orderType === "BUY" ? "+" : "-") + formatINR(currentPrice * 0.001 * qty) : "—"}</span>
-                            </div>
-                            <div className="summary-row">
-                                <span>Brokerage</span>
-                                <span>{qty > 0 ? "₹20.00" : "—"}</span>
-                            </div>
-                            <div className="summary-row">
-                                <span>Quantity</span>
-                                <span>{qty}</span>
-                            </div>
-                            {isIntraday && qty > 0 && (
-                                <div className="summary-row leverage-row">
-                                    <span>Leverage</span>
-                                    <span>5×</span>
-                                </div>
-                            )}
-                            <div className="summary-row total">
-                                <span>{isIntraday ? "Margin Required" : (orderType === "BUY" ? "Estimated Cost" : "Estimated Value")}</span>
-                                <span>{qty > 0 ? formatINR(marginRequired) : "—"}</span>
-                            </div>
-                        </div>
-
-                        <button
-                            className={`btn-execute ${orderType === "BUY" ? "btn-buy" : "btn-sell"}`}
-                            onClick={handleTrade}
-                            disabled={tradeLoading || !quantity || qty <= 0}
-                        >
-                            {tradeLoading ? "Processing..." : `${orderType} ${symbol}`}
-                        </button>
-                    </div>
-                    ) : (
-                        <div className="trade-form auth-required-trade">
-                            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1rem", textAlign: "center" }}>
-                                You must be logged in to execute trades and manage orders.
-                            </p>
-                            <button className="btn-login-google" style={{ width: "100%", justifyContent: "center" }} onClick={() => handleGoogleAuth()}>
-                                <svg viewBox="0 0 24 24" width="16" height="16" style={{ marginRight: '6px' }}>
-                                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
-                                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                                </svg>
-                                <span>Continue with Google</span>
-                            </button>
-                        </div>
-                    )}
-                </div>
+                <TradePanel
+                    symbol={symbol}
+                    token={token}
+                    currentPrice={currentPrice}
+                    orderType={orderType}
+                    setOrderType={setOrderType}
+                    tradeMode={tradeMode}
+                    setTradeMode={setTradeMode}
+                    quantity={quantity}
+                    setQuantity={setQuantity}
+                    tradeLoading={tradeLoading}
+                    onTrade={handleTrade}
+                    onGoogleAuth={handleGoogleAuth}
+                />
             </div>
         </motion.div>
     );
