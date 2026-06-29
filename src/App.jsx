@@ -1,18 +1,20 @@
+import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { MarketProvider } from "./context/MarketContext.jsx";
 import Navbar from "./components/Navbar.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-import StockDetail from "./pages/StockDetail.jsx";
-import Portfolio from "./pages/Portfolio.jsx";
-import Orders from "./pages/Orders.jsx";
-import Watchlist from "./pages/Watchlist.jsx";
-import Reauth from "./pages/Reauth.jsx";
 import IndexTicker from "./components/IndexTicker.jsx";
 import MarketStatusBanner from "./components/MarketStatusBanner.jsx";
 import MobileNav from "./components/MobileNav.jsx";
 import PWAInstallPrompt from "./components/PWAInstallPrompt.jsx";
 import { ToastProvider } from "./context/ToastContext.jsx";
+
+const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
+const StockDetail = lazy(() => import("./pages/StockDetail.jsx"));
+const Portfolio = lazy(() => import("./pages/Portfolio.jsx"));
+const Orders = lazy(() => import("./pages/Orders.jsx"));
+const Watchlist = lazy(() => import("./pages/Watchlist.jsx"));
+const Reauth = lazy(() => import("./pages/Reauth.jsx"));
 
 const AppContent = () => {
   return (
@@ -21,14 +23,16 @@ const AppContent = () => {
       <IndexTicker />
       <MarketStatusBanner />
       <main className="main-content">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/stock/:symbol" element={<StockDetail />} />
-          <Route path="/portfolio" element={<Portfolio />} />
-          <Route path="/watchlist" element={<Watchlist />} />
-          <Route path="/orders" element={<Orders />} />
-          <Route path="/reauth" element={<Reauth />} />
-        </Routes>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/stock/:symbol" element={<StockDetail />} />
+            <Route path="/portfolio" element={<Portfolio />} />
+            <Route path="/watchlist" element={<Watchlist />} />
+            <Route path="/orders" element={<Orders />} />
+            <Route path="/reauth" element={<Reauth />} />
+          </Routes>
+        </Suspense>
       </main>
       <MobileNav />
       <PWAInstallPrompt />
