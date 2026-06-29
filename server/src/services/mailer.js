@@ -8,7 +8,9 @@ const getTransporter = () => {
     if (!process.env.WATCHDOG_GMAIL_USER || !process.env.WATCHDOG_GMAIL_PASS) return null;
 
     transporter = nodemailer.createTransport({
-        service: "gmail",
+        host: "smtp.mail.me.com",
+        port: 587,
+        secure: false,
         auth: {
             user: process.env.WATCHDOG_GMAIL_USER,
             pass: process.env.WATCHDOG_GMAIL_PASS,

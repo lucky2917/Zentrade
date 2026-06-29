@@ -162,6 +162,7 @@ const StockDetail = () => {
     const [performance, setPerformance] = useState(null);
     const [fundamentals, setFundamentals] = useState(null);
     const [companyName, setCompanyName] = useState("");
+    const [restPrice, setRestPrice] = useState(null);
     const [orderType, setOrderType] = useState("BUY");
     const [quantity, setQuantity] = useState("");
     const [tradeLoading, setTradeLoading] = useState(false);
@@ -206,9 +207,9 @@ const StockDetail = () => {
     };
 
     const currentData = prices[symbol];
-    const currentPrice = currentData?.price || 0;
-    const changePercent = currentData?.changePercent || 0;
-    const change = currentData?.change || 0;
+    const currentPrice = currentData?.price || restPrice?.price || 0;
+    const changePercent = currentData?.changePercent ?? restPrice?.changePercent ?? 0;
+    const change = currentData?.change ?? restPrice?.change ?? 0;
     const isPositive = changePercent >= 0;
 
     const fetchFullData = async (range) => {
@@ -220,6 +221,9 @@ const StockDetail = () => {
             if (data.companyName) setCompanyName(data.companyName);
             if (data.performance) setPerformance(data.performance);
             if (data.fundamentals) setFundamentals(data.fundamentals);
+            if (data.price != null) {
+                setRestPrice({ price: data.price, change: data.change, changePercent: data.changePercent });
+            }
 
             if (Array.isArray(data.chart) && data.chart.length > 0) {
                 setChartData(data.chart);

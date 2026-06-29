@@ -24,7 +24,14 @@ const Dashboard = () => {
 
     useEffect(() => {
         api.get("/stocks")
-            .then((res) => setStockList(res.data.map((s) => ({ symbol: s.symbol, name: s.name }))))
+            .then((res) => setStockList(res.data.map((s) => ({
+                symbol: s.symbol,
+                name: s.name,
+                price: s.price,
+                change: s.change,
+                changePercent: s.changePercent,
+                volume: s.volume,
+            }))))
             .catch(() => console.error("Failed to load stock list"));
     }, []);
 
@@ -51,13 +58,13 @@ const Dashboard = () => {
                     : b.symbol.localeCompare(a.symbol);
             }
             if (sortBy === "price") {
-                const priceA = prices[a.symbol]?.price || 0;
-                const priceB = prices[b.symbol]?.price || 0;
+                const priceA = prices[a.symbol]?.price || a.price || 0;
+                const priceB = prices[b.symbol]?.price || b.price || 0;
                 return sortDir === "asc" ? priceA - priceB : priceB - priceA;
             }
             if (sortBy === "change") {
-                const changeA = prices[a.symbol]?.change || 0;
-                const changeB = prices[b.symbol]?.change || 0;
+                const changeA = prices[a.symbol]?.change || a.change || 0;
+                const changeB = prices[b.symbol]?.change || b.change || 0;
                 return sortDir === "asc" ? changeA - changeB : changeB - changeA;
             }
             return 0;
@@ -73,10 +80,10 @@ const Dashboard = () => {
             const p = prices[s.symbol];
             return {
                 ...s,
-                price: p?.price || 0,
-                change: p?.change || 0,
-                changePercent: p?.changePercent ?? p?.change ?? 0,
-                volume: p?.volume || 0
+                price: p?.price || s.price || 0,
+                change: p?.change || s.change || 0,
+                changePercent: p?.changePercent ?? s.changePercent ?? p?.change ?? 0,
+                volume: p?.volume || s.volume || 0
             };
         }).filter(s => s.price > 0 && s.change !== 0);
 
@@ -230,8 +237,10 @@ const Dashboard = () => {
                         animate="show"
                     >
                         {filteredStocks.map((stock) => {
-                            const data = prices[stock.symbol];
-                            const change = data?.change || 0;
+                            const live = prices[stock.symbol];
+                            const price = live?.price || stock.price || null;
+                            const change = live?.change ?? stock.change ?? 0;
+                            const data = price != null ? { price, change } : null;
                             const isPositive = change >= 0;
 
                             return (
