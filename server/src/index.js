@@ -3,8 +3,11 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
-import { initDB } from "./config/db.js";
+import { pool, initDB } from "./config/db.js";
+import redis from "./config/redis.js";
 import logger from "./utils/logger.js";
 import { swaggerSpec } from "./config/swagger.js";
 import authRoutes from "./routes/auth.js";
@@ -21,9 +24,9 @@ import startMarketWorker from "./services/marketWorker.js";
 import startWebSocketBroadcaster from "./services/websocket.js";
 import { startSquareOffJob } from "./services/squareOff.js";
 import { initFyersAuth, isConfigured as isFyersConfigured } from "./services/fyers/fyersAuth.js";
-import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket } from "./services/fyers/fyersWebSocket.js";
+import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket, stop as stopFyersWebSocket } from "./services/fyers/fyersWebSocket.js";
 import { startWatchdog } from "./services/fyers/authWatchdog.js";
-import { startAllLanes } from "./services/fyers/laneManager.js";
+import { startAllLanes, stopAllLanes } from "./services/fyers/laneManager.js";
 import { startPreMarketScanner } from "./services/fyers/preMarketScanner.js";
 import { startSymbolManager } from "./services/fyers/symbolManager.js";
 import fyersRoutes from "./routes/fyers.js";
@@ -38,15 +41,37 @@ const io = new Server(server, {
     },
 });
 
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
     origin: [process.env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"]
 }));
 app.use(express.json());
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-    customSiteTitle: "Zentrade API Docs",
-    swaggerOptions: { persistAuthorization: true },
-}));
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use("/api", apiLimiter);
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    message: { error: "Too many attempts, please try again later" },
+});
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/signup", authLimiter);
+
+if (process.env.NODE_ENV !== "production") {
+    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+        customSiteTitle: "Zentrade API Docs",
+        swaggerOptions: { persistAuthorization: true },
+    }));
+}
 
 app.use("/api/auth", authRoutes);
 app.use("/api/stocks", stockRoutes);
@@ -91,3 +116,35 @@ const start = async () => {
 };
 
 start();
+
+let shuttingDown = false;
+const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info("Server", `${signal} received, shutting down gracefully`);
+
+    server.close(() => logger.info("Server", "HTTP server closed"));
+
+    try {
+        stopAllLanes();
+        stopFyersWebSocket();
+        await pool.end();
+        await redis.quit();
+    } catch (err) {
+        logger.error("Server", "Error during shutdown", { error: err.message });
+    }
+
+    setTimeout(() => process.exit(0), 2000);
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+process.on("uncaughtException", (err) => {
+    logger.error("Server", "Uncaught exception", { error: err.message, stack: err.stack });
+    process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+    logger.error("Server", "Unhandled rejection", { reason: reason?.message || reason });
+});
