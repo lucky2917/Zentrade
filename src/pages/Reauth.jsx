@@ -4,6 +4,8 @@ import axios from "axios";
 import { motion } from "framer-motion";
 import { ShieldCheck, ShieldAlert, Clock } from "lucide-react";
 
+const BACKEND_ORIGIN = (import.meta.env.VITE_API_URL || "/api").replace(/\/api\/?$/, "");
+
 const Reauth = () => {
     const [searchParams] = useSearchParams();
     const [status, setStatus] = useState(null);
@@ -15,7 +17,7 @@ const Reauth = () => {
 
     const fetchStatus = async () => {
         try {
-            const res = await axios.get("/fyers/status");
+            const res = await axios.get(`${BACKEND_ORIGIN}/fyers/status`);
             setStatus(res.data);
         } catch (err) {
             console.error("Failed to fetch fyers status");
@@ -95,7 +97,7 @@ const Reauth = () => {
                         </p>
                         <button
                             className="btn-primary"
-                            onClick={() => { window.location.href = "/fyers/reauth"; }}
+                            onClick={() => { window.location.href = `${BACKEND_ORIGIN}/fyers/reauth`; }}
                         >
                             🔐 Login with Fyers
                         </button>

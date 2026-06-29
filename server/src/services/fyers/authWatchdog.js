@@ -6,7 +6,7 @@ import { sendMail } from "../mailer.js";
 import { setBudgetAlertHandler, resetDailyBudget } from "./rateLimiter.js";
 
 const TOKEN_EXPIRY_KEY = "fyers:token_expiry";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const frontendUrl = () => process.env.FRONTEND_URL || "http://localhost:5173";
 
 const URGENCY_LEVELS = {
     FIRST: { emoji: "🔐", subjectSuffix: "Re-auth needed (7 hrs left)" },
@@ -30,7 +30,7 @@ const buildAlertHtml = (headline, remainingLabel) => `
   <h2 style="margin-top: 0;">${headline}</h2>
   <p>Token expires at <strong>3:00 AM IST</strong>.</p>
   <p>${remainingLabel}</p>
-  <a href="${FRONTEND_URL}/reauth" style="display: inline-block; margin: 24px 0; padding: 14px 28px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 6px; font-weight: bold;">Re-authenticate Now →</a>
+  <a href="${frontendUrl()}/reauth" style="display: inline-block; margin: 24px 0; padding: 14px 28px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 6px; font-weight: bold;">Re-authenticate Now →</a>
   <p style="color: #888; font-size: 12px; margin-top: 32px;">ZenTrade • Auto-generated alert</p>
 </div>
 `;

@@ -5,7 +5,7 @@ import { sendReauthSuccessEmail } from "../services/fyers/authWatchdog.js";
 import logger from "../utils/logger.js";
 
 const router = Router();
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const frontendUrl = () => process.env.FRONTEND_URL || "http://localhost:5173";
 
 router.get("/status", async (req, res) => {
     const expiresAt = await getTokenExpiry();
@@ -27,13 +27,13 @@ router.get("/callback", async (req, res) => {
 
     if (s !== "ok" || !authCode) {
         logger.error("FyersRoutes", "Callback missing auth_code or not ok", { query: req.query });
-        return res.redirect(`${FRONTEND_URL}/reauth?error=missing_code`);
+        return res.redirect(`${frontendUrl()}/reauth?error=missing_code`);
     }
 
     const stateValid = await verifyOAuthState(state);
     if (!stateValid) {
         logger.error("FyersRoutes", "Callback failed CSRF state check", { state });
-        return res.redirect(`${FRONTEND_URL}/reauth?error=invalid_state`);
+        return res.redirect(`${frontendUrl()}/reauth?error=invalid_state`);
     }
 
     try {
@@ -44,10 +44,10 @@ router.get("/callback", async (req, res) => {
 
         await sendReauthSuccessEmail();
 
-        res.redirect(`${FRONTEND_URL}/reauth?reauth=success`);
+        res.redirect(`${frontendUrl()}/reauth?reauth=success`);
     } catch (err) {
         logger.error("FyersRoutes", "Failed to exchange auth code", { error: err.message });
-        res.redirect(`${FRONTEND_URL}/reauth?error=exchange_failed`);
+        res.redirect(`${frontendUrl()}/reauth?error=exchange_failed`);
     }
 });
 
