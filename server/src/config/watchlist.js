@@ -99,7 +99,7 @@ export const TIER_2 = [
     "NSE:MTARTECH-EQ",
     "NSE:KIRLOSENG-EQ",
     "NSE:STEELCAST-EQ",
-    "NSE:RAMSYSCORP-EQ",
+    "NSE:RAMCOSYS-EQ",
     "NSE:TCS-EQ",
     "NSE:LT-EQ",
 ];
