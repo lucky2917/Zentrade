@@ -30,43 +30,56 @@ const squareOffAll = async () => {
 
             const { price } = JSON.parse(priceData);
             const executionPricePaise = toPaise(price);
-            const avgPricePaise = Number(holding.avg_price_paise);
-            const marginUsedPaise = Number(holding.margin_used_paise);
-            const pnlPaise = (executionPricePaise - avgPricePaise) * holding.quantity;
-            const creditPaise = marginUsedPaise + pnlPaise;
 
             const client = await pool.connect();
             try {
                 await client.query("BEGIN");
 
+                const locked = await client.query(
+                    "SELECT id, user_id, symbol, quantity, avg_price_paise, margin_used_paise FROM portfolio WHERE id = $1 AND quantity > 0 FOR UPDATE SKIP LOCKED",
+                    [holding.id]
+                );
+
+                if (locked.rows.length === 0) {
+                    await client.query("ROLLBACK");
+                    logger.info("SquareOff", `Skipped ${holding.symbol} for user ${holding.user_id}, already closed or locked`);
+                    continue;
+                }
+
+                const fresh = locked.rows[0];
+                const avgPricePaise = Number(fresh.avg_price_paise);
+                const marginUsedPaise = Number(fresh.margin_used_paise);
+                const pnlPaise = (executionPricePaise - avgPricePaise) * fresh.quantity;
+                const creditPaise = marginUsedPaise + pnlPaise;
+
                 if (creditPaise > 0) {
                     await client.query(
                         "UPDATE users SET balance_paise = balance_paise + $1 WHERE id = $2",
-                        [creditPaise, holding.user_id]
+                        [creditPaise, fresh.user_id]
                     );
                 } else {
                     await client.query(
                         "UPDATE users SET balance_paise = GREATEST(0, balance_paise + $1) WHERE id = $2",
-                        [creditPaise, holding.user_id]
+                        [creditPaise, fresh.user_id]
                     );
                 }
 
                 await client.query(
                     "DELETE FROM portfolio WHERE id = $1",
-                    [holding.id]
+                    [fresh.id]
                 );
 
                 await client.query(
                     "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-                    [holding.user_id, holding.symbol, "SELL", holding.quantity, executionPricePaise, Math.max(0, creditPaise), 0, "INTRADAY"]
+                    [fresh.user_id, fresh.symbol, "SELL", fresh.quantity, executionPricePaise, Math.max(0, creditPaise), 0, "INTRADAY"]
                 );
 
                 await client.query("COMMIT");
                 succeeded++;
 
-                logger.trade("SquareOff", `Squared off ${holding.symbol}`, {
-                    userId: holding.user_id,
-                    quantity: holding.quantity,
+                logger.trade("SquareOff", `Squared off ${fresh.symbol}`, {
+                    userId: fresh.user_id,
+                    quantity: fresh.quantity,
                     price,
                     avgPrice: avgPricePaise / 100,
                     pnl: pnlPaise / 100,

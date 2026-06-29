@@ -114,6 +114,15 @@ const migrations = [
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     `,
   },
+  {
+    id: 9,
+    name: "add_hot_path_indexes",
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_portfolio_user_id ON portfolio(user_id);
+      CREATE INDEX IF NOT EXISTS idx_orders_user_id_id ON orders(user_id, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_watchlist_user_id ON watchlist(user_id);
+    `,
+  },
 ];
 
 export async function runMigrations(pool) {

@@ -2,6 +2,7 @@ import { pool } from "../config/db.js";
 import redis from "../config/redis.js";
 import { toPaise } from "../utils/paise.js";
 import { STOCK_MAP } from "../config/stocks.js";
+import { isMarketOpen } from "../utils/marketHours.js";
 import logger from "../utils/logger.js";
 
 const BROKERAGE_PAISE = 2000;
@@ -9,6 +10,7 @@ const BUY_SPREAD = 1.001;
 const SELL_SPREAD = 0.999;
 const MAX_QUANTITY = 10000;
 const MAX_PRICE_AGE_MS = 15000;
+const MAX_DELIVERY_PRICE_AGE_MS = 30 * 60 * 1000;
 const INTRADAY_LEVERAGE = 5;
 
 const validatePriceData = (priceData, symbol, mode = "INTRADAY") => {
@@ -21,9 +23,10 @@ const validatePriceData = (priceData, symbol, mode = "INTRADAY") => {
         throw new Error("Invalid price data for " + symbol);
     }
 
-    if (mode === "INTRADAY") {
+    if (isMarketOpen()) {
         const age = Date.now() - parsed.timestamp;
-        if (age > MAX_PRICE_AGE_MS) {
+        const maxAge = mode === "INTRADAY" ? MAX_PRICE_AGE_MS : MAX_DELIVERY_PRICE_AGE_MS;
+        if (age > maxAge) {
             throw new Error("Price data is stale. Please try again.");
         }
     }

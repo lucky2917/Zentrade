@@ -6,8 +6,11 @@ import { fetchStockNews } from "./newsService.js";
 import { getMarketContext, describeMarketContext, macroSignal } from "./marketContext.js";
 import { getCandles } from "./fyers/fyersREST.js";
 import { toFyersStockSymbol } from "./fyers/smartWall.js";
+import { isMarketOpen } from "../utils/marketHours.js";
 
 const CACHE_TTL = 1800;
+const CACHE_TTL_MARKET_HOURS = 300;
+const getCacheTTL = () => (isMarketOpen() ? CACHE_TTL_MARKET_HOURS : CACHE_TTL);
 const GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions";
 
 const MODELS = {
@@ -484,7 +487,7 @@ export async function analyseStock(symbol) {
         cached: false,
     };
 
-    await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(output));
+    await redis.setex(cacheKey, getCacheTTL(), JSON.stringify(output));
     logger.info("AIEngine", `${symbol} → ${output.action} @ ₹${output.entry} | T: ₹${output.target} | SL: ₹${output.stopLoss} | ${consensus.label}`);
     return output;
 }

@@ -2,7 +2,7 @@ export const required = (v, f) =>
   v === undefined || v === null || v === "" ? `${f} is required` : null;
 
 export const isEmail = (v) =>
-  v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim())
+  v && !/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/.test(String(v).trim())
     ? "Invalid email format"
     : null;
 
