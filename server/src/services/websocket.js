@@ -9,7 +9,8 @@ const EMIT_INTERVAL_MS = 1000;
 const startWebSocketBroadcaster = (io) => {
     const stocks = {};
     const indices = {};
-    let dirty = false;
+    let dirtyStocks = new Set();
+    let dirtyIndices = new Set();
 
     const subscriber = redis.duplicate();
 
@@ -27,10 +28,11 @@ const startWebSocketBroadcaster = (io) => {
             const data = JSON.parse(message);
             if (STOCK_MAP.has(data.symbol)) {
                 stocks[data.symbol] = data;
+                dirtyStocks.add(data.symbol);
             } else {
                 indices[data.symbol] = data;
+                dirtyIndices.add(data.symbol);
             }
-            dirty = true;
         } catch (err) {
             logger.error("WebSocket", "Failed to parse price:update message", { error: err.message });
         }
@@ -45,9 +47,19 @@ const startWebSocketBroadcaster = (io) => {
     });
 
     setInterval(() => {
-        if (!dirty) return;
-        dirty = false;
-        io.emit("prices", buildSnapshot());
+        if (dirtyStocks.size === 0 && dirtyIndices.size === 0) return;
+
+        const delta = {
+            type: "market_update",
+            data: Object.fromEntries([...dirtyStocks].map((s) => [s, stocks[s]])),
+            indices: Object.fromEntries([...dirtyIndices].map((s) => [s, indices[s]])),
+            timestamp: Date.now(),
+            isMarketOpen: isMarketOpen(),
+        };
+        dirtyStocks = new Set();
+        dirtyIndices = new Set();
+
+        io.emit("prices", delta);
     }, EMIT_INTERVAL_MS);
 
     io.on("connection", (socket) => {

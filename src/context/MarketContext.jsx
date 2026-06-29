@@ -23,8 +23,8 @@ const MarketProvider = ({ children }) => {
         socket.on("disconnect", () => setConnected(false));
         socket.on("prices", (payload) => {
             if (payload.type === "market_update") {
-                setPrices(payload.data || {});
-                setIndices(payload.indices || {});
+                setPrices((prev) => ({ ...prev, ...(payload.data || {}) }));
+                setIndices((prev) => ({ ...prev, ...(payload.indices || {}) }));
                 if (payload.isMarketOpen !== undefined) {
                     setIsMarketOpen(payload.isMarketOpen);
                 }
