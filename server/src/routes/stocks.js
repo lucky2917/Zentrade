@@ -4,31 +4,9 @@ import { STOCKS } from "../config/stocks.js";
 import logger from "../utils/logger.js";
 import { getCandlesForRange } from "../services/fyers/fyersREST.js";
 import { toFyersStockSymbol } from "../services/fyers/smartWall.js";
+import { getYahooCrumb, YAHOO_UA } from "../services/yahooCrumb.js";
 
 const router = Router();
-
-const YAHOO_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36";
-
-let yahooCrumbCache = null;
-
-async function getYahooCrumb() {
-    if (yahooCrumbCache && yahooCrumbCache.expiresAt > Date.now()) {
-        return yahooCrumbCache;
-    }
-
-    const cookieRes = await fetch("https://fc.yahoo.com", { headers: { "User-Agent": YAHOO_UA } });
-    const cookie = (cookieRes.headers.getSetCookie?.() || [])
-        .map((c) => c.split(";")[0])
-        .join("; ");
-
-    const crumbRes = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
-        headers: { "User-Agent": YAHOO_UA, Cookie: cookie },
-    });
-    const crumb = await crumbRes.text();
-
-    yahooCrumbCache = { cookie, crumb, expiresAt: Date.now() + 60 * 60 * 1000 };
-    return yahooCrumbCache;
-}
 
 async function fetchYahooFundamentals(symbol) {
     const yahooSymbol = `${symbol}.NS`;
@@ -37,11 +15,21 @@ async function fetchYahooFundamentals(symbol) {
     const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(yahooSymbol)}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`;
 
     const response = await fetch(url, { headers: { "User-Agent": YAHOO_UA, Cookie: cookie } });
-    if (!response.ok) return null;
+    if (!response.ok) {
+        logger.warn("StocksAPI", "Yahoo fundamentals request failed", {
+            symbol,
+            status: response.status,
+            body: (await response.text()).slice(0, 300),
+        });
+        return null;
+    }
 
     const data = await response.json();
     const result = data.quoteSummary?.result?.[0];
-    if (!result) return null;
+    if (!result) {
+        logger.warn("StocksAPI", "Yahoo fundamentals response had no result", { symbol });
+        return null;
+    }
 
     const sd = result.summaryDetail || {};
     const ks = result.defaultKeyStatistics || {};
@@ -144,9 +132,7 @@ router.get("/:symbol/details", async (req, res) => {
 
         const [response, fundamentals] = await Promise.all([
             fetch(url, {
-                headers: {
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                },
+                headers: { "User-Agent": YAHOO_UA },
             }),
             fetchYahooFundamentals(upperSymbol).catch(() => null),
         ]);
