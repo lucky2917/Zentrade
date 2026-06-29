@@ -41,11 +41,11 @@ const io = new Server(server, {
     },
 });
 
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({ contentSecurityPolicy: process.env.NODE_ENV === "production" ? undefined : false }));
 app.use(cors({
     origin: [process.env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"]
 }));
-app.use(express.json());
+app.use(express.json({ limit: "10kb" }));
 
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -65,6 +65,14 @@ const authLimiter = rateLimit({
 });
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/signup", authLimiter);
+
+const fyersLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use("/fyers", fyersLimiter);
 
 if (process.env.NODE_ENV !== "production") {
     app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {

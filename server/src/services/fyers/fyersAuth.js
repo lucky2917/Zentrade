@@ -1,9 +1,12 @@
+import crypto from "crypto";
 import { fyersModel } from "fyers-api-v3";
 import redis from "../../config/redis.js";
 import logger from "../../utils/logger.js";
 
 const ACCESS_TOKEN_KEY = "fyers:access_token";
 const TOKEN_EXPIRY_KEY = "fyers:token_expiry";
+const OAUTH_STATE_KEY = "fyers:oauth_state";
+const OAUTH_STATE_TTL_SECONDS = 10 * 60;
 
 const clientId = process.env.FYERS_CLIENT_ID;
 const secretKey = process.env.FYERS_SECRET_KEY;
@@ -29,11 +32,20 @@ const nextThreeAmIST = (from = new Date()) => {
     return istExpiry.getTime() - driftMs;
 };
 
-const generateAuthCodeUrl = () => {
+const generateAuthCodeUrl = async () => {
     if (!isConfigured()) {
         throw new Error("Fyers credentials not configured (FYERS_CLIENT_ID/SECRET_KEY/REDIRECT_URI)");
     }
-    return fyers.generateAuthCode();
+    const state = crypto.randomBytes(16).toString("hex");
+    await redis.set(OAUTH_STATE_KEY, state, "EX", OAUTH_STATE_TTL_SECONDS);
+    return fyers.generateAuthCode({ state });
+};
+
+const verifyOAuthState = async (state) => {
+    const expected = await redis.get(OAUTH_STATE_KEY);
+    if (!expected || !state || expected !== state) return false;
+    await redis.del(OAUTH_STATE_KEY);
+    return true;
 };
 
 const generateAccessToken = async (authCode) => {
@@ -95,7 +107,7 @@ const initFyersAuth = async () => {
     const authCode = process.env.FYERS_AUTH_CODE;
     if (!authCode) {
         logger.warn("FyersAuth", "No cached token and no FYERS_AUTH_CODE set. Visit this URL to log in:", {
-            url: generateAuthCodeUrl(),
+            url: await generateAuthCodeUrl(),
         });
         return;
     }
@@ -111,6 +123,7 @@ export {
     fyers,
     initFyersAuth,
     generateAuthCodeUrl,
+    verifyOAuthState,
     generateAccessToken,
     getAccessToken,
     getWebSocketToken,
