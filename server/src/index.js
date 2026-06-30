@@ -102,22 +102,6 @@ const PORT = process.env.PORT || 5000;
 const start = async () => {
     await initDB();
 
-    await initFyersAuth();
-    startWatchdog();
-    if (isFyersConfigured()) {
-        try {
-            await connectFyersWebSocket();
-            subscribeFyersWebSocket(STOCKS.map((s) => s.symbol));
-            await startSymbolManager();
-            startAllLanes();
-            startPreMarketScanner();
-        } catch (err) {
-            logger.error("Server", "Fyers startup failed, continuing without live market data", { error: err.message });
-        }
-    } else {
-        logger.info("Server", "Fyers not configured, fast-lane websocket disabled");
-    }
-
     startMarketWorker();
     startWebSocketBroadcaster(io);
     startSquareOffJob();
@@ -125,6 +109,25 @@ const start = async () => {
     server.listen(PORT, () => {
         logger.info("Server", `Zentrade server running on port ${PORT}`);
     });
+
+    // Fyers depends on a live daily token and its SDK can fail in ways that
+    // don't surface as a catchable rejection here. Runs after listen() so a
+    // Fyers outage degrades market data only, not the whole API.
+    try {
+        await initFyersAuth();
+        startWatchdog();
+        if (isFyersConfigured()) {
+            await connectFyersWebSocket();
+            subscribeFyersWebSocket(STOCKS.map((s) => s.symbol));
+            await startSymbolManager();
+            startAllLanes();
+            startPreMarketScanner();
+        } else {
+            logger.info("Server", "Fyers not configured, fast-lane websocket disabled");
+        }
+    } catch (err) {
+        logger.error("Server", "Fyers startup failed, continuing without live market data", { error: err.message });
+    }
 };
 
 start();
