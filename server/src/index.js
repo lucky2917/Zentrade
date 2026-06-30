@@ -105,11 +105,15 @@ const start = async () => {
     await initFyersAuth();
     startWatchdog();
     if (isFyersConfigured()) {
-        await connectFyersWebSocket();
-        subscribeFyersWebSocket(STOCKS.map((s) => s.symbol));
-        await startSymbolManager();
-        startAllLanes();
-        startPreMarketScanner();
+        try {
+            await connectFyersWebSocket();
+            subscribeFyersWebSocket(STOCKS.map((s) => s.symbol));
+            await startSymbolManager();
+            startAllLanes();
+            startPreMarketScanner();
+        } catch (err) {
+            logger.error("Server", "Fyers startup failed, continuing without live market data", { error: err.message });
+        }
     } else {
         logger.info("Server", "Fyers not configured, fast-lane websocket disabled");
     }
