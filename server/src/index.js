@@ -33,6 +33,7 @@ import fyersRoutes from "./routes/fyers.js";
 import { STOCKS } from "./config/stocks.js";
 
 const app = express();
+app.set("trust proxy", 1);
 const server = createServer(app);
 const io = new Server(server, {
     cors: {
