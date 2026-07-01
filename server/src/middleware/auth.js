@@ -1,14 +1,23 @@
 import jwt from "jsonwebtoken";
+import redis from "../config/redis.js";
 
-const auth = (req, res, next) => {
-    const header = req.headers.authorization;
-    if (!header || !header.startsWith("Bearer ")) {
-        return res.status(401).json({ error: "No token provided" });
-    }
+const auth = async (req, res, next) => {
+    // Prefer HttpOnly cookie; fall back to Authorization header for API clients
+    const token = req.cookies?.token ||
+        (req.headers.authorization?.startsWith("Bearer ")
+            ? req.headers.authorization.split(" ")[1]
+            : null);
+
+    if (!token) return res.status(401).json({ error: "No token provided" });
 
     try {
-        const token = header.split(" ")[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        if (decoded.jti) {
+            const blocked = await redis.get(`jti:blocklist:${decoded.jti}`);
+            if (blocked) return res.status(401).json({ error: "Token revoked" });
+        }
+
         req.userId = decoded.userId;
         next();
     } catch {
@@ -17,10 +26,3 @@ const auth = (req, res, next) => {
 };
 
 export default auth;
-
-/*
- * jwt auth middleware. grabs the bearer token from request headers,
- * verifies it, and sticks the userId onto req so downstream handlers
- * know who's making the request. used by trade, orders, portfolio,
- * and watchlist routes — basically anything that needs a logged in user.
- */
