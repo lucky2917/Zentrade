@@ -2,6 +2,7 @@ import { Router } from "express";
 import auth from "../middleware/auth.js";
 import { pool } from "../config/db.js";
 import redis from "../config/redis.js";
+import { toPaise } from "../utils/paise.js";
 
 const router = Router();
 
@@ -30,9 +31,8 @@ router.get("/", auth, async (req, res) => {
 
         holdingsResult.rows.forEach((h, i) => {
             const priceData = priceResults[i][1] ? JSON.parse(priceResults[i][1]) : null;
-            const currentPricePaise = priceData
-                ? Math.round(priceData.price * 100)
-                : Number(h.avg_price_paise);
+            const livePrice = typeof priceData?.price === "number" ? priceData.price : null;
+            const currentPricePaise = livePrice != null ? toPaise(livePrice) : Number(h.avg_price_paise);
             const avgPricePaise = Number(h.avg_price_paise);
             const marginUsedPaise = Number(h.margin_used_paise);
             const investedPaise = avgPricePaise * h.quantity;

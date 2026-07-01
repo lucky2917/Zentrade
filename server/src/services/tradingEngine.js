@@ -11,6 +11,7 @@ const SELL_SPREAD = 0.999;
 const MAX_QUANTITY = 10000;
 const MAX_PRICE_AGE_MS = 15000;
 const MAX_DELIVERY_PRICE_AGE_MS = 30 * 60 * 1000;
+const MAX_CLOSED_DELIVERY_AGE_MS = 8 * 60 * 60 * 1000;
 const INTRADAY_LEVERAGE = 5;
 
 const validatePriceData = (priceData, symbol, mode = "INTRADAY") => {
@@ -23,12 +24,12 @@ const validatePriceData = (priceData, symbol, mode = "INTRADAY") => {
         throw new Error("Invalid price data for " + symbol);
     }
 
+    const age = Date.now() - parsed.timestamp;
     if (isMarketOpen()) {
-        const age = Date.now() - parsed.timestamp;
         const maxAge = mode === "INTRADAY" ? MAX_PRICE_AGE_MS : MAX_DELIVERY_PRICE_AGE_MS;
-        if (age > maxAge) {
-            throw new Error("Price data is stale. Please try again.");
-        }
+        if (age > maxAge) throw new Error("Price data is stale. Please try again.");
+    } else if (mode === "DELIVERY" && age > MAX_CLOSED_DELIVERY_AGE_MS) {
+        throw new Error("Price data is stale. Please try again.");
     }
 
     return parsed;
@@ -54,8 +55,7 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY") => {
     const priceData = await redis.get(`stock:${symbol}`);
     const { price } = validatePriceData(priceData, symbol, mode);
 
-    const executionPrice = Math.round(price * BUY_SPREAD * 100) / 100;
-    const executionPricePaise = toPaise(executionPrice);
+    const executionPricePaise = Math.round(price * BUY_SPREAD * 100);
     const totalCostPaise = executionPricePaise * quantity + BROKERAGE_PAISE;
 
     const isIntraday = mode === "INTRADAY";
@@ -125,7 +125,7 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY") => {
             symbol,
             quantity,
             mode,
-            executionPrice,
+            executionPrice: executionPricePaise / 100,
             ltp: price,
             spread: "0.1%",
             brokerage: "₹20",
@@ -174,8 +174,7 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
     const priceData = await redis.get(`stock:${symbol}`);
     const { price } = validatePriceData(priceData, symbol, mode);
 
-    const executionPrice = Math.round(price * SELL_SPREAD * 100) / 100;
-    const executionPricePaise = toPaise(executionPrice);
+    const executionPricePaise = Math.round(price * SELL_SPREAD * 100);
     const grossValuePaise = executionPricePaise * quantity;
     const isIntraday = mode === "INTRADAY";
 
@@ -242,7 +241,7 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
             symbol,
             quantity,
             mode,
-            executionPrice,
+            executionPrice: executionPricePaise / 100,
             ltp: price,
             spread: "0.1%",
             brokerage: "₹20",
