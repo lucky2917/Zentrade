@@ -4,6 +4,8 @@ import redis from "../config/redis.js";
 import { toPaise } from "../utils/paise.js";
 import logger from "../utils/logger.js";
 
+const BROKERAGE_PAISE = 2000;
+
 const squareOffAll = async () => {
     logger.info("SquareOff", "Starting auto square-off for INTRADAY positions");
 
@@ -50,7 +52,7 @@ const squareOffAll = async () => {
                 const avgPricePaise = Number(fresh.avg_price_paise);
                 const marginUsedPaise = Number(fresh.margin_used_paise);
                 const pnlPaise = (executionPricePaise - avgPricePaise) * fresh.quantity;
-                const creditPaise = marginUsedPaise + pnlPaise;
+                const creditPaise = marginUsedPaise + pnlPaise - BROKERAGE_PAISE;
 
                 if (creditPaise > 0) {
                     await client.query(
@@ -71,7 +73,7 @@ const squareOffAll = async () => {
 
                 await client.query(
                     "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-                    [fresh.user_id, fresh.symbol, "SELL", fresh.quantity, executionPricePaise, Math.max(0, creditPaise), 0, "INTRADAY"]
+                    [fresh.user_id, fresh.symbol, "SELL", fresh.quantity, executionPricePaise, Math.max(0, creditPaise), BROKERAGE_PAISE, "INTRADAY"]
                 );
 
                 await client.query("COMMIT");
