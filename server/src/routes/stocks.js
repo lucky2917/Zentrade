@@ -1,6 +1,6 @@
 import { Router } from "express";
 import redis from "../config/redis.js";
-import { STOCKS } from "../config/stocks.js";
+import { STOCKS, STOCK_MAP } from "../config/stocks.js";
 import logger from "../utils/logger.js";
 import { getCandlesForRange } from "../services/fyers/fyersREST.js";
 import { toFyersStockSymbol } from "../services/fyers/smartWall.js";
@@ -102,14 +102,12 @@ router.get("/", async (req, res) => {
 router.get("/:symbol", async (req, res) => {
     try {
         const { symbol } = req.params;
-        const data = await redis.get(`stock:${symbol.toUpperCase()}`);
+        const upper = symbol.toUpperCase();
+        if (!STOCK_MAP.has(upper)) return res.status(404).json({ error: "Unknown symbol" });
+        const data = await redis.get(`stock:${upper}`);
 
-        if (!data) {
-            return res.status(404).json({ error: "Stock not found" });
-        }
-
-        const parsed = JSON.parse(data);
-        res.json(parsed);
+        if (!data) return res.status(404).json({ error: "Stock not found" });
+        res.json(JSON.parse(data));
     } catch (err) {
         logger.error("StocksAPI", "Failed to fetch stock", { error: err.message });
         res.status(500).json({ error: "Failed to fetch stock" });
@@ -119,14 +117,12 @@ router.get("/:symbol", async (req, res) => {
 router.get("/:symbol/details", async (req, res) => {
     try {
         const { symbol } = req.params;
-        const cacheKey = `details:${symbol.toUpperCase()}`;
-        const cached = await redis.get(cacheKey);
-
-        if (cached) {
-            return res.json(JSON.parse(cached));
-        }
-
         const upperSymbol = symbol.toUpperCase();
+        if (!STOCK_MAP.has(upperSymbol)) return res.status(404).json({ error: "Unknown symbol" });
+        const cacheKey = `details:${upperSymbol}`;
+        const cached = await redis.get(cacheKey);
+        if (cached) return res.json(JSON.parse(cached));
+
         const yahooSymbol = `${upperSymbol}.NS`;
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=5d`;
 
@@ -182,22 +178,19 @@ router.get("/:symbol/details", async (req, res) => {
 router.get("/:symbol/fundamentals", async (req, res) => {
     try {
         const { symbol } = req.params;
-        const cacheKey = `fundamentals:${symbol.toUpperCase()}`;
+        const upper = symbol.toUpperCase();
+        if (!STOCK_MAP.has(upper)) return res.status(404).json({ error: "Unknown symbol" });
+        const cacheKey = `fundamentals:${upper}`;
         const cached = await redis.get(cacheKey);
+        if (cached) return res.json(JSON.parse(cached));
 
-        if (cached) {
-            return res.json(JSON.parse(cached));
-        }
+        const yahooFund = await fetchYahooFundamentals(upper);
+        if (!yahooFund) return res.status(502).json({ error: "Failed to fetch fundamentals" });
 
-        const yahooFund = await fetchYahooFundamentals(symbol.toUpperCase());
-        if (!yahooFund) {
-            return res.status(502).json({ error: "Failed to fetch fundamentals" });
-        }
-
-        const stockInfo = STOCKS.find((s) => s.symbol === symbol.toUpperCase());
+        const stockInfo = STOCKS.find((s) => s.symbol === upper);
 
         const fundamentals = {
-            symbol: symbol.toUpperCase(),
+            symbol: upper,
             companyName: stockInfo?.name || symbol,
             ...yahooFund,
             roe: null,
@@ -216,22 +209,21 @@ router.get("/:symbol/fundamentals", async (req, res) => {
 router.get("/:symbol/performance", async (req, res) => {
     try {
         const { symbol } = req.params;
-        const cacheKey = `perf:${symbol.toUpperCase()}`;
+        const upper = symbol.toUpperCase();
+        if (!STOCK_MAP.has(upper)) return res.status(404).json({ error: "Unknown symbol" });
+        const cacheKey = `perf:${upper}`;
         const cached = await redis.get(cacheKey);
+        if (cached) return res.json(JSON.parse(cached));
 
-        if (cached) {
-            return res.json(JSON.parse(cached));
-        }
-
-        const priceData = await redis.get(`stock:${symbol.toUpperCase()}`);
+        const priceData = await redis.get(`stock:${upper}`);
         const live = priceData ? JSON.parse(priceData) : {};
 
-        const fyersSymbol = toFyersStockSymbol(symbol.toUpperCase());
+        const fyersSymbol = toFyersStockSymbol(upper);
         const yearCandles = await getCandlesForRange(fyersSymbol, "1y");
-        const performance = computePerformance(live, yearCandles);
+        const perf = computePerformance(live, yearCandles);
 
-        await redis.setex(cacheKey, 300, JSON.stringify(performance));
-        res.json(performance);
+        await redis.setex(cacheKey, 300, JSON.stringify(perf));
+        res.json(perf);
     } catch (err) {
         logger.error("StocksAPI", "Failed to fetch performance", { error: err.message });
         res.status(500).json({ error: "Failed to fetch performance data" });
@@ -242,6 +234,7 @@ router.get("/:symbol/full", async (req, res) => {
     try {
         const { symbol } = req.params;
         const upperSymbol = symbol.toUpperCase();
+        if (!STOCK_MAP.has(upperSymbol)) return res.status(404).json({ error: "Unknown symbol" });
         const range = req.query.range || "1d";
 
         const priceData = await redis.get(`stock:${upperSymbol}`);
