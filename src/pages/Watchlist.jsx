@@ -14,7 +14,7 @@ import { useMarket } from "../context/MarketContext.jsx";
 const Watchlist = () => {
     const [watchlist, setWatchlist] = useState([]);
     const [loading, setLoading] = useState(true);
-    const { token } = useAuth();
+    const { user } = useAuth();
     const { addToast } = useToast();
     const navigate = useNavigate();
     const { prices } = useMarket();
@@ -22,7 +22,7 @@ const Watchlist = () => {
     const handleGoogleAuth = useGoogleAuth();
 
     const fetchWatchlist = async () => {
-        if (!token) {
+        if (!user) {
             setLoading(false);
             return;
         }
@@ -38,7 +38,7 @@ const Watchlist = () => {
 
     useEffect(() => {
         fetchWatchlist();
-    }, [token]);
+    }, [user]);
 
     const removeFromWatchlist = async (e, symbol) => {
         e.stopPropagation();
@@ -52,7 +52,7 @@ const Watchlist = () => {
 
     const formatPrice = formatRupees;
 
-    if (!token) {
+    if (!user) {
         return (
             <motion.div
                 className="watchlist-page"

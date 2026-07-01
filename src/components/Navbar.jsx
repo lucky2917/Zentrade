@@ -9,15 +9,15 @@ import { Sun, Moon, LogOut, Activity, Briefcase, ListOrdered, Wallet, Star } fro
 import { useToast } from "../context/ToastContext.jsx";
 
 const Navbar = () => {
-    const { user, token, logout } = useAuth();
+    const { user, logout } = useAuth();
     const { connected } = useMarket();
     const { theme, toggleTheme } = useTheme();
     const navigate = useNavigate();
     const location = useLocation();
     const { addToast } = useToast();
 
-    const handleLogout = () => {
-        logout();
+    const handleLogout = async () => {
+        await logout();
         navigate("/");
         addToast("Logged out successfully", "success");
     };
@@ -59,7 +59,7 @@ const Navbar = () => {
                     {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                 </button>
 
-                {token && user ? (
+                {user ? (
                     <>
                         <div className="navbar-user-info">
                             {user.name && <span className="navbar-username">{user.name}</span>}

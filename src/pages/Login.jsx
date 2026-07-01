@@ -7,12 +7,12 @@ import { motion } from "framer-motion";
 import { LogIn } from "lucide-react";
 
 const Login = () => {
-    const { token } = useAuth();
+    const { user } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
-        if (token) navigate("/", { replace: true });
-    }, [token, navigate]);
+        if (user) navigate("/", { replace: true });
+    }, [user, navigate]);
 
     const handleGoogleAuth = useGoogleAuth(() => navigate("/", { replace: true }));
 

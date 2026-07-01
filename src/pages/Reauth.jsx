@@ -17,7 +17,7 @@ const Reauth = () => {
 
     const fetchStatus = async () => {
         try {
-            const res = await axios.get(`${BACKEND_ORIGIN}/fyers/status`);
+            const res = await axios.get(`${BACKEND_ORIGIN}/fyers/status`, { withCredentials: true });
             setStatus(res.data);
         } catch (err) {
             console.error("Failed to fetch fyers status");

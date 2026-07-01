@@ -31,13 +31,13 @@ const StockDetail = () => {
     const [tradeLoading, setTradeLoading] = useState(false);
     const [tradeMode, setTradeMode] = useState("INTRADAY");
     const { addToast } = useToast();
-    const { token, refreshBalance } = useAuth();
+    const { user, refreshBalance } = useAuth();
     const [inWatchlist, setInWatchlist] = useState(false);
 
     const handleGoogleAuth = useGoogleAuth();
 
     const toggleWatchlist = async () => {
-        if (!token) {
+        if (!user) {
             handleGoogleAuth();
             return;
         }
@@ -91,7 +91,7 @@ const StockDetail = () => {
             if (data.name) {
                 setCompanyName(data.name);
             }
-            if (token) {
+            if (user) {
                 const wlRes = await api.get("/watchlist");
                 setInWatchlist(wlRes.data.some((item) => item.symbol === symbol));
             }
@@ -170,14 +170,14 @@ const StockDetail = () => {
 
                     <FundamentalsSection fundamentals={fundamentals} />
 
-                    {token && (
+                    {user && (
                         <AISuggestion symbol={symbol} stockName={companyName} />
                     )}
                 </div>
 
                 <TradePanel
                     symbol={symbol}
-                    token={token}
+                    isAuthenticated={!!user}
                     currentPrice={currentPrice}
                     orderType={orderType}
                     setOrderType={setOrderType}

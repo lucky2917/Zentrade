@@ -15,14 +15,14 @@ const Portfolio = () => {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState("INTRADAY");
     const [sortConfig, setSortConfig] = useState({ key: 'pnlPaise', direction: 'desc' });
-    const { token } = useAuth();
+    const { user } = useAuth();
     const { prices } = useMarket();
     const navigate = useNavigate();
 
     const handleGoogleAuth = useGoogleAuth();
 
     const fetchPortfolio = async () => {
-        if (!token) {
+        if (!user) {
             setLoading(false);
             return;
         }
@@ -37,18 +37,18 @@ const Portfolio = () => {
     };
 
     useEffect(() => {
-        if (!token) {
+        if (!user) {
             setLoading(false);
             return;
         }
         fetchPortfolio();
         const interval = setInterval(fetchPortfolio, 5000);
         return () => clearInterval(interval);
-    }, [token]);
+    }, [user]);
 
     const formatCurrency = formatPaise;
 
-    if (!token) {
+    if (!user) {
         return (
             <motion.div
                 className="portfolio-page"

@@ -3,7 +3,7 @@ import { formatRupees as formatINR } from "../../utils/format.js";
 
 const TradePanel = ({
     symbol,
-    token,
+    isAuthenticated,
     currentPrice,
     orderType,
     setOrderType,
@@ -26,7 +26,7 @@ const TradePanel = ({
     return (
         <div className="trade-section">
             <h3>Place Order</h3>
-            {token ? (
+            {isAuthenticated ? (
                 <div className="trade-form">
                     <div className="trade-mode-toggle">
                         <button

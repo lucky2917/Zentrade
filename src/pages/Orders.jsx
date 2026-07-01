@@ -14,14 +14,14 @@ const Orders = () => {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(false);
-    const { token } = useAuth();
+    const { user } = useAuth();
     const { addToast } = useToast();
 
     const handleGoogleAuth = useGoogleAuth();
 
     useEffect(() => {
         const fetchOrders = async () => {
-            if (!token) {
+            if (!user) {
                 setLoading(false);
                 return;
             }
@@ -36,7 +36,7 @@ const Orders = () => {
             }
         };
         fetchOrders();
-    }, [token]);
+    }, [user]);
 
     const loadMore = async () => {
         if (orders.length === 0) return;
@@ -65,7 +65,7 @@ const Orders = () => {
         });
     };
 
-    if (!token) {
+    if (!user) {
         return (
             <motion.div
                 className="orders-page"
