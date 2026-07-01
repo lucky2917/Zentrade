@@ -4,6 +4,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
 import { pool, initDB } from "./config/db.js";
@@ -39,13 +40,16 @@ const io = new Server(server, {
     cors: {
         origin: [process.env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"],
         methods: ["GET", "POST"],
+        credentials: true,
     },
 });
 
 app.use(helmet({ contentSecurityPolicy: process.env.NODE_ENV === "production" ? undefined : false }));
 app.use(cors({
-    origin: [process.env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"]
+    origin: [process.env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"],
+    credentials: true,
 }));
+app.use(cookieParser());
 app.use(express.json({ limit: "10kb" }));
 
 const apiLimiter = rateLimit({
@@ -75,6 +79,15 @@ const fyersLimiter = rateLimit({
 });
 app.use("/fyers", fyersLimiter);
 
+const tradeLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many trade requests, slow down" },
+});
+app.use("/api/trade", tradeLimiter);
+
 if (process.env.NODE_ENV !== "production") {
     app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
         customSiteTitle: "Zentrade API Docs",
@@ -101,6 +114,14 @@ app.get("/api/health", (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 const start = async () => {
+    if (!process.env.JWT_SECRET) {
+        logger.error("Server", "JWT_SECRET not set, exiting");
+        process.exit(1);
+    }
+
+    await redis.ping();
+    logger.info("Server", "Redis connection verified");
+
     await initDB();
 
     startMarketWorker();
