@@ -15,7 +15,7 @@ const isProd = process.env.NODE_ENV === "production";
 const COOKIE_OPTS = {
     httpOnly: true,
     secure: isProd,
-    sameSite: isProd ? "none" : "lax",
+    sameSite: "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
@@ -191,7 +191,7 @@ router.post("/logout", auth, async (req, res) => {
         } catch { /* ignore decode errors */ }
     }
 
-    res.clearCookie("token", { httpOnly: true, secure: isProd, sameSite: isProd ? "none" : "lax" });
+    res.clearCookie("token", { httpOnly: true, secure: isProd, sameSite: "lax" });
     res.json({ success: true });
 });
 
