@@ -9,8 +9,13 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            localStorage.removeItem("user");
-            window.location.href = "/login";
+            // don't redirect during the login/signup flow itself
+            const url = error.config?.url || "";
+            const isAuthCall = ["/auth/login", "/auth/signup", "/auth/google"].some((p) => url.includes(p));
+            if (!isAuthCall) {
+                localStorage.removeItem("user");
+                window.location.href = "/login";
+            }
         }
         return Promise.reject(error);
     }

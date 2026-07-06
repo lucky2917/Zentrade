@@ -6,6 +6,7 @@ import { pool } from "../config/db.js";
 import redis from "../config/redis.js";
 import { validate, required, isEmail, minLength } from "../middleware/validate.js";
 import auth from "../middleware/auth.js";
+import logger from "../utils/logger.js";
 
 const router = Router();
 
@@ -46,7 +47,8 @@ router.post("/signup", validate({ email: [required, isEmail], password: [require
         res.status(201).json({
             user: { id: user.id, email: user.email, name: user.name, balancePaise: Number(user.balance_paise) },
         });
-    } catch {
+    } catch (err) {
+        logger.error("Auth", "Signup error", { error: err.message });
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -77,7 +79,8 @@ router.post("/login", validate({ email: [required], password: [required] }), asy
         res.json({
             user: { id: user.id, email: user.email, name: user.name, balancePaise: Number(user.balance_paise) },
         });
-    } catch {
+    } catch (err) {
+        logger.error("Auth", "Login error", { error: err.message });
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -155,7 +158,8 @@ router.post("/google", async (req, res) => {
         res.json({
             user: { id: user.id, email: user.email, name: user.name, balancePaise: Number(user.balance_paise) },
         });
-    } catch {
+    } catch (err) {
+        logger.error("Auth", "Google auth error", { error: err.message });
         res.status(500).json({ error: "Google authentication failed" });
     }
 });
@@ -169,7 +173,8 @@ router.get("/me", auth, async (req, res) => {
         if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
         const u = result.rows[0];
         res.json({ id: u.id, email: u.email, name: u.name, balancePaise: Number(u.balance_paise) });
-    } catch {
+    } catch (err) {
+        logger.error("Auth", "/me error", { error: err.message });
         res.status(500).json({ error: "Server error" });
     }
 });
