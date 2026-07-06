@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://zentrade-server.onrender.com/api/:path*"
+    },
+    {
+      "source": "/fyers/:path*",
+      "destination": "https://zentrade-server.onrender.com/fyers/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
