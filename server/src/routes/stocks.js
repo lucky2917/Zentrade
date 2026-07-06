@@ -266,12 +266,12 @@ router.get("/:symbol/full", async (req, res) => {
             fundamentals ? Promise.resolve(null) : fetchYahooFundamentals(upperSymbol).catch(() => null),
         ]);
 
-        if (!chartData && chartResult) {
+        if (!chartData && chartResult?.length > 0) {
             chartData = chartResult;
             await redis.setex(chartCacheKey, 600, JSON.stringify(chartData));
         }
 
-        if (!performance && perfCandles) {
+        if (!performance && perfCandles?.length > 0) {
             performance = computePerformance(live, perfCandles);
             await redis.setex(perfCacheKey, 300, JSON.stringify(performance));
         }
