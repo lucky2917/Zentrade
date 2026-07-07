@@ -9,10 +9,14 @@ const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(() => !!localStorage.getItem("user"));
 
     useEffect(() => {
+        // remove pre-migration token key if still present
+        localStorage.removeItem("token");
+
         if (!loading) return;
         api.get("/auth/me")
             .then((res) => {
-                localStorage.setItem("user", JSON.stringify(res.data));
+                const { balancePaise, ...safeUser } = res.data;
+                localStorage.setItem("user", JSON.stringify(safeUser));
                 setUser(res.data);
             })
             .catch(() => {
@@ -21,23 +25,28 @@ const AuthProvider = ({ children }) => {
             .finally(() => setLoading(false));
     }, []);
 
+    const cacheUser = (u) => {
+        const { balancePaise, ...safeUser } = u;
+        localStorage.setItem("user", JSON.stringify(safeUser));
+    };
+
     const login = async (email, password) => {
         const res = await api.post("/auth/login", { email, password });
-        localStorage.setItem("user", JSON.stringify(res.data.user));
+        cacheUser(res.data.user);
         setUser(res.data.user);
         return res.data;
     };
 
     const signup = async (email, password) => {
         const res = await api.post("/auth/signup", { email, password });
-        localStorage.setItem("user", JSON.stringify(res.data.user));
+        cacheUser(res.data.user);
         setUser(res.data.user);
         return res.data;
     };
 
     const googleLogin = async (code) => {
         const res = await api.post("/auth/google", { code });
-        localStorage.setItem("user", JSON.stringify(res.data.user));
+        cacheUser(res.data.user);
         setUser(res.data.user);
         return res.data;
     };
