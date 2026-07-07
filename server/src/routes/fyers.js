@@ -16,10 +16,10 @@ router.get("/status", auth, async (req, res) => {
 router.get("/reauth", auth, async (req, res) => {
     try {
         const url = await generateAuthCodeUrl();
-        res.redirect(url);
+        res.json({ url });
     } catch (err) {
         logger.error("FyersRoutes", "Failed to generate auth URL", { error: err.message });
-        res.status(500).send("Fyers not configured");
+        res.status(500).json({ error: "Fyers not configured" });
     }
 });
 

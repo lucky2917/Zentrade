@@ -4,20 +4,19 @@ import axios from "axios";
 import { motion } from "framer-motion";
 import { ShieldCheck, ShieldAlert, Clock } from "lucide-react";
 
-const BACKEND_ORIGIN = (import.meta.env.VITE_API_URL || "/api").replace(/\/api\/?$/, "");
-
 const Reauth = () => {
     const [searchParams] = useSearchParams();
     const [status, setStatus] = useState(null);
     const [loading, setLoading] = useState(true);
     const [remaining, setRemaining] = useState(null);
+    const [reauthLoading, setReauthLoading] = useState(false);
 
     const reauthSuccess = searchParams.get("reauth") === "success";
     const error = searchParams.get("error");
 
     const fetchStatus = async () => {
         try {
-            const res = await axios.get(`${BACKEND_ORIGIN}/fyers/status`, { withCredentials: true });
+            const res = await axios.get("/fyers/status", { withCredentials: true });
             setStatus(res.data);
         } catch (err) {
             console.error("Failed to fetch fyers status");
@@ -97,9 +96,18 @@ const Reauth = () => {
                         </p>
                         <button
                             className="btn-primary"
-                            onClick={() => { window.location.href = `${BACKEND_ORIGIN}/fyers/reauth`; }}
+                            disabled={reauthLoading}
+                            onClick={async () => {
+                                setReauthLoading(true);
+                                try {
+                                    const res = await axios.get("/fyers/reauth", { withCredentials: true });
+                                    window.location.href = res.data.url;
+                                } catch {
+                                    setReauthLoading(false);
+                                }
+                            }}
                         >
-                            🔐 Login with Fyers
+                            {reauthLoading ? "Redirecting..." : "🔐 Login with Fyers"}
                         </button>
                     </>
                 )}
