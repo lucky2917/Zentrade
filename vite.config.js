@@ -39,14 +39,18 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
+        // Never serve index.html for backend routes — /fyers/callback is an
+        // OAuth redirect target and must reach the server, not the SPA shell
+        navigateFallbackDenylist: [/^\/api\//, /^\/fyers\//, /^\/socket\.io\//],
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
         runtimeCaching: [
           {
-            urlPattern: /^\/api\//,
+            // urlPattern regexes run against the full URL, so match on pathname
+            urlPattern: ({ url }) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/fyers/"),
             handler: "NetworkOnly",
           },
           {
-            urlPattern: /socket\.io/,
+            urlPattern: ({ url }) => url.pathname.startsWith("/socket.io/"),
             handler: "NetworkOnly",
           },
         ],
