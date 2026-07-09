@@ -23,7 +23,7 @@ const AuthProvider = ({ children }) => {
         if (!loading) return () => window.removeEventListener("zentrade:session-expired", handleExpiry);
         api.get("/auth/me")
             .then((res) => {
-                const { balancePaise, ...safeUser } = res.data;
+                const { balancePaise: _balancePaise, ...safeUser } = res.data;
                 localStorage.setItem("user", JSON.stringify(safeUser));
                 setUser(res.data);
             })
@@ -36,7 +36,7 @@ const AuthProvider = ({ children }) => {
     }, []);
 
     const cacheUser = (u) => {
-        const { balancePaise, ...safeUser } = u;
+        const { balancePaise: _balancePaise, ...safeUser } = u;
         localStorage.setItem("user", JSON.stringify(safeUser));
     };
 

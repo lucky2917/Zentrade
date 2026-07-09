@@ -5,7 +5,7 @@ import { formatRupees } from "../utils/format.js";
 
 const fmt = (n) => formatRupees(n, { fractionDigits: 0 });
 
-const RiskManager = ({ entry, stopLoss, action }) => {
+const RiskManager = ({ entry, stopLoss }) => {
     const [riskPct, setRiskPct]         = useState(1.0);
     const [walletPaise, setWalletPaise] = useState(null);
     const [loading, setLoading]         = useState(true);

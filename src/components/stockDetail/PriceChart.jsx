@@ -25,7 +25,7 @@ const ChartCanvas = ({ chartData, selectedRange }) => {
             try {
                 window.removeEventListener("resize", chartInstanceRef.current._rh);
                 chartInstanceRef.current.remove();
-            } catch { }
+            } catch { /* chart already disposed */ }
             chartInstanceRef.current = null;
         }
 
@@ -109,7 +109,7 @@ const ChartCanvas = ({ chartData, selectedRange }) => {
                 try {
                     window.removeEventListener("resize", chartInstanceRef.current._rh);
                     chartInstanceRef.current.remove();
-                } catch { }
+                } catch { /* chart already disposed */ }
                 chartInstanceRef.current = null;
             }
         };
