@@ -12,6 +12,10 @@ const router = Router();
 
 const isProd = process.env.NODE_ENV === "production";
 
+// Emails are compared with = in SQL, so case/whitespace variants would fork
+// into duplicate accounts (and split balances across password vs Google login)
+const normaliseEmail = (email) => String(email).trim().toLowerCase();
+
 const COOKIE_OPTS = {
     httpOnly: true,
     secure: isProd,
@@ -53,7 +57,8 @@ const blacklistToken = async (rawToken) => {
 
 router.post("/signup", validate({ email: [required, isEmail], password: [required, minLength(8)] }), async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { password } = req.body;
+        const email = normaliseEmail(req.body.email);
 
         const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
         if (existing.rows.length > 0) {
@@ -80,7 +85,8 @@ router.post("/signup", validate({ email: [required, isEmail], password: [require
 
 router.post("/login", validate({ email: [required], password: [required] }), async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { password } = req.body;
+        const email = normaliseEmail(req.body.email);
 
         const result = await pool.query(
             "SELECT id, email, name, password_hash, balance_paise FROM users WHERE email = $1",
@@ -137,7 +143,7 @@ router.post("/google", async (req, res) => {
 
         const profile = await profileRes.json();
         const googleId = profile.sub;
-        const email = profile.email;
+        const email = profile.email ? normaliseEmail(profile.email) : null;
 
         if (!googleId) return res.status(400).json({ error: "Could not get user ID from Google" });
         if (!email) return res.status(400).json({ error: "Could not get email from Google" });
@@ -210,6 +216,16 @@ router.post("/refresh", async (req, res) => {
         } catch (err) {
             logger.error("Auth", "Redis blocklist check failed on refresh, allowing through", { error: err.message });
         }
+    }
+
+    // A refresh token can outlive its account by up to 7 days — make sure the
+    // user still exists before minting a fresh access token
+    try {
+        const { rows } = await pool.query("SELECT id FROM users WHERE id = $1", [decoded.userId]);
+        if (rows.length === 0) return res.status(401).json({ error: "Invalid refresh token" });
+    } catch (err) {
+        logger.error("Auth", "Refresh user lookup failed", { error: err.message });
+        return res.status(500).json({ error: "Server error" });
     }
 
     const access = issueAccessToken(decoded.userId);

@@ -155,6 +155,17 @@ const migrations = [
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     `,
   },
+  {
+    id: 12,
+    name: "normalise_email_case",
+    sql: `
+      -- Lowercase existing emails; skip any that would collide with an
+      -- already-lowercase duplicate (those need manual account merging)
+      UPDATE users SET email = LOWER(email)
+      WHERE email <> LOWER(email)
+        AND NOT EXISTS (SELECT 1 FROM users u2 WHERE u2.email = LOWER(users.email));
+    `,
+  },
 ];
 
 export async function runMigrations(pool) {
