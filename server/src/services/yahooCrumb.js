@@ -43,4 +43,10 @@ export async function getYahooCrumb() {
     return inFlight;
 }
 
+// Call when Yahoo answers 401 "Invalid Crumb" — the cached crumb outlived
+// its cookie session, so the next getYahooCrumb() fetches a fresh pair
+export function invalidateYahooCrumb() {
+    cache = null;
+}
+
 export { YAHOO_UA };

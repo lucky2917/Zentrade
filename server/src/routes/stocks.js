@@ -4,17 +4,30 @@ import { STOCKS, STOCK_MAP } from "../config/stocks.js";
 import logger from "../utils/logger.js";
 import { getCandlesForRange } from "../services/fyers/fyersREST.js";
 import { toFyersStockSymbol } from "../services/fyers/smartWall.js";
-import { getYahooCrumb, YAHOO_UA } from "../services/yahooCrumb.js";
+import { getYahooCrumb, invalidateYahooCrumb, YAHOO_UA } from "../services/yahooCrumb.js";
 
 const router = Router();
 
-async function fetchYahooFundamentals(symbol) {
-    const yahooSymbol = `${symbol}.NS`;
+async function requestYahooFundamentals(yahooSymbol) {
     const { cookie, crumb } = await getYahooCrumb();
     const modules = "defaultKeyStatistics,summaryDetail,assetProfile";
     const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(yahooSymbol)}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`;
+    return fetch(url, { headers: { "User-Agent": YAHOO_UA, Cookie: cookie } });
+}
 
-    const response = await fetch(url, { headers: { "User-Agent": YAHOO_UA, Cookie: cookie } });
+async function fetchYahooFundamentals(symbol) {
+    const yahooSymbol = `${symbol}.NS`;
+
+    let response = await requestYahooFundamentals(yahooSymbol);
+
+    // Crumbs are cached for an hour but Yahoo can expire the session sooner —
+    // a 401 means stale crumb, so refetch it once instead of failing for the
+    // rest of the cache window
+    if (response.status === 401) {
+        invalidateYahooCrumb();
+        response = await requestYahooFundamentals(yahooSymbol);
+    }
+
     if (!response.ok) {
         logger.warn("StocksAPI", "Yahoo fundamentals request failed", {
             symbol,
