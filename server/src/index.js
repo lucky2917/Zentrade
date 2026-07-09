@@ -84,10 +84,11 @@ app.use(cookieParser());
 app.use(express.json({ limit: "10kb" }));
 
 // One-time IP resolution log — rateLimitClientIp is what the limiters key
-// on and should be the real client IP; req.ip is informational only
+// on and should be the real client IP; req.ip is informational only.
+// Requires an XFF header so a local port probe can't burn the sample.
 let loggedIpSample = false;
 app.use((req, res, next) => {
-    if (!loggedIpSample && req.path !== "/api/health" && req.path !== "/api/ready") {
+    if (!loggedIpSample && req.headers["x-forwarded-for"] && req.path !== "/api/health" && req.path !== "/api/ready") {
         loggedIpSample = true;
         logger.info("Server", "First request IP resolution sample", {
             trustProxyHops,
