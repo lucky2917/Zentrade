@@ -184,14 +184,14 @@ router.get("/:symbol/fundamentals", async (req, res) => {
         const cached = await redis.get(cacheKey);
         if (cached) return res.json(JSON.parse(cached));
 
+        const stockInfo = STOCKS.find((s) => s.symbol === upper);
+
         // M3: Yahoo is a scraping dependency that can break silently — return what we have
         const yahooFund = await fetchYahooFundamentals(upper).catch((err) => {
             logger.warn("StocksAPI", "Yahoo fundamentals unavailable, returning empty", { symbol: upper, error: err.message });
             return null;
         });
         if (!yahooFund) return res.json({ symbol: upper, companyName: stockInfo?.name || upper });
-
-        const stockInfo = STOCKS.find((s) => s.symbol === upper);
 
         const fundamentals = {
             symbol: upper,
