@@ -35,11 +35,19 @@ import fyersRoutes from "./routes/fyers.js";
 import { STOCKS } from "./config/stocks.js";
 
 const app = express();
-app.set("trust proxy", 1);
-const server = createServer(app);
 
 // L1: origins driven by env — localhost only included in dev
 const isProd = process.env.NODE_ENV === "production";
+
+// Production requests hop client → Vercel edge → Render LB, so XFF arrives as
+// [client, vercel_edge]. Trusting 1 hop keys rate limits on Vercel's edge IPs
+// and users 429 each other; 2 hops resolves the real client. Direct-to-Render
+// callers get 1 appended hop, so a forged XFF can shift their bucket — an
+// accepted trade-off vs sharing buckets. Override with TRUST_PROXY_HOPS.
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS) || (isProd ? 2 : 1);
+app.set("trust proxy", trustProxyHops);
+
+const server = createServer(app);
 const allowedOrigins = [
     process.env.FRONTEND_URL,
     ...(!isProd ? ["http://localhost:5173", "http://localhost:3000"] : []),
@@ -74,6 +82,21 @@ app.use(cors({
 }));
 app.use(cookieParser());
 app.use(express.json({ limit: "10kb" }));
+
+// One-time IP resolution log — check this in deploy logs after changing
+// TRUST_PROXY_HOPS: req.ip should be the real client, not a Vercel edge IP
+let loggedIpSample = false;
+app.use((req, res, next) => {
+    if (!loggedIpSample && req.path !== "/api/health" && req.path !== "/api/ready") {
+        loggedIpSample = true;
+        logger.info("Server", "First request IP resolution sample", {
+            trustProxyHops,
+            resolvedIp: req.ip,
+            xForwardedFor: req.headers["x-forwarded-for"] || null,
+        });
+    }
+    next();
+});
 
 // Liveness/readiness sit above the rate limiter so platform health checks
 // can never be throttled into a false "down"
