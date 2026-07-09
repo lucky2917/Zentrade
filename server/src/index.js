@@ -75,6 +75,27 @@ app.use(cors({
 app.use(cookieParser());
 app.use(express.json({ limit: "10kb" }));
 
+// Liveness/readiness sit above the rate limiter so platform health checks
+// can never be throttled into a false "down"
+app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: Date.now() });
+});
+
+app.get("/api/ready", async (req, res) => {
+    const checks = { database: false, redis: false };
+    try {
+        await pool.query("SELECT 1");
+        checks.database = true;
+    } catch { /* stays false */ }
+    try {
+        await redis.ping();
+        checks.redis = true;
+    } catch { /* stays false */ }
+
+    const ready = checks.database && checks.redis;
+    res.status(ready ? 200 : 503).json({ status: ready ? "ready" : "degraded", checks });
+});
+
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 300,
@@ -140,17 +161,45 @@ app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/fyers", fyersRoutes);
 
-app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: Date.now() });
+// Unknown API routes get JSON, not Express's HTML 404 page
+app.use("/api", (req, res) => {
+    res.status(404).json({ error: "Not found" });
+});
+
+// Central error handler: malformed JSON bodies and anything thrown by
+// middleware become clean JSON instead of an HTML stack page
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+    if (err.type === "entity.parse.failed" || err instanceof SyntaxError) {
+        return res.status(400).json({ error: "Invalid JSON body" });
+    }
+    if (err.type === "entity.too.large") {
+        return res.status(413).json({ error: "Request body too large" });
+    }
+    logger.error("Server", "Unhandled request error", { error: err.message, path: req.path });
+    res.status(500).json({ error: "Server error" });
 });
 
 const PORT = process.env.PORT || 5000;
 
-const start = async () => {
-    if (!process.env.JWT_SECRET) {
-        logger.error("Server", "JWT_SECRET not set, exiting");
+const validateEnv = () => {
+    const missing = ["JWT_SECRET", "DATABASE_URL", "REDIS_URL"].filter((k) => !process.env[k]);
+    if (missing.length > 0) {
+        logger.error("Server", `Missing required environment variables: ${missing.join(", ")} — exiting`);
         process.exit(1);
     }
+    if (process.env.JWT_SECRET.length < 32) {
+        logger.error("Server", "JWT_SECRET must be at least 32 characters — exiting");
+        process.exit(1);
+    }
+    if (isProd && !process.env.FRONTEND_URL) {
+        logger.error("Server", "FRONTEND_URL is required in production (CORS origin) — exiting");
+        process.exit(1);
+    }
+};
+
+const start = async () => {
+    validateEnv();
 
     await redis.ping();
     logger.info("Server", "Redis connection verified");
@@ -193,6 +242,7 @@ const shutdown = async (signal) => {
     shuttingDown = true;
     logger.info("Server", `${signal} received, shutting down gracefully`);
 
+    io.close(() => logger.info("Server", "Socket.io closed"));
     server.close(() => logger.info("Server", "HTTP server closed"));
 
     try {
@@ -206,7 +256,7 @@ const shutdown = async (signal) => {
         logger.error("Server", "Error during shutdown", { error: err.message });
     }
 
-    setTimeout(() => process.exit(0), 2000);
+    setTimeout(() => process.exit(0), 2000).unref();
 };
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));

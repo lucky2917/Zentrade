@@ -18,9 +18,11 @@ export const positiveInt = (v, f) => {
 
 // validate({ email: [required, isEmail], password: [required, minLength(8)] })
 export const validate = (schema) => (req, res, next) => {
+  // req.body is undefined when the request has no JSON body — treat as empty
+  const body = req.body ?? {};
   for (const [field, rules] of Object.entries(schema)) {
     for (const rule of rules) {
-      const error = rule(req.body[field], field);
+      const error = rule(body[field], field);
       if (error) return res.status(400).json({ error });
     }
   }
