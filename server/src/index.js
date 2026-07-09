@@ -12,6 +12,7 @@ import jwt from "jsonwebtoken";
 import { pool, initDB } from "./config/db.js";
 import redis from "./config/redis.js";
 import logger from "./utils/logger.js";
+import { clientIp, clientIpKey } from "./utils/clientIp.js";
 import { swaggerSpec } from "./config/swagger.js";
 import authRoutes from "./routes/auth.js";
 import stockRoutes from "./routes/stocks.js";
@@ -40,11 +41,9 @@ const app = express();
 // L1: origins driven by env — localhost only included in dev
 const isProd = process.env.NODE_ENV === "production";
 
-// Production requests hop client → Vercel edge → Render LB, so XFF arrives as
-// [client, vercel_edge]. Trusting 1 hop keys rate limits on Vercel's edge IPs
-// and users 429 each other; 2 hops resolves the real client. Direct-to-Render
-// callers get 1 appended hop, so a forged XFF can shift their bucket — an
-// accepted trade-off vs sharing buckets. Override with TRUST_PROXY_HOPS.
+// req.ip is only used for logging — rate limiters key on the leftmost XFF
+// entry via clientIpKey (see utils/clientIp.js for why hop counting fails
+// here: Vercel-proxied and direct requests arrive with different depths).
 const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS) || (isProd ? 2 : 1);
 app.set("trust proxy", trustProxyHops);
 
@@ -84,14 +83,15 @@ app.use(cors({
 app.use(cookieParser());
 app.use(express.json({ limit: "10kb" }));
 
-// One-time IP resolution log — check this in deploy logs after changing
-// TRUST_PROXY_HOPS: req.ip should be the real client, not a Vercel edge IP
+// One-time IP resolution log — rateLimitClientIp is what the limiters key
+// on and should be the real client IP; req.ip is informational only
 let loggedIpSample = false;
 app.use((req, res, next) => {
     if (!loggedIpSample && req.path !== "/api/health" && req.path !== "/api/ready") {
         loggedIpSample = true;
         logger.info("Server", "First request IP resolution sample", {
             trustProxyHops,
+            rateLimitClientIp: clientIp(req),
             resolvedIp: req.ip,
             xForwardedFor: req.headers["x-forwarded-for"] || null,
         });
@@ -125,6 +125,7 @@ const apiLimiter = rateLimit({
     limit: 300,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: clientIpKey,
 });
 app.use("/api", apiLimiter);
 
@@ -134,10 +135,27 @@ const authLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: true,
+    keyGenerator: clientIpKey,
     message: { error: "Too many attempts, please try again later" },
 });
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/signup", authLimiter);
+
+// Brute-force guard that a forged XFF cannot dodge: login attempts are also
+// capped per target account. Successful logins don't count against it.
+const loginEmailLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    keyGenerator: (req) => {
+        const email = String(req.body?.email ?? "").trim().toLowerCase();
+        return email ? `email:${email}` : clientIpKey(req);
+    },
+    message: { error: "Too many attempts for this account, please try again later" },
+});
+app.use("/api/auth/login", loginEmailLimiter);
 
 // H4: separate limiter for token refresh — higher ceiling, not auth-critical
 const refreshLimiter = rateLimit({
@@ -145,6 +163,7 @@ const refreshLimiter = rateLimit({
     limit: 60,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: clientIpKey,
     message: { error: "Too many refresh attempts" },
 });
 app.use("/api/auth/refresh", refreshLimiter);
@@ -154,6 +173,7 @@ const fyersLimiter = rateLimit({
     limit: 30,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: clientIpKey,
 });
 app.use("/fyers", fyersLimiter);
 
@@ -162,6 +182,7 @@ const tradeLimiter = rateLimit({
     limit: 20,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: clientIpKey,
     message: { error: "Too many trade requests, slow down" },
 });
 app.use("/api/trade", tradeLimiter);
