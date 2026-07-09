@@ -26,10 +26,15 @@ const buildSsl = () => {
         // H6: validate server certificate when a CA cert is provided
         return { rejectUnauthorized: true, ca: process.env.DB_CA_CERT };
     }
-    // H6: without a CA cert we can't validate the server; log a warning so this
-    // is visible in deploy logs. Set DB_CA_CERT to the PEM from your provider
-    // (Render: Settings → "SSL Certificate") to harden this.
-    logger.warn("Database", "DB_CA_CERT not set — TLS is on but cert validation is disabled");
+    // Providers with publicly-trusted certs (Neon, Supabase, RDS with public
+    // CA) verify fine against the system root store — set DB_SSL_VERIFY=true
+    if (process.env.DB_SSL_VERIFY === "true") {
+        return { rejectUnauthorized: true };
+    }
+    // H6: without verification enabled we can't validate the server; log a
+    // warning so this is visible in deploy logs. Set DB_SSL_VERIFY=true
+    // (public CA) or DB_CA_CERT (self-signed provider CA) to harden this.
+    logger.warn("Database", "DB TLS is on but cert validation is disabled — set DB_SSL_VERIFY=true (or DB_CA_CERT)");
     return { rejectUnauthorized: false };
 };
 
