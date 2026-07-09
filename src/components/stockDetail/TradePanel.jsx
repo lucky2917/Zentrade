@@ -20,8 +20,10 @@ const TradePanel = ({
     const isIntraday = tradeMode === "INTRADAY";
     const spreadMultiplier = orderType === "BUY" ? 1.001 : 0.999;
     const brokerageSigned = orderType === "BUY" ? 20 : -20;
-    const totalWithSpreadAndBrokerage = estimatedCost * spreadMultiplier + brokerageSigned;
-    const marginRequired = isIntraday ? totalWithSpreadAndBrokerage / 5 : totalWithSpreadAndBrokerage;
+    // Mirrors the server: leverage applies to stock cost only, brokerage is charged in full
+    const marginRequired = isIntraday
+        ? (estimatedCost * spreadMultiplier) / 5 + brokerageSigned
+        : estimatedCost * spreadMultiplier + brokerageSigned;
 
     return (
         <div className="trade-section">
@@ -31,12 +33,14 @@ const TradePanel = ({
                     <div className="trade-mode-toggle">
                         <button
                             className={`mode-btn ${tradeMode === "INTRADAY" ? "active-intraday" : ""}`}
+                            aria-pressed={tradeMode === "INTRADAY"}
                             onClick={() => setTradeMode("INTRADAY")}
                         >
                             MIS (Intraday)
                         </button>
                         <button
                             className={`mode-btn ${tradeMode === "DELIVERY" ? "active-delivery" : ""}`}
+                            aria-pressed={tradeMode === "DELIVERY"}
                             onClick={() => setTradeMode("DELIVERY")}
                         >
                             CNC (Delivery)
@@ -52,12 +56,14 @@ const TradePanel = ({
                     <div className="order-type-toggle">
                         <button
                             className={`toggle-btn ${orderType === "BUY" ? "active-buy" : ""}`}
+                            aria-pressed={orderType === "BUY"}
                             onClick={() => setOrderType("BUY")}
                         >
                             BUY
                         </button>
                         <button
                             className={`toggle-btn ${orderType === "SELL" ? "active-sell" : ""}`}
+                            aria-pressed={orderType === "SELL"}
                             onClick={() => setOrderType("SELL")}
                         >
                             SELL
@@ -65,8 +71,9 @@ const TradePanel = ({
                     </div>
 
                     <div className="form-group">
-                        <label>Quantity</label>
+                        <label htmlFor="trade-quantity">Quantity</label>
                         <input
+                            id="trade-quantity"
                             type="number"
                             value={quantity}
                             onChange={(e) => setQuantity(e.target.value)}
