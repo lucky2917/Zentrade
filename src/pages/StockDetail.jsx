@@ -119,11 +119,15 @@ const StockDetail = () => {
         try {
             const endpoint = orderType === "BUY" ? "/trade/buy" : "/trade/sell";
             const res = await api.post(endpoint, { symbol, quantity: qty, mode: tradeMode });
-            const total = (res.data.totalCostPaise || res.data.totalValuePaise) / 100;
-            const execPrice = (res.data.executionPricePaise) / 100;
+            // BUY debits margin (or full cost), SELL credits proceeds/margin+pnl
+            const totalPaise = orderType === "BUY"
+                ? (res.data.marginRequiredPaise ?? res.data.stockCostPaise)
+                : res.data.creditPaise;
+            const execPrice = res.data.executionPricePaise / 100;
             const modeTag = tradeMode === "INTRADAY" ? "MIS" : "CNC";
             const leverageTag = tradeMode === "INTRADAY" ? " (5x)" : "";
-            addToast(`${orderType} ${qty} ${symbol} @ ${formatINR(execPrice)} = ${formatINR(total)} [${modeTag}${leverageTag}]`, "success");
+            const flowTag = orderType === "BUY" ? "debited" : "credited";
+            addToast(`${orderType} ${qty} ${symbol} @ ${formatINR(execPrice)} — ${formatINR(totalPaise / 100)} ${flowTag} [${modeTag}${leverageTag}]`, "success");
             setQuantity("");
             refreshBalance();
         } catch (err) {
@@ -167,7 +171,7 @@ const StockDetail = () => {
                     <FundamentalsSection fundamentals={fundamentals} />
 
                     {user && (
-                        <AISuggestion symbol={symbol} stockName={companyName} />
+                        <AISuggestion symbol={symbol} />
                     )}
                 </div>
 
