@@ -80,12 +80,17 @@ const getRemainingBudget = async () => {
 };
 
 const resetDailyBudget = async () => {
+    // Concurrent callers (parallel isRestAllowed checks at IST midnight) race
+    // here — NX lock makes the reset run once
+    const acquired = await redis.set("fyers:reset_lock", "1", "EX", 60, "NX");
+    if (!acquired) return;
+
     await redis.set(CALLS_USED_KEY, 0);
     await redis.set(RESET_AT_KEY, new Date().toISOString());
     await redis.del(ALERT_SENT_KEY);
     await redis.set(CURRENT_MODE_KEY, "IDLE");
     appliedMode = null;
-    logger.info("RateLimiter", "Daily REST budget reset. 100000 calls available.");
+    logger.info("RateLimiter", `Daily REST budget reset. ${TOTAL_BUDGET} calls available.`);
 };
 
 const ensureFreshDay = async () => {
