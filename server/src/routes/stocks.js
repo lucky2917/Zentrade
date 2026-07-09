@@ -4,7 +4,7 @@ import { STOCKS, STOCK_MAP } from "../config/stocks.js";
 import logger from "../utils/logger.js";
 import { getCandlesForRange } from "../services/fyers/fyersREST.js";
 import { toFyersStockSymbol } from "../services/fyers/smartWall.js";
-import { getYahooCrumb, invalidateYahooCrumb, YAHOO_UA } from "../services/yahooCrumb.js";
+import { getYahooCrumb, invalidateYahooCrumb, startYahooCooldown, YAHOO_UA } from "../services/yahooCrumb.js";
 
 const router = Router();
 
@@ -26,6 +26,9 @@ async function fetchYahooFundamentals(symbol) {
     if (response.status === 401) {
         invalidateYahooCrumb();
         response = await requestYahooFundamentals(yahooSymbol);
+        // Fresh crumb also rejected: Yahoo is blocking this server's IP.
+        // Back off so we stop hammering it (and spamming the logs).
+        if (response.status === 401) startYahooCooldown();
     }
 
     if (!response.ok) {
