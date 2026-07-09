@@ -44,6 +44,10 @@
       "destination": "https://zentrade-server.onrender.com/fyers/:path*"
     },
     {
+      "source": "/socket.io/:path*",
+      "destination": "https://zentrade-server.onrender.com/socket.io/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
