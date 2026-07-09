@@ -228,8 +228,13 @@ router.post("/refresh", async (req, res) => {
         return res.status(500).json({ error: "Server error" });
     }
 
-    const access = issueAccessToken(decoded.userId);
-    res.cookie("token", access.token, { ...COOKIE_OPTS, maxAge: 15 * 60 * 1000 });
+    // Rotation: each refresh token is single-use. The used one goes on the
+    // blocklist for its remaining lifetime, so a stolen token dies the first
+    // time anyone (victim or thief) refreshes with it. Cookies are shared
+    // across tabs, so only truly simultaneous refreshes can race — the loser
+    // gets a clean 401 and re-login.
+    await blacklistToken(rawRefresh);
+    setAuthCookies(res, decoded.userId);
     res.json({ ok: true });
 });
 
