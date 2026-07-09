@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useMarket } from "../context/MarketContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
@@ -62,7 +62,7 @@ const StockDetail = () => {
     const change = currentData?.change ?? restPrice?.change ?? 0;
     const isPositive = changePercent >= 0;
 
-    const fetchFullData = async (range) => {
+    const fetchFullData = useCallback(async (range) => {
         setChartLoading(true);
         try {
             const res = await api.get(`/stocks/${symbol}/full?range=${range}`);
@@ -78,13 +78,9 @@ const StockDetail = () => {
             if (Array.isArray(data.chart) && data.chart.length > 0) {
                 setChartData(data.chart);
             } else if (range === "1d") {
-                const fallback = await api.get(`/stocks/${symbol}/full?range=5d`);
-                if (Array.isArray(fallback.data.chart) && fallback.data.chart.length > 0) {
-                    setChartData(fallback.data.chart);
-                    setSelectedRange("5d");
-                } else {
-                    setChartData([]);
-                }
+                // no intraday candles (e.g. pre-open) — switch to 5d and let the
+                // effect below refetch for that range
+                setSelectedRange("5d");
             } else {
                 setChartData([]);
             }
@@ -100,15 +96,15 @@ const StockDetail = () => {
         } finally {
             setChartLoading(false);
         }
-    };
+    }, [symbol, user, addToast]);
 
+    // Single fetch path: runs on mount, symbol change, and range change
     useEffect(() => {
         fetchFullData(selectedRange);
-    }, [symbol]);
+    }, [selectedRange, fetchFullData]);
 
     const handleRangeChange = (range) => {
         setSelectedRange(range);
-        fetchFullData(range);
     };
 
     const handleTrade = async () => {

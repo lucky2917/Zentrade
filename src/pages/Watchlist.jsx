@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -21,7 +21,7 @@ const Watchlist = () => {
 
     const handleGoogleAuth = useGoogleAuth();
 
-    const fetchWatchlist = async () => {
+    const fetchWatchlist = useCallback(async () => {
         if (!user) {
             setLoading(false);
             return;
@@ -34,11 +34,11 @@ const Watchlist = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user, addToast]);
 
     useEffect(() => {
         fetchWatchlist();
-    }, [user]);
+    }, [fetchWatchlist]);
 
     const removeFromWatchlist = async (e, symbol) => {
         e.stopPropagation();

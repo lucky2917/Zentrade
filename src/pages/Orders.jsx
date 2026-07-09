@@ -36,7 +36,7 @@ const Orders = () => {
             }
         };
         fetchOrders();
-    }, [user]);
+    }, [user, addToast]);
 
     const loadMore = async () => {
         if (orders.length === 0) return;

@@ -8,19 +8,24 @@ const AuthProvider = ({ children }) => {
     // Only show loading spinner if we might have a live session (user object cached)
     const [loading, setLoading] = useState(() => !!localStorage.getItem("user"));
 
+    // L5: when the refresh interceptor gives up, clear state so the router
+    // redirects to /login naturally (no hard window.location.href reload)
     useEffect(() => {
-        // remove pre-migration token key if still present
-        localStorage.removeItem("token");
-
-        // L5: when the refresh interceptor gives up, clear state so the router
-        // redirects to /login naturally (no hard window.location.href reload)
         const handleExpiry = () => {
             localStorage.removeItem("user");
             setUser(null);
         };
         window.addEventListener("zentrade:session-expired", handleExpiry);
+        return () => window.removeEventListener("zentrade:session-expired", handleExpiry);
+    }, []);
 
-        if (!loading) return () => window.removeEventListener("zentrade:session-expired", handleExpiry);
+    // One-shot session restore on mount — only when a user was cached
+    // (same localStorage check that seeded the initial `loading` state)
+    useEffect(() => {
+        // remove pre-migration token key if still present
+        localStorage.removeItem("token");
+
+        if (!localStorage.getItem("user")) return;
         api.get("/auth/me")
             .then((res) => {
                 const { balancePaise: _balancePaise, ...safeUser } = res.data;
@@ -31,8 +36,6 @@ const AuthProvider = ({ children }) => {
                 localStorage.removeItem("user");
             })
             .finally(() => setLoading(false));
-
-        return () => window.removeEventListener("zentrade:session-expired", handleExpiry);
     }, []);
 
     const cacheUser = (u) => {

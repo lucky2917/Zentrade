@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -21,7 +21,7 @@ const Portfolio = () => {
 
     const handleGoogleAuth = useGoogleAuth();
 
-    const fetchPortfolio = async () => {
+    const fetchPortfolio = useCallback(async () => {
         if (!user) {
             setLoading(false);
             return;
@@ -29,12 +29,12 @@ const Portfolio = () => {
         try {
             const res = await api.get("/portfolio");
             setPortfolio(res.data);
-        } catch (err) {
+        } catch {
             console.error("Portfolio fetch failed");
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
 
     useEffect(() => {
         if (!user) {
@@ -44,7 +44,7 @@ const Portfolio = () => {
         fetchPortfolio();
         const interval = setInterval(fetchPortfolio, 5000);
         return () => clearInterval(interval);
-    }, [user]);
+    }, [user, fetchPortfolio]);
 
     const formatCurrency = formatPaise;
 
