@@ -32,6 +32,6 @@
         "swagger-ui-express": "^5.0.1"
     },
     "devDependencies": {
-        "vitest": "^2.0.0"
+        "vitest": "^2.1.9"
     }
 }
