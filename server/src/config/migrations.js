@@ -123,6 +123,38 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_watchlist_user_id ON watchlist(user_id);
     `,
   },
+  {
+    id: 10,
+    name: "add_pnl_paise_to_orders",
+    sql: `
+      DO $$ BEGIN
+        ALTER TABLE orders ADD COLUMN pnl_paise BIGINT DEFAULT NULL;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `,
+  },
+  {
+    id: 11,
+    name: "add_cascade_and_check_constraints",
+    sql: `
+      -- ON DELETE CASCADE so deleting a user cleans up their data
+      ALTER TABLE portfolio DROP CONSTRAINT IF EXISTS portfolio_user_id_fkey;
+      ALTER TABLE portfolio ADD CONSTRAINT portfolio_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+
+      ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_user_id_fkey;
+      ALTER TABLE orders ADD CONSTRAINT orders_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+
+      ALTER TABLE watchlist DROP CONSTRAINT IF EXISTS watchlist_user_id_fkey;
+      ALTER TABLE watchlist ADD CONSTRAINT watchlist_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+
+      -- Portfolio quantity must be positive (zero rows are deleted on full sell)
+      DO $$ BEGIN
+        ALTER TABLE portfolio ADD CONSTRAINT portfolio_quantity_check CHECK (quantity > 0);
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `,
+  },
 ];
 
 export async function runMigrations(pool) {

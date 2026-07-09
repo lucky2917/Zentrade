@@ -16,15 +16,40 @@ const COOKIE_OPTS = {
     httpOnly: true,
     secure: isProd,
     sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
-const issueToken = (userId) => {
+// H4: short-lived access token (15 min) + long-lived refresh token (7 days)
+const ACCESS_TTL = "15m";
+const REFRESH_TTL_SECS = 7 * 24 * 60 * 60;
+
+const issueAccessToken = (userId) => {
     const jti = crypto.randomBytes(16).toString("hex");
-    return jwt.sign({ userId, jti }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    return { token: jwt.sign({ userId, jti }, process.env.JWT_SECRET, { expiresIn: ACCESS_TTL }), jti };
 };
 
-const setAuthCookie = (res, token) => res.cookie("token", token, COOKIE_OPTS);
+const issueRefreshToken = (userId) => {
+    const jti = crypto.randomBytes(16).toString("hex");
+    return { token: jwt.sign({ userId, jti, type: "refresh" }, process.env.JWT_SECRET, { expiresIn: REFRESH_TTL_SECS }), jti };
+};
+
+const setAuthCookies = (res, userId) => {
+    const access = issueAccessToken(userId);
+    const refresh = issueRefreshToken(userId);
+    res.cookie("token", access.token, { ...COOKIE_OPTS, maxAge: 15 * 60 * 1000 });
+    res.cookie("refreshToken", refresh.token, { ...COOKIE_OPTS, maxAge: REFRESH_TTL_SECS * 1000 });
+    return { access, refresh };
+};
+
+const blacklistToken = async (rawToken) => {
+    if (!rawToken) return;
+    try {
+        const decoded = jwt.decode(rawToken);
+        if (decoded?.jti && decoded?.exp) {
+            const ttl = Math.max(1, decoded.exp - Math.floor(Date.now() / 1000));
+            await redis.set(`jti:blocklist:${decoded.jti}`, "1", "EX", ttl);
+        }
+    } catch { /* ignore */ }
+};
 
 router.post("/signup", validate({ email: [required, isEmail], password: [required, minLength(8)] }), async (req, res) => {
     try {
@@ -42,7 +67,7 @@ router.post("/signup", validate({ email: [required, isEmail], password: [require
         );
 
         const user = result.rows[0];
-        setAuthCookie(res, issueToken(user.id));
+        setAuthCookies(res, user.id);
 
         res.status(201).json({
             user: { id: user.id, email: user.email, name: user.name, balancePaise: Number(user.balance_paise) },
@@ -66,15 +91,13 @@ router.post("/login", validate({ email: [required], password: [required] }), asy
         // Always run bcrypt regardless of whether user exists to prevent timing-based email enumeration
         const valid = await bcrypt.compare(password, user?.password_hash || "$2b$12$dummyhashfortimingattackprevxx");
 
-        if (!user || !valid) {
+        // M2 fix: never distinguish between "wrong password" and "Google-only account" —
+        // both return the same generic error so auth method can't be enumerated.
+        if (!user || !valid || !user.password_hash) {
             return res.status(401).json({ error: "Invalid credentials" });
         }
 
-        if (!user.password_hash) {
-            return res.status(401).json({ error: "This account uses Google login" });
-        }
-
-        setAuthCookie(res, issueToken(user.id));
+        setAuthCookies(res, user.id);
 
         res.json({
             user: { id: user.id, email: user.email, name: user.name, balancePaise: Number(user.balance_paise) },
@@ -153,7 +176,7 @@ router.post("/google", async (req, res) => {
             }
         }
 
-        setAuthCookie(res, issueToken(user.id));
+        setAuthCookies(res, user.id);
 
         res.json({
             user: { id: user.id, email: user.email, name: user.name, balancePaise: Number(user.balance_paise) },
@@ -162,6 +185,36 @@ router.post("/google", async (req, res) => {
         logger.error("Auth", "Google auth error", { error: err.message });
         res.status(500).json({ error: "Google authentication failed" });
     }
+});
+
+// H4: refresh endpoint — verifies refreshToken cookie, issues new access token
+router.post("/refresh", async (req, res) => {
+    const rawRefresh = req.cookies?.refreshToken;
+    if (!rawRefresh) return res.status(401).json({ error: "No refresh token" });
+
+    let decoded;
+    try {
+        decoded = jwt.verify(rawRefresh, process.env.JWT_SECRET);
+    } catch {
+        return res.status(401).json({ error: "Invalid refresh token" });
+    }
+
+    if (decoded.type !== "refresh") {
+        return res.status(401).json({ error: "Invalid token type" });
+    }
+
+    if (decoded.jti) {
+        try {
+            const blocked = await redis.get(`jti:blocklist:${decoded.jti}`);
+            if (blocked) return res.status(401).json({ error: "Refresh token revoked" });
+        } catch (err) {
+            logger.error("Auth", "Redis blocklist check failed on refresh, allowing through", { error: err.message });
+        }
+    }
+
+    const access = issueAccessToken(decoded.userId);
+    res.cookie("token", access.token, { ...COOKIE_OPTS, maxAge: 15 * 60 * 1000 });
+    res.json({ ok: true });
 });
 
 router.get("/me", auth, async (req, res) => {
@@ -180,18 +233,11 @@ router.get("/me", auth, async (req, res) => {
 });
 
 router.post("/logout", auth, async (req, res) => {
-    const rawToken = req.cookies?.token;
-    if (rawToken) {
-        try {
-            const decoded = jwt.decode(rawToken);
-            if (decoded?.jti && decoded?.exp) {
-                const ttl = Math.max(1, decoded.exp - Math.floor(Date.now() / 1000));
-                await redis.set(`jti:blocklist:${decoded.jti}`, "1", "EX", ttl);
-            }
-        } catch { /* ignore decode errors */ }
-    }
+    await blacklistToken(req.cookies?.token);
+    await blacklistToken(req.cookies?.refreshToken);
 
     res.clearCookie("token", { httpOnly: true, secure: isProd, sameSite: "lax" });
+    res.clearCookie("refreshToken", { httpOnly: true, secure: isProd, sameSite: "lax" });
     res.json({ success: true });
 });
 

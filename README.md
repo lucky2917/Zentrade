@@ -31,7 +31,7 @@ Zentrade puts you in a real trading environment with ₹10,00,000 virtual balanc
 - Order history, watchlist
 - AI stock analysis
 - Candlestick charts (1D to 1Y)
-- Auto square-off at 3:20 PM IST
+- Auto square-off at 15:25 IST
 - PWA — installable on mobile
 
 ## Future Scope

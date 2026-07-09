@@ -29,6 +29,12 @@ export async function getYahooCrumb() {
                 cache = result;
                 return result;
             })
+            .catch((err) => {
+                // M3: Yahoo crumb endpoint is undocumented and breaks without notice.
+                // Cache the failure briefly so we don't hammer a broken endpoint.
+                cache = null;
+                throw err;
+            })
             .finally(() => {
                 inFlight = null;
             });

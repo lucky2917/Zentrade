@@ -12,7 +12,15 @@ const AuthProvider = ({ children }) => {
         // remove pre-migration token key if still present
         localStorage.removeItem("token");
 
-        if (!loading) return;
+        // L5: when the refresh interceptor gives up, clear state so the router
+        // redirects to /login naturally (no hard window.location.href reload)
+        const handleExpiry = () => {
+            localStorage.removeItem("user");
+            setUser(null);
+        };
+        window.addEventListener("zentrade:session-expired", handleExpiry);
+
+        if (!loading) return () => window.removeEventListener("zentrade:session-expired", handleExpiry);
         api.get("/auth/me")
             .then((res) => {
                 const { balancePaise, ...safeUser } = res.data;
@@ -23,6 +31,8 @@ const AuthProvider = ({ children }) => {
                 localStorage.removeItem("user");
             })
             .finally(() => setLoading(false));
+
+        return () => window.removeEventListener("zentrade:session-expired", handleExpiry);
     }, []);
 
     const cacheUser = (u) => {

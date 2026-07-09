@@ -7,6 +7,7 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
+import jwt from "jsonwebtoken";
 import { pool, initDB } from "./config/db.js";
 import redis from "./config/redis.js";
 import logger from "./utils/logger.js";
@@ -23,7 +24,7 @@ import watchlistRoutes from "./routes/watchlist.js";
 import aiRoutes from "./routes/ai.js";
 import startMarketWorker from "./services/marketWorker.js";
 import startWebSocketBroadcaster from "./services/websocket.js";
-import { startSquareOffJob } from "./services/squareOff.js";
+import { startSquareOffJob, stopSquareOffJob, reconcileSquareOff } from "./services/squareOff.js";
 import { initFyersAuth, isConfigured as isFyersConfigured } from "./services/fyers/fyersAuth.js";
 import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket, stop as stopFyersWebSocket } from "./services/fyers/fyersWebSocket.js";
 import { startWatchdog } from "./services/fyers/authWatchdog.js";
@@ -36,17 +37,39 @@ import { STOCKS } from "./config/stocks.js";
 const app = express();
 app.set("trust proxy", 1);
 const server = createServer(app);
+
+// L1: origins driven by env — localhost only included in dev
+const isProd = process.env.NODE_ENV === "production";
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    ...(!isProd ? ["http://localhost:5173", "http://localhost:3000"] : []),
+].filter(Boolean);
+
 const io = new Server(server, {
     cors: {
-        origin: [process.env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"],
+        origin: allowedOrigins,
         methods: ["GET", "POST"],
         credentials: true,
     },
 });
 
-app.use(helmet({ contentSecurityPolicy: process.env.NODE_ENV === "production" ? undefined : false }));
+// H5: reject unauthenticated socket connections
+io.use((socket, next) => {
+    const rawCookie = socket.handshake.headers.cookie || "";
+    const match = rawCookie.match(/(?:^|;\s*)token=([^;]+)/);
+    const token = match ? decodeURIComponent(match[1]) : null;
+    if (!token) return next(new Error("Unauthorized"));
+    try {
+        jwt.verify(token, process.env.JWT_SECRET);
+        next();
+    } catch {
+        next(new Error("Unauthorized"));
+    }
+});
+
+app.use(helmet({ contentSecurityPolicy: isProd ? undefined : false }));
 app.use(cors({
-    origin: [process.env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"],
+    origin: allowedOrigins,
     credentials: true,
 }));
 app.use(cookieParser());
@@ -71,6 +94,16 @@ const authLimiter = rateLimit({
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/signup", authLimiter);
 
+// H4: separate limiter for token refresh — higher ceiling, not auth-critical
+const refreshLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many refresh attempts" },
+});
+app.use("/api/auth/refresh", refreshLimiter);
+
 const fyersLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 30,
@@ -88,7 +121,7 @@ const tradeLimiter = rateLimit({
 });
 app.use("/api/trade", tradeLimiter);
 
-if (process.env.NODE_ENV !== "production") {
+if (!isProd) {
     app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
         customSiteTitle: "Zentrade API Docs",
         swaggerOptions: { persistAuthorization: true },
@@ -128,13 +161,13 @@ const start = async () => {
     startWebSocketBroadcaster(io);
     startSquareOffJob();
 
+    // C3: catch positions missed while Render instance was sleeping
+    await reconcileSquareOff();
+
     server.listen(PORT, () => {
         logger.info("Server", `Zentrade server running on port ${PORT}`);
     });
 
-    // Fyers depends on a live daily token and its SDK can fail in ways that
-    // don't surface as a catchable rejection here. Runs after listen() so a
-    // Fyers outage degrades market data only, not the whole API.
     try {
         await initFyersAuth();
         startWatchdog();
@@ -163,6 +196,8 @@ const shutdown = async (signal) => {
     server.close(() => logger.info("Server", "HTTP server closed"));
 
     try {
+        // X3: stop cron task so no new square-off fires during drain
+        stopSquareOffJob();
         stopAllLanes();
         stopFyersWebSocket();
         await pool.end();

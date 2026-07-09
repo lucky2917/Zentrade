@@ -18,6 +18,11 @@ router.get("/", auth, async (req, res) => {
             [req.userId]
         );
 
+        // L3: stale cookie after account deletion returns 401, not 500
+        if (userResult.rows.length === 0) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+
         const balancePaise = Number(userResult.rows[0].balance_paise);
 
         const pipeline = redis.pipeline();
@@ -42,6 +47,13 @@ router.get("/", auth, async (req, res) => {
             totalInvestedPaise += investedPaise;
             totalCurrentPaise += currentValuePaise;
 
+            // L4: intraday PnL% shown on margin (return on capital), not notional.
+            // A 2% move on 5x leverage is ~10% return on the margin posted — that's
+            // the number a leveraged trader actually cares about.
+            const pnlPct = h.order_mode === "INTRADAY" && marginUsedPaise > 0
+                ? (pnlPaise / marginUsedPaise) * 100
+                : investedPaise > 0 ? (pnlPaise / investedPaise) * 100 : 0;
+
             const holding = {
                 symbol: h.symbol,
                 quantity: h.quantity,
@@ -50,6 +62,7 @@ router.get("/", auth, async (req, res) => {
                 investedPaise,
                 currentValuePaise,
                 pnlPaise,
+                pnlPct: Math.round(pnlPct * 100) / 100,
                 orderMode: h.order_mode,
                 marginUsedPaise,
             };
@@ -75,12 +88,3 @@ router.get("/", auth, async (req, res) => {
 });
 
 export default router;
-
-/*
- * portfolio route now returns holdings split into two arrays:
- * intradayHoldings (leveraged, will be squared off at EOD) and
- * deliveryHoldings (full payment, held until user sells). each
- * holding includes its orderMode and marginUsedPaise so the
- * frontend can display margin info for intraday positions.
- * still fetches live prices from redis for real-time pnl.
- */

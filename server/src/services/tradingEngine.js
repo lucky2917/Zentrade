@@ -56,17 +56,19 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY") => {
     const { price } = validatePriceData(priceData, symbol, mode);
 
     const executionPricePaise = Math.round(price * BUY_SPREAD * 100);
-    const totalCostPaise = executionPricePaise * quantity + BROKERAGE_PAISE;
+    const stockCostPaise = executionPricePaise * quantity;
 
     const isIntraday = mode === "INTRADAY";
+    // M6 fix: brokerage charged in full, not split across leverage
     const marginRequired = isIntraday
-        ? Math.ceil(totalCostPaise / INTRADAY_LEVERAGE)
-        : totalCostPaise;
+        ? Math.ceil(stockCostPaise / INTRADAY_LEVERAGE) + BROKERAGE_PAISE
+        : stockCostPaise + BROKERAGE_PAISE;
 
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
 
+        // Lock user row first — establishes consistent lock order: users → portfolio
         const userResult = await client.query(
             "SELECT balance_paise FROM users WHERE id = $1 FOR UPDATE",
             [userId]
@@ -80,7 +82,7 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY") => {
         if (balancePaise < marginRequired) {
             throw new Error(
                 isIntraday
-                    ? `Insufficient margin. Need ${(marginRequired / 100).toFixed(2)} (5x leverage)`
+                    ? `Insufficient margin. Need ₹${(marginRequired / 100).toFixed(2)} (5x leverage + brokerage)`
                     : "Insufficient balance"
             );
         }
@@ -90,37 +92,29 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY") => {
             [marginRequired, userId]
         );
 
-        const existing = await client.query(
-            "SELECT quantity, avg_price_paise, margin_used_paise FROM portfolio WHERE user_id = $1 AND symbol = $2 AND order_mode = $3 FOR UPDATE",
-            [userId, symbol, mode]
+        // H2 fix: atomic upsert — eliminates race condition on concurrent first buys
+        await client.query(
+            `INSERT INTO portfolio (user_id, symbol, quantity, avg_price_paise, order_mode, margin_used_paise)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (user_id, symbol, order_mode) DO UPDATE
+             SET
+               quantity          = portfolio.quantity + EXCLUDED.quantity,
+               avg_price_paise   = (portfolio.quantity * portfolio.avg_price_paise + EXCLUDED.quantity * EXCLUDED.avg_price_paise)
+                                   / (portfolio.quantity + EXCLUDED.quantity),
+               margin_used_paise = portfolio.margin_used_paise + EXCLUDED.margin_used_paise,
+               updated_at        = NOW()`,
+            [userId, symbol, quantity, executionPricePaise, mode, marginRequired]
         );
 
-        if (existing.rows.length > 0) {
-            const oldQty = existing.rows[0].quantity;
-            const oldAvg = Number(existing.rows[0].avg_price_paise);
-            const oldMargin = Number(existing.rows[0].margin_used_paise);
-            const newAvg = Math.round(((oldQty * oldAvg) + (quantity * executionPricePaise)) / (oldQty + quantity));
-            const newMargin = oldMargin + marginRequired;
-
-            await client.query(
-                "UPDATE portfolio SET quantity = quantity + $1, avg_price_paise = $2, margin_used_paise = $3, updated_at = NOW() WHERE user_id = $4 AND symbol = $5 AND order_mode = $6",
-                [quantity, newAvg, newMargin, userId, symbol, mode]
-            );
-        } else {
-            await client.query(
-                "INSERT INTO portfolio (user_id, symbol, quantity, avg_price_paise, order_mode, margin_used_paise) VALUES ($1, $2, $3, $4, $5, $6)",
-                [userId, symbol, quantity, executionPricePaise, mode, marginRequired]
-            );
-        }
-
+        // H3 fix: total_value_paise = gross stock cost (price * qty); brokerage is separate
         await client.query(
             "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-            [userId, symbol, "BUY", quantity, executionPricePaise, totalCostPaise, BROKERAGE_PAISE, mode]
+            [userId, symbol, "BUY", quantity, executionPricePaise, stockCostPaise, BROKERAGE_PAISE, mode]
         );
 
         await client.query("COMMIT");
 
-        logger.trade("TradingEngine", `BUY executed`, {
+        logger.trade("TradingEngine", "BUY executed", {
             userId,
             symbol,
             quantity,
@@ -131,7 +125,7 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY") => {
             brokerage: "₹20",
             leverage: isIntraday ? "5x" : "1x",
             marginUsed: marginRequired / 100,
-            totalCost: totalCostPaise / 100,
+            stockCost: stockCostPaise / 100,
         });
 
         return {
@@ -142,7 +136,7 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY") => {
             ltpPaise: toPaise(price),
             executionPricePaise,
             brokeragePaise: BROKERAGE_PAISE,
-            totalCostPaise,
+            stockCostPaise,
             marginRequiredPaise: marginRequired,
             leverage: isIntraday ? INTRADAY_LEVERAGE : 1,
         };
@@ -175,12 +169,21 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
     const { price } = validatePriceData(priceData, symbol, mode);
 
     const executionPricePaise = Math.round(price * SELL_SPREAD * 100);
-    const grossValuePaise = executionPricePaise * quantity;
+    const grossProceedsPaise = executionPricePaise * quantity;
     const isIntraday = mode === "INTRADAY";
 
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
+
+        // C2 fix: lock user row FIRST to match executeBuy's lock order (users → portfolio)
+        const userLock = await client.query(
+            "SELECT id FROM users WHERE id = $1 FOR UPDATE",
+            [userId]
+        );
+        if (userLock.rows.length === 0) {
+            throw new Error("User not found");
+        }
 
         const holding = await client.query(
             "SELECT quantity, avg_price_paise, margin_used_paise FROM portfolio WHERE user_id = $1 AND symbol = $2 AND order_mode = $3 FOR UPDATE",
@@ -195,24 +198,27 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
         const avgPricePaise = Number(holding.rows[0].avg_price_paise);
         const totalMarginPaise = Number(holding.rows[0].margin_used_paise);
 
+        // H3: pnlPaise = realized profit/loss on the units sold
+        const pnlPaise = (executionPricePaise - avgPricePaise) * quantity;
+
         let creditPaise;
         if (isIntraday) {
             const marginForSold = Math.round((quantity / holdingQty) * totalMarginPaise);
-            const pnlPaise = (executionPricePaise - avgPricePaise) * quantity;
             creditPaise = marginForSold + pnlPaise - BROKERAGE_PAISE;
         } else {
-            creditPaise = grossValuePaise - BROKERAGE_PAISE;
+            creditPaise = grossProceedsPaise - BROKERAGE_PAISE;
         }
 
         if (!isIntraday && creditPaise <= 0) {
             throw new Error("Trade value too small to cover brokerage");
         }
 
-        const actualCredit = Math.max(0, creditPaise);
-
+        // H1 fix: allow negative credit to flow through — balance can go negative
+        // so leveraged losses are actually felt, not silently forgiven.
+        // executeBuy already blocks new trades when balance < marginRequired.
         await client.query(
             "UPDATE users SET balance_paise = balance_paise + $1 WHERE id = $2",
-            [actualCredit, userId]
+            [creditPaise, userId]
         );
 
         const remainingQty = holdingQty - quantity;
@@ -229,14 +235,15 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
             );
         }
 
+        // H3 fix: total_value_paise = gross proceeds (price * qty); pnl_paise = realized PnL
         await client.query(
-            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-            [userId, symbol, "SELL", quantity, executionPricePaise, actualCredit, BROKERAGE_PAISE, mode]
+            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, pnl_paise) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            [userId, symbol, "SELL", quantity, executionPricePaise, grossProceedsPaise, BROKERAGE_PAISE, mode, pnlPaise]
         );
 
         await client.query("COMMIT");
 
-        logger.trade("TradingEngine", `SELL executed`, {
+        logger.trade("TradingEngine", "SELL executed", {
             userId,
             symbol,
             quantity,
@@ -246,7 +253,8 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
             spread: "0.1%",
             brokerage: "₹20",
             leverage: isIntraday ? "5x" : "1x",
-            credited: actualCredit / 100,
+            credited: creditPaise / 100,
+            pnl: pnlPaise / 100,
         });
 
         return {
@@ -257,7 +265,9 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
             ltpPaise: toPaise(price),
             executionPricePaise,
             brokeragePaise: BROKERAGE_PAISE,
-            totalValuePaise: actualCredit,
+            grossProceedsPaise,
+            creditPaise,
+            pnlPaise,
             leverage: isIntraday ? INTRADAY_LEVERAGE : 1,
         };
     } catch (err) {
@@ -268,15 +278,4 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
     }
 };
 
-export { executeBuy, executeSell, INTRADAY_LEVERAGE };
-
-/*
- * the core trading engine with two modes: intraday (MIS) and
- * delivery (CNC). intraday gives 5x leverage so users only need
- * to put up 20% margin — the rest is "borrowed". delivery deducts
- * the full amount. on sell, intraday credits back the margin plus
- * realized pnl whereas delivery credits the full sale value.
- * both modes use the same 0.1% spread and flat 20 rupee brokerage.
- * everything runs inside postgres transactions with FOR UPDATE
- * row locks so concurrent trades cant corrupt balances.
- */
+export { executeBuy, executeSell, validatePriceData, INTRADAY_LEVERAGE, BROKERAGE_PAISE, BUY_SPREAD, SELL_SPREAD };

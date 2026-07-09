@@ -10,6 +10,14 @@ const VALID_MODES = ["INTRADAY", "DELIVERY"];
 
 const tradeValidation = validate({ symbol: [required], quantity: [required, positiveInt] });
 
+// Known user-facing error prefixes from tradingEngine — safe to forward as-is
+const USER_ERRORS = [
+    "Insufficient", "Invalid stock symbol", "Quantity must be",
+    "Maximum order quantity", "Invalid order mode", "Price data is stale",
+    "Price not available", "Trade value too small", "User not found",
+];
+const isUserError = (msg) => USER_ERRORS.some((p) => msg.startsWith(p));
+
 router.post("/buy", auth, tradeValidation, async (req, res) => {
     try {
         const { symbol, quantity, mode } = req.body;
@@ -26,7 +34,12 @@ router.post("/buy", auth, tradeValidation, async (req, res) => {
         const result = await executeBuy(req.userId, symbol.toUpperCase(), parseInt(quantity), orderMode);
         res.json(result);
     } catch (err) {
-        res.status(400).json({ error: err.message });
+        // M8: only surface known user-facing messages; hide internal details
+        if (isUserError(err.message)) {
+            res.status(400).json({ error: err.message });
+        } else {
+            res.status(500).json({ error: "Trade execution failed" });
+        }
     }
 });
 
@@ -46,17 +59,12 @@ router.post("/sell", auth, tradeValidation, async (req, res) => {
         const result = await executeSell(req.userId, symbol.toUpperCase(), parseInt(quantity), orderMode);
         res.json(result);
     } catch (err) {
-        res.status(400).json({ error: err.message });
+        if (isUserError(err.message)) {
+            res.status(400).json({ error: err.message });
+        } else {
+            res.status(500).json({ error: "Trade execution failed" });
+        }
     }
 });
 
 export default router;
-
-/*
- * buy and sell endpoints. intraday (MIS) trades are blocked when
- * the market is closed since they rely on live price movement.
- * delivery (CNC) trades go through anytime — the last traded
- * price from redis is used, just like how real brokers let you
- * place AMO (after market orders) for delivery. mounted at
- * /api/trade in index.js.
- */
