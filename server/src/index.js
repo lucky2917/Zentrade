@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { Sentry, sentryEnabled } from "./config/instrument.js";
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -188,6 +189,11 @@ app.use("/fyers", fyersRoutes);
 app.use("/api", (req, res) => {
     res.status(404).json({ error: "Not found" });
 });
+
+// Sentry captures the error, then passes it on to the JSON handler below
+if (sentryEnabled) {
+    Sentry.setupExpressErrorHandler(app);
+}
 
 // Central error handler: malformed JSON bodies and anything thrown by
 // middleware become clean JSON instead of an HTML stack page

@@ -1,4 +1,5 @@
 import { Component } from "react";
+import * as Sentry from "@sentry/react";
 
 class ErrorBoundary extends Component {
     state = { hasError: false };
@@ -9,6 +10,8 @@ class ErrorBoundary extends Component {
 
     componentDidCatch(error, info) {
         console.error("Unhandled UI error", error, info);
+        // no-op when Sentry isn't initialised
+        Sentry.captureException(error, { extra: { componentStack: info?.componentStack } });
     }
 
     render() {
