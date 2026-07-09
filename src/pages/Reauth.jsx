@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import axios from "axios";
+import { fyersApi } from "../services/api.js";
 import { motion } from "framer-motion";
 import { ShieldCheck, ShieldAlert, Clock } from "lucide-react";
 
@@ -16,7 +16,7 @@ const Reauth = () => {
 
     const fetchStatus = async () => {
         try {
-            const res = await axios.get("/fyers/status", { withCredentials: true });
+            const res = await fyersApi.get("/status");
             setStatus(res.data);
         } catch (err) {
             console.error("Failed to fetch fyers status");
@@ -100,7 +100,7 @@ const Reauth = () => {
                             onClick={async () => {
                                 setReauthLoading(true);
                                 try {
-                                    const res = await axios.get("/fyers/reauth", { withCredentials: true });
+                                    const res = await fyersApi.get("/reauth");
                                     window.location.href = res.data.url;
                                 } catch {
                                     setReauthLoading(false);
