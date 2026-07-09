@@ -2,7 +2,23 @@ import pg from "pg";
 import logger from "../utils/logger.js";
 import { runMigrations } from "./migrations.js";
 
-const isLocal = (process.env.DATABASE_URL ?? "").includes("localhost");
+// TLS is configured explicitly via the `ssl` pool option below. An sslmode
+// query param in the URL would fight with it and trips pg's noisy
+// "sslmode aliases" deprecation warning, so strip it from the string.
+const stripSslParams = (url) => {
+    if (!url) return url;
+    try {
+        const u = new URL(url);
+        u.searchParams.delete("sslmode");
+        u.searchParams.delete("ssl");
+        return u.toString();
+    } catch {
+        return url;
+    }
+};
+
+const connectionString = stripSslParams(process.env.DATABASE_URL);
+const isLocal = (connectionString ?? "").includes("localhost");
 
 const buildSsl = () => {
     if (isLocal) return false;
@@ -18,7 +34,7 @@ const buildSsl = () => {
 };
 
 const pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
     ssl: buildSsl(),
     connectionTimeoutMillis: 10000,
     idleTimeoutMillis: 30000,
