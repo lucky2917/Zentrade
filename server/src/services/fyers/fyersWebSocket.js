@@ -3,6 +3,7 @@ import redis from "../../config/redis.js";
 import { getWebSocketToken } from "./fyersAuth.js";
 import { sanitiseTick, toFyersStockSymbol, FYERS_INDEX_SYMBOLS } from "./smartWall.js";
 import { STOCK_MAP } from "../../config/stocks.js";
+import { isMarketOpen } from "../../utils/marketHours.js";
 import logger from "../../utils/logger.js";
 
 const MAX_SYMBOLS = 200;
@@ -43,7 +44,10 @@ const scheduleReconnect = () => {
     if (intentionalClose) return;
     const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_BACKOFF_MS);
     reconnectAttempts++;
-    logger.warn("FyersWebSocket", `Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+    // Idle connections get culled upstream every few minutes when no ticks
+    // flow (market closed) — routine, not worth a WARN
+    const log = isMarketOpen() ? logger.warn : logger.info;
+    log("FyersWebSocket", `Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
     reconnectTimer = setTimeout(connect, delay);
 };
 
@@ -73,7 +77,8 @@ const connect = async () => {
     });
 
     socket.on("close", () => {
-        logger.warn("FyersWebSocket", "Connection closed");
+        const log = isMarketOpen() ? logger.warn : logger.info;
+        log("FyersWebSocket", isMarketOpen() ? "Connection closed" : "Connection closed (idle, market shut)");
         if (!intentionalClose) scheduleReconnect();
     });
 
