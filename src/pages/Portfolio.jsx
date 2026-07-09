@@ -91,7 +91,11 @@ const Portfolio = () => {
             const currentValuePaise = currentPricePaise * h.quantity;
             const investedPaise = h.investedPaise;
             const pnlPaise = currentValuePaise - investedPaise;
-            const pnlPercent = investedPaise > 0 ? (pnlPaise / investedPaise) * 100 : 0;
+            // Intraday PnL% is return on margin posted, not notional — matches
+            // how the server reports it (a 2% move on 5x leverage is ~10%)
+            const pnlPercent = h.orderMode === "INTRADAY" && h.marginUsedPaise > 0
+                ? (pnlPaise / h.marginUsedPaise) * 100
+                : investedPaise > 0 ? (pnlPaise / investedPaise) * 100 : 0;
             const dayPnlPaise = liveChangePaise * h.quantity;
             
             return {
