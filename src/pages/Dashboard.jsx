@@ -60,8 +60,9 @@ const Dashboard = () => {
                 return sortDir === "asc" ? priceA - priceB : priceB - priceA;
             }
             if (sortBy === "change") {
-                const changeA = prices[a.symbol]?.change || a.change || 0;
-                const changeB = prices[b.symbol]?.change || b.change || 0;
+                // sort on the same value the column displays (% change)
+                const changeA = prices[a.symbol]?.changePercent ?? a.changePercent ?? 0;
+                const changeB = prices[b.symbol]?.changePercent ?? b.changePercent ?? 0;
                 return sortDir === "asc" ? changeA - changeB : changeB - changeA;
             }
             return 0;
@@ -224,9 +225,9 @@ const Dashboard = () => {
                         {filteredStocks.map((stock) => {
                             const live = prices[stock.symbol];
                             const price = live?.price || stock.price || null;
-                            const change = live?.change ?? stock.change ?? 0;
-                            const data = price != null ? { price, change } : null;
-                            const isPositive = change >= 0;
+                            const changePercent = live?.changePercent ?? stock.changePercent ?? 0;
+                            const data = price != null ? { price } : null;
+                            const isPositive = changePercent >= 0;
 
                             return (
                                 <motion.tr
@@ -241,7 +242,7 @@ const Dashboard = () => {
                                         {data ? formatPrice(data.price) : "—"}
                                     </td>
                                     <td className={`stock-change ${isPositive ? "positive" : "negative"}`}>
-                                        {data ? `${isPositive ? "+" : ""}${change.toFixed(2)}%` : "—"}
+                                        {data ? `${isPositive ? "+" : ""}${changePercent.toFixed(2)}%` : "—"}
                                     </td>
                                     <td>
                                         <button
