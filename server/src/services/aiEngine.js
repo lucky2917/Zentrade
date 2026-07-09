@@ -45,7 +45,6 @@ async function callGroq(model, prompt, temperature = 0.15, maxTokens = 400) {
     });
 
     if (!res.ok) {
-        const err = await res.text();
         throw new Error(`Groq API error ${res.status}`);
     }
 

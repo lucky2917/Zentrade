@@ -3,6 +3,7 @@ import auth from "../middleware/auth.js";
 import { pool } from "../config/db.js";
 import redis from "../config/redis.js";
 import { toPaise } from "../utils/paise.js";
+import logger from "../utils/logger.js";
 
 const router = Router();
 
@@ -83,6 +84,7 @@ router.get("/", auth, async (req, res) => {
             totalPnlPaise: totalCurrentPaise - totalInvestedPaise,
         });
     } catch (err) {
+        logger.error("Portfolio", "Failed to fetch portfolio", { error: err.message });
         res.status(500).json({ error: "Failed to fetch portfolio" });
     }
 });

@@ -8,9 +8,9 @@ const getTransporter = () => {
     if (!process.env.WATCHDOG_EMAIL_USER || !process.env.WATCHDOG_EMAIL_PASS) return null;
 
     transporter = nodemailer.createTransport({
-        host: "smtp.mail.me.com",
-        port: 587,
-        secure: false,
+        host: process.env.SMTP_HOST || "smtp.mail.me.com",
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: Number(process.env.SMTP_PORT) === 465,
         auth: {
             user: process.env.WATCHDOG_EMAIL_USER,
             pass: process.env.WATCHDOG_EMAIL_PASS,

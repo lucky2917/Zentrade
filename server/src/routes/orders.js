@@ -1,6 +1,7 @@
 import { Router } from "express";
 import auth from "../middleware/auth.js";
 import { pool } from "../config/db.js";
+import logger from "../utils/logger.js";
 
 const router = Router();
 
@@ -10,7 +11,9 @@ const DEFAULT_LIMIT = 50;
 router.get("/", auth, async (req, res) => {
     try {
         const limit = Math.min(MAX_LIMIT, Math.max(1, Number(req.query.limit) || DEFAULT_LIMIT));
-        const before = Number(req.query.before) || null;
+        // Non-integer / out-of-range cursors (e.g. ?before=1e999) would error inside pg
+        const rawBefore = Number(req.query.before);
+        const before = Number.isSafeInteger(rawBefore) && rawBefore > 0 ? rawBefore : null;
 
         const result = before
             ? await pool.query(
@@ -40,6 +43,7 @@ router.get("/", auth, async (req, res) => {
 
         res.json({ orders, hasMore });
     } catch (err) {
+        logger.error("Orders", "Failed to fetch orders", { error: err.message });
         res.status(500).json({ error: "Failed to fetch orders" });
     }
 });

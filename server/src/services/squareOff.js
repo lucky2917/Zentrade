@@ -1,11 +1,10 @@
 import cron from "node-cron";
 import { pool } from "../config/db.js";
 import redis from "../config/redis.js";
-import { toPaise } from "../utils/paise.js";
 import logger from "../utils/logger.js";
+// Single source of truth — a square-off must cost exactly what a manual sell costs
+import { BROKERAGE_PAISE, SELL_SPREAD } from "./tradingEngine.js";
 
-const BROKERAGE_PAISE = 2000;
-const SELL_SPREAD = 0.999;
 // Allow prices up to 45 min old at square-off time (market data can lag at EOD)
 const MAX_SQUAREOFF_PRICE_AGE_MS = 45 * 60 * 1000;
 // Process holdings concurrently in batches of 5
