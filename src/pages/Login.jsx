@@ -21,7 +21,7 @@ const Login = () => {
             className="login-page"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         >
             <div className="empty-state glass-panel" style={{ marginTop: "2rem", maxWidth: "420px", marginLeft: "auto", marginRight: "auto" }}>
                 <LogIn size={48} className="empty-icon text-muted mb-4" style={{ color: "var(--text-muted)" }} />

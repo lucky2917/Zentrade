@@ -58,7 +58,7 @@ const Watchlist = () => {
                 className="watchlist-page"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
+                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             >
                 <div className="dashboard-header">
                     <h1><Star size={28} className="mr-3 inline text-accent" style={{ color: 'var(--yellow)' }} /> Watchlist</h1>
@@ -88,7 +88,7 @@ const Watchlist = () => {
             className="watchlist-page"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         >
             <div className="dashboard-header">
                 <h1><Star size={28} className="mr-3 inline text-accent" style={{ color: 'var(--yellow)' }} /> Watchlist</h1>
