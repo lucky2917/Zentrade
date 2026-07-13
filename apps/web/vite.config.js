@@ -59,10 +59,11 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      "/api": "http://localhost:5001",
-      "/fyers": "http://localhost:5001",
+      // overridable so docker-compose can point at the api container
+      "/api": process.env.VITE_PROXY_TARGET || "http://localhost:5001",
+      "/fyers": process.env.VITE_PROXY_TARGET || "http://localhost:5001",
       "/socket.io": {
-        target: "http://localhost:5001",
+        target: process.env.VITE_PROXY_TARGET || "http://localhost:5001",
         ws: true,
       },
     },

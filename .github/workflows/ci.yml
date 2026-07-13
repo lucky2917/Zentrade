@@ -7,12 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  test-server:
-    name: Server tests
+  test-api:
+    name: API tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
     services:
       postgres:
         image: postgres:16-alpine
@@ -35,12 +32,11 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: server/package-lock.json
       - run: npm ci
-      - run: npm test
+      - run: npm test -w apps/api
 
-  lint-client:
-    name: Client lint
+  lint:
+    name: Lint + boundaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,9 +46,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm run check:boundaries
 
-  build-client:
-    name: Client build
+  build-web:
+    name: Web build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,4 +58,4 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - run: npm run build -w apps/web

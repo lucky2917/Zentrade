@@ -9,7 +9,7 @@
     "scripts": {
         "dev": "node --watch src/index.js",
         "start": "node src/index.js",
-        "test": "node --experimental-vm-modules node_modules/.bin/vitest run",
+        "test": "vitest run",
         "docs": "node -e \"import('./src/config/swagger.js').then(m => console.log(JSON.stringify(m.swaggerSpec, null, 2)))\""
     },
     "dependencies": {

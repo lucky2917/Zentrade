@@ -6,11 +6,11 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'dev-dist', 'server/node_modules']),
+  globalIgnores(['**/dist', '**/dev-dist', '**/node_modules']),
 
   // Client: React + browser globals
   {
-    files: ['src/**/*.{js,jsx}'],
+    files: ['apps/web/src/**/*.{js,jsx}'],
     extends: [js.configs.recommended],
     plugins: {
       react,
@@ -37,7 +37,7 @@ export default defineConfig([
 
   // Server + config files: Node globals, no React
   {
-    files: ['server/src/**/*.js', '*.js', 'server/*.js'],
+    files: ['apps/api/src/**/*.js', '*.js', 'apps/*/*.js', 'tools/**/*.cjs'],
     extends: [js.configs.recommended],
     languageOptions: {
       ecmaVersion: 'latest',

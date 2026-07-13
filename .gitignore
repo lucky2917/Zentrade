@@ -24,3 +24,5 @@ claude.md
 *.sln
 *.sw?
 backups/
+PROJECT_STATE.md
+docs/
