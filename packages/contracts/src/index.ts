@@ -1,0 +1,16 @@
+/**
+ * @zentrade/contracts — the schema spine of ZenTrade.
+ *
+ * Rules of this package (constitutional):
+ *  1. Zero dependencies besides zod. It imports from no other workspace.
+ *  2. Everything is strict: unknown keys are rejected at the boundary.
+ *  3. Evolution is append-only — see envelope.ts for the versioning policy.
+ *  4. Every exported schema has a committed JSON-Schema golden; changing a
+ *     golden is a reviewed, deliberate act (the breaking-change tripwire).
+ */
+
+export { AssetClass, OrderSide, Stance, Confidence, RegimeTag, UNLABELED_REGIME } from "./common/enums.js";
+export { Venue, InstrumentRef, VenueSymbolRef } from "./common/instrument.js";
+export { EventEnvelopeBase, defineEvent, EVENT_TYPE_PATTERN } from "./envelope/envelope.js";
+export { MarketTick } from "./marketdata/tick.js";
+export { Candle, CandleResolution } from "./marketdata/candle.js";

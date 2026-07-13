@@ -8,7 +8,7 @@ on:
 
 jobs:
   test-api:
-    name: API tests
+    name: Workspace tests
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -33,7 +33,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm test -w apps/api
+      - run: npm test --workspaces --if-present
 
   lint:
     name: Lint + boundaries
@@ -48,8 +48,8 @@ jobs:
       - run: npm run lint
       - run: npm run check:boundaries
 
-  build-web:
-    name: Web build
+  build:
+    name: Workspace builds
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,4 +58,4 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build -w apps/web
+      - run: npm run build --workspaces --if-present

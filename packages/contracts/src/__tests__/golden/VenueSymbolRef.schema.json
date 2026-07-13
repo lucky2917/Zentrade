@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "venue": {
+      "type": "string",
+      "enum": [
+        "NSE",
+        "BSE"
+      ]
+    },
+    "symbol": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "pattern": "^[A-Z0-9&-]+$"
+    }
+  },
+  "required": [
+    "venue",
+    "symbol"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "taxonomy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "taxonomy",
+    "label"
+  ],
+  "additionalProperties": false,
+  "description": "Market regime label, versioned by taxonomy"
+}

@@ -1,0 +1,25 @@
+{
+  "comment": "Captured verbatim from apps/api smartWall.sanitiseTick on 2026-07-13 (M2 verification). If the sanitizer's shape changes, regenerate deliberately — these prove MarketTick describes production reality.",
+  "stock": {
+    "symbol": "RELIANCE",
+    "name": "Reliance Industries",
+    "price": 1518.4,
+    "change": 15.300000000000182,
+    "changePercent": 1.02,
+    "open": 1500.05,
+    "previousClose": 1503.1,
+    "dayHigh": 1521.15,
+    "dayLow": 1497.2,
+    "volume": 8123456,
+    "marketState": "OPEN",
+    "timestamp": 1783929474262
+  },
+  "index": {
+    "symbol": "NIFTY50",
+    "name": "NIFTY 50",
+    "price": 26412.35,
+    "change": 110.44999999999709,
+    "changePercent": 0.42,
+    "timestamp": 1783929474262
+  }
+}
