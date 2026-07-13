@@ -1,0 +1,74 @@
+# Full local development stack: postgres + redis + api + web.
+# Run from repo root:  docker compose -f infra/docker/docker-compose.dev.yml up
+#
+# Notes:
+# - api/web containers install into container-local volumes so the host's
+#   node_modules (with mac-native binaries) is never touched.
+# - First boot is slow (npm ci inside containers); subsequent boots reuse volumes.
+# - JWT_SECRET below is a dev-only value; real secrets never live in this file.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: zentrade
+      POSTGRES_USER: zentrade
+      POSTGRES_PASSWORD: zentrade
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zentrade"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: node:20-alpine
+    working_dir: /repo
+    command: sh -c "npm ci -w apps/api && node apps/api/src/index.js"
+    environment:
+      PORT: 5001
+      DATABASE_URL: postgresql://zentrade:zentrade@postgres:5432/zentrade
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev-only-secret-0123456789abcdef0123456789abcdef
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "5001:5001"
+    volumes:
+      - ../..:/repo
+      - api_node_modules:/repo/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    image: node:20-alpine
+    working_dir: /repo
+    command: sh -c "npm ci -w apps/web && npm run dev -w apps/web -- --host 0.0.0.0"
+    environment:
+      VITE_PROXY_TARGET: http://api:5001
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../..:/repo
+      - web_node_modules:/repo/node_modules
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  api_node_modules:
+  web_node_modules:
