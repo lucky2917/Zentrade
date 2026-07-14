@@ -1,4 +1,30 @@
+import { readdir, readFile } from "node:fs/promises";
 import logger from "../utils/logger.js";
+
+// M4 onward: new migrations live as SQL files in infra/migrations/NNN_name.sql
+// (repo root). The in-code list below is frozen at id 12 — do not append here.
+const SQL_MIGRATIONS_DIR = new URL("../../../../infra/migrations/", import.meta.url);
+
+async function loadSqlMigrations() {
+  let entries;
+  try {
+    entries = await readdir(SQL_MIGRATIONS_DIR);
+  } catch (err) {
+    // deployments always ship the directory; failing loud beats silently
+    // skipping schema changes
+    throw new Error(`infra/migrations directory not readable: ${err.message}`);
+  }
+
+  const out = [];
+  for (const file of entries) {
+    const match = /^(\d{3})_([a-z0-9_]+)\.sql$/.exec(file);
+    if (!match) continue;
+    const id = Number(match[1]);
+    const sql = await readFile(new URL(file, SQL_MIGRATIONS_DIR), "utf8");
+    out.push({ id, name: match[2], sql });
+  }
+  return out;
+}
 
 const migrations = [
   {
@@ -168,25 +194,46 @@ const migrations = [
   },
 ];
 
+// arbitrary app-unique key for the migration advisory lock
+const MIGRATION_LOCK_KEY = 727001;
+
 export async function runMigrations(pool) {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      id INTEGER PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      applied_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
+  // Advisory lock serializes concurrent migrators (parallel test workers
+  // today, multi-instance deploys tomorrow). Session-scoped, so everything
+  // must run on one dedicated connection.
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
 
-  const { rows } = await pool.query("SELECT id FROM schema_migrations ORDER BY id");
-  const applied = new Set(rows.map((r) => r.id));
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id INTEGER PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        applied_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
 
-  for (const migration of migrations) {
-    if (applied.has(migration.id)) continue;
-    await pool.query(migration.sql);
-    await pool.query("INSERT INTO schema_migrations (id, name) VALUES ($1, $2)", [
-      migration.id,
-      migration.name,
-    ]);
-    logger.info("Migration", `Applied ${migration.id}: ${migration.name}`);
+    const { rows } = await client.query("SELECT id FROM schema_migrations ORDER BY id");
+    const applied = new Set(rows.map((r) => r.id));
+
+    const sqlMigrations = await loadSqlMigrations();
+    const all = [...migrations, ...sqlMigrations].sort((a, b) => a.id - b.id);
+    const ids = all.map((m) => m.id);
+    if (new Set(ids).size !== ids.length) {
+      throw new Error(`duplicate migration ids detected: ${ids.join(",")}`);
+    }
+
+    for (const migration of all) {
+      if (applied.has(migration.id)) continue;
+      await client.query(migration.sql);
+      await client.query("INSERT INTO schema_migrations (id, name) VALUES ($1, $2)", [
+        migration.id,
+        migration.name,
+      ]);
+      logger.info("Migration", `Applied ${migration.id}: ${migration.name}`);
+    }
+  } finally {
+    await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]).catch(() => {});
+    client.release();
   }
 }
