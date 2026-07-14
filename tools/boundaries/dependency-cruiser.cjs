@@ -39,6 +39,14 @@ module.exports = {
             from: { path: "^packages/kernel/" },
             to: { path: "^packages/(?!kernel)" },
         },
+        {
+            // M5: domain packages are pure — no adapters, no I/O layers
+            name: "domain-stays-io-free",
+            comment: "domain-* may import kernel/contracts only, never adapters or eventbus",
+            severity: "error",
+            from: { path: "^packages/domain-" },
+            to: { path: "^packages/(adapters|eventbus)" },
+        },
     ],
     options: {
         doNotFollow: { path: "node_modules" },
