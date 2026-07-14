@@ -18,6 +18,7 @@
         "@zentrade/contracts": "*",
         "@zentrade/domain-reference": "*",
         "@zentrade/eventbus": "*",
+        "@zentrade/observability": "*",
         "bcryptjs": "^2.4.3",
         "bottleneck": "^2.19.5",
         "cookie-parser": "^1.4.7",

@@ -39,6 +39,8 @@ import auth from "./middleware/auth.js";
 import { startEventBackbone, stopEventBackbone, getBackboneLag } from "./services/eventBackbone.js";
 import { seedReferenceData } from "./services/referenceData.js";
 import instrumentRoutes from "./routes/instruments.js";
+import { runWithCorrelation, ensureCorrelationId, metrics } from "@zentrade/observability";
+import { startOpsAlarms, stopOpsAlarms } from "./services/opsAlarms.js";
 
 const app = express();
 
@@ -52,6 +54,19 @@ const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS) || (isProd ? 2 : 1);
 app.set("trust proxy", trustProxyHops);
 
 const server = createServer(app);
+
+// M6: every request runs inside a correlation scope. The id is honored from
+// X-Correlation-Id when it is a well-formed uuid (else minted), echoed back
+// on the response, and attached to every log line and enqueued event.
+app.use((req, res, next) => {
+    const correlationId = ensureCorrelationId(req.headers["x-correlation-id"]);
+    res.setHeader("X-Correlation-Id", correlationId);
+    metrics.counter("http.requests").inc();
+    res.on("finish", () => {
+        if (res.statusCode >= 500) metrics.counter("http.responses_5xx").inc();
+    });
+    runWithCorrelation(correlationId, next);
+});
 const allowedOrigins = [
     process.env.FRONTEND_URL,
     ...(!isProd ? ["http://localhost:5173", "http://localhost:3000"] : []),
@@ -212,6 +227,15 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/instruments", instrumentRoutes);
 app.use("/fyers", fyersRoutes);
 
+// M6: process metrics — counters/gauges snapshot for ops
+app.get("/internal/metrics", auth, (req, res) => {
+    res.json({
+        uptimeSecs: Math.round(process.uptime()),
+        rssBytes: process.memoryUsage.rss(),
+        ...metrics.snapshot(),
+    });
+});
+
 // M4: event backbone ops view — outbox depth, stream lag, DLQ size
 app.get("/internal/eventbus/lag", auth, async (req, res) => {
     try {
@@ -279,6 +303,7 @@ const start = async () => {
     startWebSocketBroadcaster(io);
     startSquareOffJob();
     startEventBackbone();
+    startOpsAlarms();
 
     // C3: catch positions missed while Render instance was sleeping
     await reconcileSquareOff();
@@ -318,6 +343,7 @@ const shutdown = async (signal) => {
     try {
         // X3: stop cron task so no new square-off fires during drain
         stopSquareOffJob();
+        stopOpsAlarms();
         await stopEventBackbone();
         stopAllLanes();
         stopFyersWebSocket();

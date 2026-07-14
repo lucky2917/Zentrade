@@ -1,5 +1,6 @@
 import { createPublisher, createConsumer, createEnvelope, groupLag, streamNameFor, DLQ_STREAM } from "@zentrade/eventbus";
 import { MdCandleClosedV1, MD_CANDLE_CLOSED } from "@zentrade/contracts";
+import { runWithCorrelation, currentCorrelationId, metrics } from "@zentrade/observability";
 import redis from "../config/redis.js";
 import { pool } from "../config/db.js";
 import logger from "../utils/logger.js";
@@ -30,11 +31,21 @@ let consumerClient = null;
  * for producers that have no surrounding transaction.
  */
 export const enqueueEvent = async ({ type, v, payload, correlationId, causationId }, client = pool) => {
-    const envelope = createEnvelope({ type, v, source: SOURCE, payload, correlationId, causationId });
+    const envelope = createEnvelope({
+        type,
+        v,
+        source: SOURCE,
+        payload,
+        // M6: inherit the ambient correlation scope (HTTP request, consumer
+        // context) unless the caller pins one explicitly
+        correlationId: correlationId ?? currentCorrelationId(),
+        causationId,
+    });
     await client.query(
         "INSERT INTO outbox (event_id, event_type, payload) VALUES ($1, $2, $3) ON CONFLICT (event_id) DO NOTHING",
         [envelope.id, envelope.type, JSON.stringify(envelope)]
     );
+    metrics.counter("outbox.enqueued").inc();
     return envelope;
 };
 
@@ -66,6 +77,7 @@ export const relayOutboxOnce = async () => {
             [rows.map((r) => r.id)]
         );
         await client.query("COMMIT");
+        metrics.counter("events.published").inc(rows.length);
         return rows.length;
     } catch (err) {
         await client.query("ROLLBACK").catch(() => {});
@@ -106,7 +118,11 @@ export const startEventBackbone = () => {
         group: "loggers",
         consumer: `api-${process.pid}`,
         schema: MdCandleClosedV1,
+        // M6: handlers run inside the envelope's correlation scope, so every
+        // log they emit carries the id that started the flow
+        contextWrapper: (envelope, run) => runWithCorrelation(envelope.correlationId, run),
         handler: async (envelope) => {
+            metrics.counter("events.consumed").inc();
             const { symbol, resolution, candle } = envelope.payload;
             const lagMs = Date.now() - new Date(envelope.occurredAt).getTime();
             logger.info("EventBackbone", `candle.closed ${symbol} ${resolution} close=${candle.close}`, {
