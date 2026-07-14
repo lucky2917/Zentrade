@@ -16,3 +16,9 @@ export { MarketTick } from "./marketdata/tick.js";
 export { Candle, CandleResolution } from "./marketdata/candle.js";
 export { MdCandleClosedV1, MdCandleClosedPayloadV1, MD_CANDLE_CLOSED } from "./marketdata/events.js";
 export { RefInstrumentAddedV1, RefInstrumentAddedPayloadV1, REF_INSTRUMENT_ADDED } from "./reference/events.js";
+export {
+    IntelDecisionPublishedV1,
+    IntelDecisionPublishedPayloadV1,
+    INTEL_DECISION_PUBLISHED,
+    DecisionAction,
+} from "./intelligence/events.js";

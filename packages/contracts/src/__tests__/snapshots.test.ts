@@ -13,6 +13,8 @@ import {
     RegimeTag,
     MdCandleClosedPayloadV1,
     RefInstrumentAddedPayloadV1,
+    IntelDecisionPublishedPayloadV1,
+    DecisionAction,
 } from "../index.js";
 
 /**
@@ -33,6 +35,8 @@ const goldens: Record<string, z.ZodType> = {
     RegimeTag,
     MdCandleClosedPayloadV1,
     RefInstrumentAddedPayloadV1,
+    IntelDecisionPublishedPayloadV1,
+    DecisionAction,
 };
 
 describe("JSON-Schema goldens", () => {
