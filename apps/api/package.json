@@ -14,6 +14,8 @@
     },
     "dependencies": {
         "@sentry/node": "^10.64.0",
+        "@zentrade/contracts": "*",
+        "@zentrade/eventbus": "*",
         "bcryptjs": "^2.4.3",
         "bottleneck": "^2.19.5",
         "cookie-parser": "^1.4.7",

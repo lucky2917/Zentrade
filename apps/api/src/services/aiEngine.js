@@ -7,6 +7,7 @@ import { getMarketContext, describeMarketContext, macroSignal } from "./marketCo
 import { getCandles } from "./fyers/fyersREST.js";
 import { toFyersStockSymbol } from "./fyers/smartWall.js";
 import { isMarketOpen } from "../utils/marketHours.js";
+import { emitClosedDailyCandle } from "./candleEvents.js";
 
 const CACHE_TTL = 1800;
 const CACHE_TTL_MARKET_HOURS = 300;
@@ -78,6 +79,9 @@ const formatDate = (d) => d.toISOString().slice(0, 10);
 async function fetchOHLCV(symbol) {
     const fyersSymbol = toFyersStockSymbol(symbol);
     const candles = await getCandles(fyersSymbol, "D", formatDate(daysAgo(365)), formatDate(new Date()));
+    // M4: this daily fetch runs on every analysis — announce the last closed
+    // candle to the backbone (deduped per session, non-blocking)
+    void emitClosedDailyCandle(symbol, "1y", candles);
     return candles
         .map(({ open, high, low, close, volume }) => ({ open, high, low, close, volume }))
         .filter((c) => c.close != null);

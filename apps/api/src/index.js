@@ -35,6 +35,8 @@ import { startPreMarketScanner } from "./services/fyers/preMarketScanner.js";
 import { startSymbolManager } from "./services/fyers/symbolManager.js";
 import fyersRoutes from "./routes/fyers.js";
 import { STOCKS } from "./config/stocks.js";
+import auth from "./middleware/auth.js";
+import { startEventBackbone, stopEventBackbone, getBackboneLag } from "./services/eventBackbone.js";
 
 const app = express();
 
@@ -207,6 +209,16 @@ app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/fyers", fyersRoutes);
 
+// M4: event backbone ops view — outbox depth, stream lag, DLQ size
+app.get("/internal/eventbus/lag", auth, async (req, res) => {
+    try {
+        res.json(await getBackboneLag());
+    } catch (err) {
+        logger.error("EventBackbone", "lag endpoint failed", { error: err.message });
+        res.status(500).json({ error: "lag unavailable" });
+    }
+});
+
 // Unknown API routes get JSON, not Express's HTML 404 page
 app.use("/api", (req, res) => {
     res.status(404).json({ error: "Not found" });
@@ -260,6 +272,7 @@ const start = async () => {
     startMarketWorker();
     startWebSocketBroadcaster(io);
     startSquareOffJob();
+    startEventBackbone();
 
     // C3: catch positions missed while Render instance was sleeping
     await reconcileSquareOff();
@@ -299,6 +312,7 @@ const shutdown = async (signal) => {
     try {
         // X3: stop cron task so no new square-off fires during drain
         stopSquareOffJob();
+        await stopEventBackbone();
         stopAllLanes();
         stopFyersWebSocket();
         await pool.end();

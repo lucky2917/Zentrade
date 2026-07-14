@@ -5,6 +5,7 @@ import logger from "../utils/logger.js";
 import { STOCK_MAP } from "../config/stocks.js";
 import { getCandlesForRange } from "../services/fyers/fyersREST.js";
 import { toFyersStockSymbol } from "../services/fyers/smartWall.js";
+import { emitClosedDailyCandle } from "../services/candleEvents.js";
 
 const router = Router();
 
@@ -42,6 +43,8 @@ router.get("/:symbol", auth, async (req, res) => {
 
         if (candles?.length > 0) {
             await redis.setex(cacheKey, CACHE_TTL[range], JSON.stringify(candles));
+            // M4: fresh daily bars announce the last closed candle (deduped, non-blocking)
+            void emitClosedDailyCandle(sym, range, candles);
         }
 
         logger.info("ChartService", `Fetched ${candles.length} candles for ${sym} (${range})`);
