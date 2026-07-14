@@ -1,0 +1,28 @@
+{
+    "name": "@zentrade/adapter-postgres",
+    "version": "0.1.0",
+    "private": true,
+    "license": "MIT",
+    "type": "module",
+    "description": "Postgres adapters implementing domain ports. Pool is injected; this package owns SQL, never connections.",
+    "engines": {
+        "node": ">=20"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "test": "vitest run"
+    },
+    "devDependencies": {
+        "typescript": "^5.7.3",
+        "vitest": "^2.1.9"
+    }
+}
