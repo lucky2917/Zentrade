@@ -69,4 +69,6 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build --workspaces --if-present
+      # dependency-ordered: build:packages then web — same command deploys run;
+      # never `--workspaces` (enumeration order is alphabetical, not topological)
+      - run: npm run build
