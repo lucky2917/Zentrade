@@ -67,6 +67,12 @@ export interface ConsumerOptions {
     handler: (envelope: EventEnvelope, meta: { entryId: string; deliveryCount: number }) => Promise<void>;
     /** structural validation beyond the base envelope (a defineEvent schema) */
     schema?: z.ZodType;
+    /**
+     * Runs the handler inside a caller-provided context (correlation scope,
+     * tracing span). Keeps the bus free of observability dependencies while
+     * making context propagation correct-by-construction for consumers.
+     */
+    contextWrapper?: (envelope: EventEnvelope, run: () => Promise<void>) => Promise<void>;
     /** block time per read; keep short so stop() is responsive */
     blockMs?: number;
     batchSize?: number;
@@ -96,6 +102,7 @@ export const createConsumer = (redis: RedisLike, options: ConsumerOptions) => {
         consumer,
         handler,
         schema,
+        contextWrapper,
         blockMs = 2_000,
         batchSize = 32,
         maxDeliveries = 5,
@@ -142,7 +149,8 @@ export const createConsumer = (redis: RedisLike, options: ConsumerOptions) => {
             if (raw == null) throw new Error("entry has no envelope field");
             const base = EventEnvelopeBase.parse(JSON.parse(raw)); // validate at consume
             const envelope = schema ? (schema.parse(base) as EventEnvelope) : base;
-            await handler(envelope, { entryId, deliveryCount });
+            const invoke = () => handler(envelope, { entryId, deliveryCount });
+            await (contextWrapper ? contextWrapper(envelope, invoke) : invoke());
             await redis.call("XACK", stream, group, entryId);
         } catch (err) {
             onError(err, `handling ${stream}/${entryId} (delivery ${deliveryCount})`);
