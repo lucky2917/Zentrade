@@ -42,10 +42,10 @@ module.exports = {
         {
             // M5: domain packages are pure — no adapters, no I/O layers
             name: "domain-stays-io-free",
-            comment: "domain-* may import kernel/contracts only, never adapters or eventbus",
+            comment: "domain-* may import kernel/contracts only, never adapters/eventbus/observability",
             severity: "error",
             from: { path: "^packages/domain-" },
-            to: { path: "^packages/(adapters|eventbus)" },
+            to: { path: "^packages/(adapters|eventbus|observability)" },
         },
     ],
     options: {
