@@ -23,6 +23,22 @@ module.exports = {
             from: { path: "^packages/" },
             to: { path: "^apps/" },
         },
+        {
+            // M4: contracts is the spine — it may import zod and nothing else
+            name: "contracts-stays-pure",
+            comment: "contracts imports no other workspace package",
+            severity: "error",
+            from: { path: "^packages/contracts/" },
+            to: { path: "^packages/(?!contracts)" },
+        },
+        {
+            // M4: kernel has zero runtime dependencies, including workspaces
+            name: "kernel-stays-pure",
+            comment: "kernel imports no other workspace package",
+            severity: "error",
+            from: { path: "^packages/kernel/" },
+            to: { path: "^packages/(?!kernel)" },
+        },
     ],
     options: {
         doNotFollow: { path: "node_modules" },

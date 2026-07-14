@@ -12,7 +12,9 @@
     "packages/*"
   ],
   "scripts": {
+    "build:packages": "npm run build -w packages/contracts && npm run build -w packages/kernel && npm run build -w packages/eventbus",
     "dev:web": "npm run dev -w apps/web",
+    "predev:api": "npm run build:packages",
     "dev:api": "npm run dev -w apps/api",
     "build": "npm run build --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
