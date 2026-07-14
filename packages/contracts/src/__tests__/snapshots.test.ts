@@ -11,6 +11,7 @@ import {
     Stance,
     Confidence,
     RegimeTag,
+    MdCandleClosedPayloadV1,
 } from "../index.js";
 
 /**
@@ -29,6 +30,7 @@ const goldens: Record<string, z.ZodType> = {
     Stance,
     Confidence,
     RegimeTag,
+    MdCandleClosedPayloadV1,
 };
 
 describe("JSON-Schema goldens", () => {

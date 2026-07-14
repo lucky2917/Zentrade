@@ -14,3 +14,4 @@ export { Venue, InstrumentRef, VenueSymbolRef } from "./common/instrument.js";
 export { EventEnvelopeBase, defineEvent, EVENT_TYPE_PATTERN } from "./envelope/envelope.js";
 export { MarketTick } from "./marketdata/tick.js";
 export { Candle, CandleResolution } from "./marketdata/candle.js";
+export { MdCandleClosedV1, MdCandleClosedPayloadV1, MD_CANDLE_CLOSED } from "./marketdata/events.js";
