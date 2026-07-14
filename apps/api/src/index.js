@@ -37,6 +37,8 @@ import fyersRoutes from "./routes/fyers.js";
 import { STOCKS } from "./config/stocks.js";
 import auth from "./middleware/auth.js";
 import { startEventBackbone, stopEventBackbone, getBackboneLag } from "./services/eventBackbone.js";
+import { seedReferenceData } from "./services/referenceData.js";
+import instrumentRoutes from "./routes/instruments.js";
 
 const app = express();
 
@@ -207,6 +209,7 @@ app.use("/api/indices", indicesRoutes);
 app.use("/api/market", marketRoutes);
 app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/instruments", instrumentRoutes);
 app.use("/fyers", fyersRoutes);
 
 // M4: event backbone ops view — outbox depth, stream lag, DLQ size
@@ -268,6 +271,9 @@ const start = async () => {
     logger.info("Server", "Redis connection verified");
 
     await initDB();
+
+    // M5: instrument registry + calendar exceptions (idempotent, transactional)
+    await seedReferenceData();
 
     startMarketWorker();
     startWebSocketBroadcaster(io);

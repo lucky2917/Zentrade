@@ -75,19 +75,24 @@ export const relayOutboxOnce = async () => {
     }
 };
 
-const relayTick = async () => {
-    if (relayRunning) return;
+let currentRelayPass = null;
+
+const relayTick = () => {
+    if (relayRunning) return currentRelayPass;
     relayRunning = true;
-    try {
-        let published;
-        do {
-            published = await relayOutboxOnce();
-        } while (published === RELAY_BATCH); // drain backlog without waiting a tick
-    } catch (err) {
-        logger.error("EventBackbone", "Relay pass failed, will retry", { error: err.message });
-    } finally {
-        relayRunning = false;
-    }
+    currentRelayPass = (async () => {
+        try {
+            let published;
+            do {
+                published = await relayOutboxOnce();
+            } while (published === RELAY_BATCH); // drain backlog without waiting a tick
+        } catch (err) {
+            logger.error("EventBackbone", "Relay pass failed, will retry", { error: err.message });
+        } finally {
+            relayRunning = false;
+        }
+    })();
+    return currentRelayPass;
 };
 
 export const startEventBackbone = () => {
@@ -118,6 +123,10 @@ export const startEventBackbone = () => {
 
 export const stopEventBackbone = async () => {
     if (relayTimer) clearInterval(relayTimer);
+    // drain the in-flight relay pass before the pool closes under it —
+    // an interrupted pass rolls back and republishes on next boot (harmless
+    // but duplicate-producing; observed during M5 verification)
+    if (currentRelayPass) await currentRelayPass.catch(() => {});
     if (consumer) await consumer.stop().catch(() => {});
     if (consumerClient) await consumerClient.quit().catch(() => {});
 };
