@@ -15,3 +15,4 @@ export { EventEnvelopeBase, defineEvent, EVENT_TYPE_PATTERN } from "./envelope/e
 export { MarketTick } from "./marketdata/tick.js";
 export { Candle, CandleResolution } from "./marketdata/candle.js";
 export { MdCandleClosedV1, MdCandleClosedPayloadV1, MD_CANDLE_CLOSED } from "./marketdata/events.js";
+export { RefInstrumentAddedV1, RefInstrumentAddedPayloadV1, REF_INSTRUMENT_ADDED } from "./reference/events.js";

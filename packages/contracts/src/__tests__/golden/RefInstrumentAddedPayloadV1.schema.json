@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "instrumentId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "venue": {
+      "type": "string",
+      "enum": [
+        "NSE",
+        "BSE"
+      ]
+    },
+    "symbol": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "assetClass": {
+      "type": "string",
+      "enum": [
+        "equity",
+        "index",
+        "fx",
+        "crypto",
+        "commodity",
+        "option",
+        "future",
+        "etf"
+      ]
+    },
+    "currency": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 3
+    }
+  },
+  "required": [
+    "instrumentId",
+    "venue",
+    "symbol",
+    "name",
+    "assetClass",
+    "currency"
+  ],
+  "additionalProperties": false
+}
