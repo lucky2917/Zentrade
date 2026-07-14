@@ -8,6 +8,8 @@ import { getCandles } from "./fyers/fyersREST.js";
 import { toFyersStockSymbol } from "./fyers/smartWall.js";
 import { isMarketOpen } from "../utils/marketHours.js";
 import { emitClosedDailyCandle } from "./candleEvents.js";
+import { canonicalHash, modelCostUsd, priceToMinor } from "@zentrade/domain-intelligence";
+import { isJournalEnabled, journalSafely } from "./decisionJournal.js";
 
 const CACHE_TTL = 1800;
 const CACHE_TTL_MARKET_HOURS = 300;
@@ -23,10 +25,14 @@ const MODELS = {
 
 // ─── Groq caller ─────────────────────────────────────────────────────────────
 
+// M7: version stamped on every journaled run; bump when prompts/pipeline change
+const AI_PIPELINE_VERSION = "v4.0.0";
+
 async function callGroq(model, prompt, temperature = 0.15, maxTokens = 400) {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("Add GROQ_API_KEY to server/.env");
 
+    const started = performance.now();
     const res = await fetch(GROQ_URL, {
         method: "POST",
         headers: {
@@ -50,20 +56,54 @@ async function callGroq(model, prompt, temperature = 0.15, maxTokens = 400) {
     }
 
     const data = await res.json();
+    const meta = {
+        latencyMs: Math.round(performance.now() - started),
+        usage: data.usage
+            ? { promptTokens: data.usage.prompt_tokens ?? 0, completionTokens: data.usage.completion_tokens ?? 0 }
+            : null,
+    };
     const text = data.choices?.[0]?.message?.content ?? "";
     try {
-        return JSON.parse(text);
+        return { result: JSON.parse(text), meta };
     } catch {
         throw new Error(`Invalid JSON from model ${model}`);
     }
 }
 
-async function callGroqSafe(model, prompt, temperature, maxTokens) {
+/**
+ * M7: `sink` (array or null) collects a journal record per LLM call — model,
+ * canonical input hash, output, latency, tokens, cost. Failed final attempts
+ * are recorded too: a run that died is still evidence.
+ */
+async function callGroqSafe(model, prompt, temperature, maxTokens, sink, agentName) {
+    const record = (status, output, meta) =>
+        sink?.push({
+            agentName,
+            agentVersion: AI_PIPELINE_VERSION,
+            modelId: model,
+            inputHash: canonicalHash({ model, prompt, temperature, maxTokens: maxTokens ?? 400 }),
+            output,
+            status,
+            latencyMs: meta?.latencyMs ?? 0,
+            promptTokens: meta?.usage?.promptTokens ?? null,
+            completionTokens: meta?.usage?.completionTokens ?? null,
+            costUsd: modelCostUsd(model, meta?.usage ?? null),
+        });
+
     try {
-        return await callGroq(model, prompt, temperature, maxTokens);
+        const { result, meta } = await callGroq(model, prompt, temperature, maxTokens);
+        record("ok", result, meta);
+        return result;
     } catch (firstErr) {
         logger.error("AIEngine", `${model} failed: ${firstErr.message} — retrying`);
-        return await callGroq(model, prompt, temperature, maxTokens);
+        try {
+            const { result, meta } = await callGroq(model, prompt, temperature, maxTokens);
+            record("ok", result, meta);
+            return result;
+        } catch (secondErr) {
+            record("failed", { error: String(secondErr.message ?? secondErr).slice(0, 300) }, null);
+            throw secondErr;
+        }
     }
 }
 
@@ -129,7 +169,7 @@ function computeConsensus(techSignal, sentimentSignal, riskBias) {
 
 // ─── Agent 1: Technical Analyst ───────────────────────────────────────────────
 
-async function runTechnicalAgent(stockInfo, symbol, priceData, ind, intradayCtx) {
+async function runTechnicalAgent(stockInfo, symbol, priceData, ind, intradayCtx, sink) {
     const rsiLabel = ind.rsi14 != null
         ? `${ind.rsi14} ${
             ind.rsi14 > 70 ? "(Overbought — reversal risk)" :
@@ -192,7 +232,7 @@ Respond ONLY in this exact JSON — no markdown:
   "keyPoints": ["specific intraday observation with numbers", "second observation"]
 }`;
 
-    const result = await callGroqSafe(MODELS.technical, prompt, 0.15);
+    const result = await callGroqSafe(MODELS.technical, prompt, 0.15, undefined, sink, "technical");
     if (!["BULLISH", "BEARISH", "NEUTRAL"].includes(result.signal)) result.signal = "NEUTRAL";
     if (!["HIGH", "MEDIUM", "LOW"].includes(result.confidence)) result.confidence = "MEDIUM";
     if (!Array.isArray(result.keyPoints)) result.keyPoints = [];
@@ -201,7 +241,7 @@ Respond ONLY in this exact JSON — no markdown:
 
 // ─── Agent 2: Sentiment Analyst ───────────────────────────────────────────────
 
-async function runSentimentAgent(stockInfo, symbol, news, priceData, ind) {
+async function runSentimentAgent(stockInfo, symbol, news, priceData, ind, sink) {
     const newsBlock = news.length > 0
         ? news.map((n, i) => `${i + 1}. [${n.source}] ${n.headline}`).join("\n")
         : "No recent news headlines found.";
@@ -240,7 +280,7 @@ Respond ONLY in this exact JSON — no markdown:
   "keyPoints": ["key sentiment finding", "second finding"]
 }`;
 
-    const result = await callGroqSafe(MODELS.sentiment, prompt, 0.2);
+    const result = await callGroqSafe(MODELS.sentiment, prompt, 0.2, undefined, sink, "sentiment");
     if (!["BULLISH", "BEARISH", "NEUTRAL"].includes(result.sentiment)) result.sentiment = "NEUTRAL";
     if (!["HIGH", "MEDIUM", "LOW"].includes(result.confidence)) result.confidence = "LOW";
     if (!Array.isArray(result.keyPoints)) result.keyPoints = [];
@@ -249,7 +289,7 @@ Respond ONLY in this exact JSON — no markdown:
 
 // ─── Agent 3: Risk Analyst ────────────────────────────────────────────────────
 
-async function runRiskAgent(stockInfo, symbol, priceData, ind, mktCtx) {
+async function runRiskAgent(stockInfo, symbol, priceData, ind, mktCtx, sink) {
     const posLabel = ind.positionIn52W > 80
         ? "Near 52-week HIGH — limited upside headroom"
         : ind.positionIn52W < 20
@@ -288,7 +328,7 @@ Respond ONLY in this exact JSON — no markdown:
   "keyPoints": ["specific risk observation with numbers", "second observation"]
 }`;
 
-    const result = await callGroqSafe(MODELS.risk, prompt, 0.2);
+    const result = await callGroqSafe(MODELS.risk, prompt, 0.2, undefined, sink, "risk");
     if (!["LOW", "MEDIUM", "HIGH"].includes(result.riskLevel)) result.riskLevel = "MEDIUM";
     if (!["BULLISH", "BEARISH"].includes(result.bias))
         result.bias = (ind.momentum?.fiveDay ?? 0) >= 0 ? "BULLISH" : "BEARISH";
@@ -301,7 +341,7 @@ Respond ONLY in this exact JSON — no markdown:
 
 function roundToHalf(n) { return Math.round(n * 2) / 2; }
 
-async function runSynthesizer(stockInfo, symbol, priceData, tech, sent, risk, consensus, mktCtx, ind, intradayCtx) {
+async function runSynthesizer(stockInfo, symbol, priceData, tech, sent, risk, consensus, mktCtx, ind, intradayCtx, sink) {
     const cp = priceData?.price ?? null;
     const todayChg = priceData?.changePercent != null
         ? (priceData.changePercent > 0 ? "+" : "") + priceData.changePercent.toFixed(2) + "%"
@@ -377,7 +417,7 @@ Respond ONLY in this exact JSON — zero text outside JSON:
   "reasoning": ["<intraday setup one-liner>", "<sentiment one-liner>", "<risk one-liner>"]
 }`;
 
-    const result = await callGroqSafe(MODELS.synthesizer, prompt, 0.4, 650);
+    const result = await callGroqSafe(MODELS.synthesizer, prompt, 0.4, 650, sink, "synthesizer");
 
     // Sanitise
     if (!["BUY", "SELL", "HOLD"].includes(result.action))
@@ -417,43 +457,74 @@ Respond ONLY in this exact JSON — zero text outside JSON:
 
 // ─── Main orchestrator ────────────────────────────────────────────────────────
 
-export async function analyseStock(symbol) {
+export async function analyseStock(symbol, trigger = "api") {
     if (!STOCK_MAP.has(symbol)) throw new Error(`${symbol} is not in Zentrade's stock universe`);
 
     const cacheKey = `ai:v4:analyse:${symbol}`;
     const cached = await redis.get(cacheKey);
+    // cache hits are replays of an already-journaled deliberation, not new runs
     if (cached) return { ...JSON.parse(cached), cached: true };
 
     const stockInfo = STOCK_MAP.get(symbol);
     logger.info("AIEngine", `Starting analysis for ${symbol} (${stockInfo.sector})`);
 
-    // Fetch everything in parallel — daily + 15-min + news + macro all at once
-    const [candles, candles15m, news, rawPrice, mktCtx] = await Promise.all([
-        fetchOHLCV(symbol),
-        fetchIntraday(symbol),
-        fetchStockNews(stockInfo.yahooSymbol),
-        redis.get(`stock:${symbol}`),
-        getMarketContext(stockInfo.sectorIndex, redis),
-    ]);
+    // M7: dark-write collector — null when the journal flag is off
+    const sink = isJournalEnabled() ? [] : null;
+    let priceData = null;
 
-    const indicators   = computeIndicators(candles);
-    const intradayCtx  = computeIntradayContext(candles15m);
-    const priceData    = rawPrice ? JSON.parse(rawPrice) : null;
+    try {
+        // Fetch everything in parallel — daily + 15-min + news + macro all at once
+        const [candles, candles15m, news, rawPrice, mktCtx] = await Promise.all([
+            fetchOHLCV(symbol),
+            fetchIntraday(symbol),
+            fetchStockNews(stockInfo.yahooSymbol),
+            redis.get(`stock:${symbol}`),
+            getMarketContext(stockInfo.sectorIndex, redis),
+        ]);
 
-    logger.info("AIEngine", `${symbol} | iVWAP: ₹${intradayCtx?.intradayVwap ?? "N/A"} | OR: ${intradayCtx?.orStatus ?? "not open"} | gap: ${intradayCtx?.gapPct != null ? intradayCtx.gapPct + "%" : "N/A"}`);
+        const indicators   = computeIndicators(candles);
+        const intradayCtx  = computeIntradayContext(candles15m);
+        priceData          = rawPrice ? JSON.parse(rawPrice) : null;
 
-    const [techResult, sentResult, riskResult] = await Promise.all([
-        runTechnicalAgent(stockInfo, symbol, priceData, indicators, intradayCtx),
-        runSentimentAgent(stockInfo, symbol, news, priceData, indicators),
-        runRiskAgent(stockInfo, symbol, priceData, indicators, mktCtx),
-    ]);
+        logger.info("AIEngine", `${symbol} | iVWAP: ₹${intradayCtx?.intradayVwap ?? "N/A"} | OR: ${intradayCtx?.orStatus ?? "not open"} | gap: ${intradayCtx?.gapPct != null ? intradayCtx.gapPct + "%" : "N/A"}`);
 
-    logger.info("AIEngine", `${symbol}: tech=${techResult.signal} sent=${sentResult.sentiment} risk=${riskResult.bias}`);
+        const [techResult, sentResult, riskResult] = await Promise.all([
+            runTechnicalAgent(stockInfo, symbol, priceData, indicators, intradayCtx, sink),
+            runSentimentAgent(stockInfo, symbol, news, priceData, indicators, sink),
+            runRiskAgent(stockInfo, symbol, priceData, indicators, mktCtx, sink),
+        ]);
 
-    const consensus = computeConsensus(techResult.signal, sentResult.sentiment, riskResult.bias);
-    logger.info("AIEngine", `${symbol} consensus: ${consensus.direction} (${consensus.label}) | macro score: ${macroSignal(mktCtx)}`);
+        logger.info("AIEngine", `${symbol}: tech=${techResult.signal} sent=${sentResult.sentiment} risk=${riskResult.bias}`);
 
-    const finalResult = await runSynthesizer(stockInfo, symbol, priceData, techResult, sentResult, riskResult, consensus, mktCtx, indicators, intradayCtx);
+        const consensus = computeConsensus(techResult.signal, sentResult.sentiment, riskResult.bias);
+        logger.info("AIEngine", `${symbol} consensus: ${consensus.direction} (${consensus.label}) | macro score: ${macroSignal(mktCtx)}`);
+
+        const finalResult = await runSynthesizer(stockInfo, symbol, priceData, techResult, sentResult, riskResult, consensus, mktCtx, indicators, intradayCtx, sink);
+        return await finishAnalysis({ symbol, trigger, sink, cacheKey, stockInfo, priceData, indicators, intradayCtx, mktCtx, news, consensus, finalResult, techResult, sentResult, riskResult });
+    } catch (err) {
+        // a failed deliberation is still evidence: journal whatever was collected
+        if (sink && sink.length > 0) {
+            await journalSafely({
+                symbol,
+                trigger,
+                contextSnapshot: buildSnapshot(priceData, { failed: true, symbol }),
+                runs: sink,
+                decision: null,
+            });
+        }
+        throw err;
+    }
+}
+
+const buildSnapshot = (priceData, inputs) => ({
+    price: priceData?.price ?? null,
+    changePercent: priceData?.changePercent ?? null,
+    priceTimestamp: priceData?.timestamp ?? null,
+    marketOpen: isMarketOpen(),
+    inputsHash: canonicalHash(inputs),
+});
+
+async function finishAnalysis({ symbol, trigger, sink, cacheKey, stockInfo, priceData, indicators, intradayCtx, mktCtx, news, consensus, finalResult, techResult, sentResult, riskResult }) {
 
     const output = {
         action:      finalResult.action,
@@ -496,6 +567,38 @@ export async function analyseStock(symbol) {
     };
 
     await redis.setex(cacheKey, getCacheTTL(), JSON.stringify(output));
+
+    // M7 dark write: full lineage to the journal; failure alarms, never throws
+    if (sink) {
+        await journalSafely({
+            symbol,
+            trigger,
+            contextSnapshot: buildSnapshot(priceData, {
+                indicators,
+                intradayCtx,
+                macro: output.macro,
+                newsCount: news.length,
+                pipeline: AI_PIPELINE_VERSION,
+            }),
+            runs: sink,
+            decision: {
+                action: output.action,
+                mode: output.mode,
+                confidence: output.confidence,
+                entryMinor: priceToMinor(output.entry ?? null),
+                targetMinor: priceToMinor(output.target ?? null),
+                stopMinor: priceToMinor(output.stopLoss ?? null),
+                rationale: {
+                    traderNote: output.traderNote ? String(output.traderNote).slice(0, 2000) : null,
+                    reasoning: (output.reasoning ?? []).map((r) => String(r).slice(0, 500)),
+                    consensus: output.consensus ?? null,
+                    macroScore: output.macro?.score ?? null,
+                },
+                synthesizerVersion: AI_PIPELINE_VERSION,
+            },
+        });
+    }
+
     logger.info("AIEngine", `${symbol} → ${output.action} @ ₹${output.entry} | T: ₹${output.target} | SL: ₹${output.stopLoss} | ${consensus.label}`);
     return output;
 }

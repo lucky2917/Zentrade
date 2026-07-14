@@ -64,7 +64,7 @@ const runSlowLane = async () => {
             if (!passed) continue;
             screened++;
 
-            const analysis = await analyseStock(sanitised.symbol);
+            const analysis = await analyseStock(sanitised.symbol, "lane:slow");
             if (passesAlertThreshold(analysis)) {
                 await sendTradeAlert(sanitised.symbol, analysis);
                 alerted++;

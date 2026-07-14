@@ -33,9 +33,10 @@ router.get("/analyse/:symbol", auth, async (req, res) => {
     }
 
     try {
-        const result = await analyseStock(symbol);
+        const result = await analyseStock(symbol, "api");
         res.json(result);
-    } catch {
+    } catch (err) {
+        logger.error("AI", "analysis failed", { symbol, error: err.message });
         res.status(500).json({ error: "Analysis unavailable" });
     }
 });
