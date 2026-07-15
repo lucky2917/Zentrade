@@ -39,6 +39,7 @@ import auth from "./middleware/auth.js";
 import { startEventBackbone, stopEventBackbone, getBackboneLag } from "./services/eventBackbone.js";
 import { seedReferenceData } from "./services/referenceData.js";
 import instrumentRoutes from "./routes/instruments.js";
+import decisionRoutes from "./routes/decisions.js";
 import { runWithCorrelation, ensureCorrelationId, metrics } from "@zentrade/observability";
 import { startOpsAlarms, stopOpsAlarms } from "./services/opsAlarms.js";
 
@@ -225,6 +226,7 @@ app.use("/api/market", marketRoutes);
 app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/instruments", instrumentRoutes);
+app.use("/api/decisions", decisionRoutes);
 app.use("/fyers", fyersRoutes);
 
 // M6: process metrics — counters/gauges snapshot for ops
