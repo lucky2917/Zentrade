@@ -47,3 +47,21 @@ export type EvalCalibrationUpdatedPayloadV1 = z.infer<typeof EvalCalibrationUpda
 
 export const EvalCalibrationUpdatedV1 = defineEvent("eval.calibration.updated", 1, EvalCalibrationUpdatedPayloadV1);
 export const EVAL_CALIBRATION_UPDATED = { type: "eval.calibration.updated", v: 1 } as const;
+
+/**
+ * eval.reflection.computed v1 — a reflection snapshot was appended (M16).
+ * Reflections are structured observations the system makes about itself
+ * from calibration history and episodic memory. Facts with references,
+ * never advice; nothing on the decision path consumes them.
+ */
+export const EvalReflectionComputedPayloadV1 = z.strictObject({
+    snapshotId: z.uuid(),
+    asOf: z.iso.date(),
+    semantics: z.string().min(1).max(32),
+    findingCount: z.int().nonnegative(),
+    criticalCount: z.int().nonnegative(),
+});
+export type EvalReflectionComputedPayloadV1 = z.infer<typeof EvalReflectionComputedPayloadV1>;
+
+export const EvalReflectionComputedV1 = defineEvent("eval.reflection.computed", 1, EvalReflectionComputedPayloadV1);
+export const EVAL_REFLECTION_COMPUTED = { type: "eval.reflection.computed", v: 1 } as const;
