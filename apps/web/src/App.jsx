@@ -17,6 +17,8 @@ const Orders = lazy(() => import("./pages/Orders.jsx"));
 const Watchlist = lazy(() => import("./pages/Watchlist.jsx"));
 const Reauth = lazy(() => import("./pages/Reauth.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));
+const DecisionsList = lazy(() => import("./pages/DecisionsList.jsx"));
+const DecisionDetail = lazy(() => import("./pages/DecisionDetail.jsx"));
 
 const AppContent = () => {
   return (
@@ -33,6 +35,8 @@ const AppContent = () => {
               <Route path="/portfolio" element={<Portfolio />} />
               <Route path="/watchlist" element={<Watchlist />} />
               <Route path="/orders" element={<Orders />} />
+              <Route path="/decisions" element={<DecisionsList />} />
+              <Route path="/decision/:id" element={<DecisionDetail />} />
               <Route path="/reauth" element={<Reauth />} />
               <Route path="/login" element={<Login />} />
             </Routes>
