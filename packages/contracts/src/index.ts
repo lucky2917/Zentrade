@@ -42,3 +42,8 @@ export {
     EvalCalibrationUpdatedV1,
     EVAL_CALIBRATION_UPDATED,
 } from "./evaluation/events.js";
+export {
+    MemEpisodeFormedPayloadV1,
+    MemEpisodeFormedV1,
+    MEM_EPISODE_FORMED,
+} from "./memory/events.js";

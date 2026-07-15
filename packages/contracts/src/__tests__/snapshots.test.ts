@@ -23,6 +23,7 @@ import {
     OutcomeHit,
     MdRegimeLabeledPayloadV1,
     EvalCalibrationUpdatedPayloadV1,
+    MemEpisodeFormedPayloadV1,
 } from "../index.js";
 
 /**
@@ -53,6 +54,7 @@ const goldens: Record<string, z.ZodType> = {
     OutcomeHit,
     MdRegimeLabeledPayloadV1,
     EvalCalibrationUpdatedPayloadV1,
+    MemEpisodeFormedPayloadV1,
 };
 
 describe("JSON-Schema goldens", () => {

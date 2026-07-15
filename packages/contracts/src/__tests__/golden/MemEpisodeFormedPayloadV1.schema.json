@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "memoryId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "memoryKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "semantics": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "decisionId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "outcomeId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "horizon": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16
+    },
+    "regime": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 48
+    },
+    "hit": {
+      "type": "string",
+      "enum": [
+        "target",
+        "stop",
+        "neither"
+      ]
+    }
+  },
+  "required": [
+    "memoryId",
+    "memoryKey",
+    "semantics",
+    "decisionId",
+    "outcomeId",
+    "horizon",
+    "regime",
+    "hit"
+  ],
+  "additionalProperties": false
+}
