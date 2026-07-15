@@ -40,6 +40,7 @@ import { startEventBackbone, stopEventBackbone, getBackboneLag } from "./service
 import { seedReferenceData } from "./services/referenceData.js";
 import { startOutcomeLabeler, stopOutcomeLabeler } from "./services/outcomeLabeler.js";
 import { startCalibrationEngine, stopCalibrationEngine } from "./services/calibrationEngine.js";
+import { startMemoryIndexer, stopMemoryIndexer } from "./services/memoryIndexer.js";
 import { startRegimeLabeler, stopRegimeLabeler } from "./services/regimeLabeler.js";
 import instrumentRoutes from "./routes/instruments.js";
 import decisionRoutes from "./routes/decisions.js";
@@ -313,6 +314,7 @@ const start = async () => {
     startRegimeLabeler();
     startOutcomeLabeler();
         startCalibrationEngine();
+        startMemoryIndexer();
     startOpsAlarms();
 
     // C3: catch positions missed while Render instance was sleeping
@@ -354,7 +356,8 @@ const shutdown = async (signal) => {
         // X3: stop cron tasks so no new work fires during drain
         stopSquareOffJob();
         stopRegimeLabeler();
-        stopCalibrationEngine();
+        stopMemoryIndexer();
+    stopCalibrationEngine();
     stopOutcomeLabeler();
         stopOpsAlarms();
         await stopEventBackbone();

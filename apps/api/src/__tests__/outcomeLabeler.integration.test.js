@@ -115,7 +115,9 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("outcome labeler (integration)", () => 
     it("outcomes are append-only facts", async () => {
         await expect(pool.query("UPDATE outcomes SET hit = 'stop'")).rejects.toThrow(/append-only/);
         await expect(pool.query("DELETE FROM outcomes")).rejects.toThrow(/append-only/);
-        await expect(pool.query("TRUNCATE outcomes")).rejects.toThrow(/append-only/);
+        // since M14, memories FK-references outcomes: Postgres refuses the
+        // truncate before our trigger even fires — either guard upholds the law
+        await expect(pool.query("TRUNCATE outcomes")).rejects.toThrow(/append-only|cannot truncate/);
     });
 
     it("replay: relabeling math from the stored decision + same candles reproduces the stored outcome", async () => {
