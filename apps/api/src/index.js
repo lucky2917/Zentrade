@@ -45,6 +45,7 @@ import { startRegimeLabeler, stopRegimeLabeler } from "./services/regimeLabeler.
 import instrumentRoutes from "./routes/instruments.js";
 import decisionRoutes from "./routes/decisions.js";
 import calibrationRoutes from "./routes/calibration.js";
+import memoryRoutes from "./routes/memories.js";
 import { runWithCorrelation, ensureCorrelationId, metrics } from "@zentrade/observability";
 import { startOpsAlarms, stopOpsAlarms } from "./services/opsAlarms.js";
 
@@ -233,6 +234,7 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/instruments", instrumentRoutes);
 app.use("/api/decisions", decisionRoutes);
 app.use("/api/calibration", calibrationRoutes);
+app.use("/api/memories", memoryRoutes);
 app.use("/fyers", fyersRoutes);
 
 // M6: process metrics — counters/gauges snapshot for ops
