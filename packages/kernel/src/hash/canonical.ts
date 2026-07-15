@@ -29,3 +29,11 @@ export const canonicalStringify = (value: unknown): string => {
 /** sha256 hex of the canonical form. */
 export const canonicalHash = (value: unknown): string =>
     createHash("sha256").update(canonicalStringify(value)).digest("hex");
+
+/**
+ * sha256 hex of a string's UTF-8 bytes, verbatim (no canonicalization).
+ * Used to fingerprint stored content — normalized documents and their chunk
+ * slices — so integrity and identity are reproducible from the bytes alone.
+ */
+export const sha256Hex = (input: string): string =>
+    createHash("sha256").update(input, "utf8").digest("hex");
