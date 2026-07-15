@@ -50,3 +50,8 @@ export {
     MemEpisodeFormedV1,
     MEM_EPISODE_FORMED,
 } from "./memory/events.js";
+export {
+    KnowledgeDocumentIngestedPayloadV1,
+    KnowledgeDocumentIngestedV1,
+    KNOWLEDGE_DOCUMENT_INGESTED,
+} from "./knowledge/events.js";
