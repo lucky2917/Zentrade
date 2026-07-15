@@ -1,5 +1,8 @@
 import { pool } from "../config/db.js";
 import redis from "../config/redis.js";
+import { TRADE_EXECUTED } from "@zentrade/contracts";
+import { enqueueEvent } from "./eventBackbone.js";
+import { instrumentResolver } from "./referenceData.js";
 import { toPaise } from "../utils/paise.js";
 import { STOCK_MAP } from "../config/stocks.js";
 import { isMarketOpen } from "../utils/marketHours.js";
@@ -35,7 +38,35 @@ const validatePriceData = (priceData, symbol, mode = "INTRADAY") => {
     return parsed;
 };
 
-const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY") => {
+/**
+ * M9: announce a settled trade on the backbone, inside the engine's own
+ * transaction. instrumentId is resolved best-effort (nullable in payload);
+ * the ORDER ROW is the source of truth, the event is the announcement.
+ */
+const enqueueTradeExecuted = async (client, { orderId, symbol, side, quantity, executionPricePaise, mode, decisionId, pnlPaise = null }) => {
+    const instrument = await instrumentResolver.bySymbol("NSE", symbol).catch(() => null);
+    await enqueueEvent(
+        {
+            type: TRADE_EXECUTED.type,
+            v: TRADE_EXECUTED.v,
+            payload: {
+                orderId,
+                venue: "NSE",
+                symbol,
+                instrumentId: instrument?.instrumentId ?? null,
+                side,
+                quantity,
+                executionPriceMinor: executionPricePaise,
+                mode,
+                decisionId,
+                pnlMinor: pnlPaise,
+            },
+        },
+        client
+    );
+};
+
+const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY", decisionId = null) => {
     if (!STOCK_MAP.has(symbol)) {
         throw new Error("Invalid stock symbol");
     }
@@ -107,10 +138,12 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY") => {
         );
 
         // H3 fix: total_value_paise = gross stock cost (price * qty); brokerage is separate
-        await client.query(
-            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-            [userId, symbol, "BUY", quantity, executionPricePaise, stockCostPaise, BROKERAGE_PAISE, mode]
+        const { rows: [order] } = await client.query(
+            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, decision_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
+            [userId, symbol, "BUY", quantity, executionPricePaise, stockCostPaise, BROKERAGE_PAISE, mode, decisionId]
         );
+
+        await enqueueTradeExecuted(client, { orderId: order.id, symbol, side: "BUY", quantity, executionPricePaise, mode, decisionId });
 
         await client.query("COMMIT");
 
@@ -148,7 +181,7 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY") => {
     }
 };
 
-const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
+const executeSell = async (userId, symbol, quantity, mode = "INTRADAY", decisionId = null) => {
     if (!STOCK_MAP.has(symbol)) {
         throw new Error("Invalid stock symbol");
     }
@@ -236,10 +269,12 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY") => {
         }
 
         // H3 fix: total_value_paise = gross proceeds (price * qty); pnl_paise = realized PnL
-        await client.query(
-            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, pnl_paise) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-            [userId, symbol, "SELL", quantity, executionPricePaise, grossProceedsPaise, BROKERAGE_PAISE, mode, pnlPaise]
+        const { rows: [order] } = await client.query(
+            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, pnl_paise, decision_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
+            [userId, symbol, "SELL", quantity, executionPricePaise, grossProceedsPaise, BROKERAGE_PAISE, mode, pnlPaise, decisionId]
         );
+
+        await enqueueTradeExecuted(client, { orderId: order.id, symbol, side: "SELL", quantity, executionPricePaise, mode, decisionId, pnlPaise });
 
         await client.query("COMMIT");
 
