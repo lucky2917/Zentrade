@@ -28,6 +28,15 @@ export const AgentRunRecord = z.strictObject({
     promptTokens: z.int().nonnegative().nullable(),
     completionTokens: z.int().nonnegative().nullable(),
     costUsd: z.number().nonnegative().nullable(),
+    /** M8: the citation validator's verdict at write time (null pre-M8 rows) */
+    citationReport: z
+        .strictObject({
+            status: z.enum(["ok", "invalid"]),
+            uncitedCount: z.int().nonnegative(),
+            unknownRefs: z.array(z.string().max(64)).max(16),
+        })
+        .nullable()
+        .optional(),
 });
 export type AgentRunRecord = z.infer<typeof AgentRunRecord>;
 

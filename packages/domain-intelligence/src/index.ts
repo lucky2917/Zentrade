@@ -14,3 +14,11 @@ export {
     DecisionRecord,
     ContextSnapshot,
 } from "./journal/records.js";
+
+export { buildEvidenceBundle, renderEvidenceLegend } from "./evidence/bundle.js";
+export {
+    parseKeyPoints,
+    validateCitations,
+    type ParsedKeyPoint,
+    type CitationReport,
+} from "./evidence/citations.js";
