@@ -41,11 +41,13 @@ import { seedReferenceData } from "./services/referenceData.js";
 import { startOutcomeLabeler, stopOutcomeLabeler } from "./services/outcomeLabeler.js";
 import { startCalibrationEngine, stopCalibrationEngine } from "./services/calibrationEngine.js";
 import { startMemoryIndexer, stopMemoryIndexer } from "./services/memoryIndexer.js";
+import { startReflectionEngine, stopReflectionEngine } from "./services/reflectionEngine.js";
 import { startRegimeLabeler, stopRegimeLabeler } from "./services/regimeLabeler.js";
 import instrumentRoutes from "./routes/instruments.js";
 import decisionRoutes from "./routes/decisions.js";
 import calibrationRoutes from "./routes/calibration.js";
 import memoryRoutes from "./routes/memories.js";
+import reflectionRoutes from "./routes/reflections.js";
 import { runWithCorrelation, ensureCorrelationId, metrics } from "@zentrade/observability";
 import { startOpsAlarms, stopOpsAlarms } from "./services/opsAlarms.js";
 
@@ -235,6 +237,7 @@ app.use("/api/instruments", instrumentRoutes);
 app.use("/api/decisions", decisionRoutes);
 app.use("/api/calibration", calibrationRoutes);
 app.use("/api/memories", memoryRoutes);
+app.use("/api/reflections", reflectionRoutes);
 app.use("/fyers", fyersRoutes);
 
 // M6: process metrics — counters/gauges snapshot for ops
@@ -317,6 +320,7 @@ const start = async () => {
     startOutcomeLabeler();
         startCalibrationEngine();
         startMemoryIndexer();
+        startReflectionEngine();
     startOpsAlarms();
 
     // C3: catch positions missed while Render instance was sleeping
@@ -358,7 +362,8 @@ const shutdown = async (signal) => {
         // X3: stop cron tasks so no new work fires during drain
         stopSquareOffJob();
         stopRegimeLabeler();
-        stopMemoryIndexer();
+        stopReflectionEngine();
+    stopMemoryIndexer();
     stopCalibrationEngine();
     stopOutcomeLabeler();
         stopOpsAlarms();
