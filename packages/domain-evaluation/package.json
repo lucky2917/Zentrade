@@ -1,0 +1,32 @@
+{
+    "name": "@zentrade/domain-evaluation",
+    "version": "0.1.0",
+    "private": true,
+    "license": "MIT",
+    "type": "module",
+    "description": "Evaluation domain logic: deterministic outcome labeling with zero look-ahead. Pure — no I/O.",
+    "engines": {
+        "node": ">=20"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@zentrade/kernel": "*"
+    },
+    "devDependencies": {
+        "fast-check": "^3.23.2",
+        "typescript": "^5.7.3",
+        "vitest": "^2.1.9"
+    }
+}
