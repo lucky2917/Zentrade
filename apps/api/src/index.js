@@ -39,9 +39,11 @@ import auth from "./middleware/auth.js";
 import { startEventBackbone, stopEventBackbone, getBackboneLag } from "./services/eventBackbone.js";
 import { seedReferenceData } from "./services/referenceData.js";
 import { startOutcomeLabeler, stopOutcomeLabeler } from "./services/outcomeLabeler.js";
+import { startCalibrationEngine, stopCalibrationEngine } from "./services/calibrationEngine.js";
 import { startRegimeLabeler, stopRegimeLabeler } from "./services/regimeLabeler.js";
 import instrumentRoutes from "./routes/instruments.js";
 import decisionRoutes from "./routes/decisions.js";
+import calibrationRoutes from "./routes/calibration.js";
 import { runWithCorrelation, ensureCorrelationId, metrics } from "@zentrade/observability";
 import { startOpsAlarms, stopOpsAlarms } from "./services/opsAlarms.js";
 
@@ -229,6 +231,7 @@ app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/instruments", instrumentRoutes);
 app.use("/api/decisions", decisionRoutes);
+app.use("/api/calibration", calibrationRoutes);
 app.use("/fyers", fyersRoutes);
 
 // M6: process metrics — counters/gauges snapshot for ops
@@ -309,6 +312,7 @@ const start = async () => {
     startEventBackbone();
     startRegimeLabeler();
     startOutcomeLabeler();
+        startCalibrationEngine();
     startOpsAlarms();
 
     // C3: catch positions missed while Render instance was sleeping
@@ -350,7 +354,8 @@ const shutdown = async (signal) => {
         // X3: stop cron tasks so no new work fires during drain
         stopSquareOffJob();
         stopRegimeLabeler();
-        stopOutcomeLabeler();
+        stopCalibrationEngine();
+    stopOutcomeLabeler();
         stopOpsAlarms();
         await stopEventBackbone();
         stopAllLanes();
