@@ -19,6 +19,8 @@ import {
     AnalystKeyPoint,
     EvidenceKind,
     TradeExecutedPayloadV1,
+    EvalOutcomeLabeledPayloadV1,
+    OutcomeHit,
 } from "../index.js";
 
 /**
@@ -45,6 +47,8 @@ const goldens: Record<string, z.ZodType> = {
     AnalystKeyPoint,
     EvidenceKind,
     TradeExecutedPayloadV1,
+    EvalOutcomeLabeledPayloadV1,
+    OutcomeHit,
 };
 
 describe("JSON-Schema goldens", () => {

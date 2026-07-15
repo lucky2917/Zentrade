@@ -31,3 +31,10 @@ export {
     EVIDENCE_REF_PATTERN,
 } from "./intelligence/evidence.js";
 export { TradeExecutedV1, TradeExecutedPayloadV1, TRADE_EXECUTED } from "./trading/events.js";
+export {
+    EvalOutcomeLabeledV1,
+    EvalOutcomeLabeledPayloadV1,
+    EVAL_OUTCOME_LABELED,
+    OutcomeHit,
+    OutcomeBasis,
+} from "./evaluation/events.js";
