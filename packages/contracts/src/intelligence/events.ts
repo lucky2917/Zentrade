@@ -25,6 +25,8 @@ export const IntelDecisionPublishedPayloadV1 = z.strictObject({
     targetMinor: z.int().nullable(),
     stopMinor: z.int().nullable(),
     agentRunCount: z.int().nonnegative(),
+    /** M8 (additive-optional): journal ids of the evidence bundle rows */
+    evidenceIds: z.array(z.uuid()).max(64).optional(),
 });
 export type IntelDecisionPublishedPayloadV1 = z.infer<typeof IntelDecisionPublishedPayloadV1>;
 

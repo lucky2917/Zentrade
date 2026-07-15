@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "ref": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*:[a-z0-9_.-]{1,32}$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "price",
+        "indicator",
+        "intraday",
+        "macro",
+        "news",
+        "memory",
+        "knowledge",
+        "analog"
+      ]
+    },
+    "sourceRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "content": {},
+    "weight": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "ref",
+    "kind",
+    "sourceRef",
+    "content",
+    "weight"
+  ],
+  "additionalProperties": false
+}

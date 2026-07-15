@@ -15,6 +15,9 @@ import {
     RefInstrumentAddedPayloadV1,
     IntelDecisionPublishedPayloadV1,
     DecisionAction,
+    EvidenceItem,
+    AnalystKeyPoint,
+    EvidenceKind,
 } from "../index.js";
 
 /**
@@ -37,6 +40,9 @@ const goldens: Record<string, z.ZodType> = {
     RefInstrumentAddedPayloadV1,
     IntelDecisionPublishedPayloadV1,
     DecisionAction,
+    EvidenceItem,
+    AnalystKeyPoint,
+    EvidenceKind,
 };
 
 describe("JSON-Schema goldens", () => {

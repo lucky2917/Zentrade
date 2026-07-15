@@ -22,3 +22,11 @@ export {
     INTEL_DECISION_PUBLISHED,
     DecisionAction,
 } from "./intelligence/events.js";
+export {
+    EvidenceKind,
+    EvidenceRef,
+    EvidenceItem,
+    AnalystKeyPoint,
+    CitationStatus,
+    EVIDENCE_REF_PATTERN,
+} from "./intelligence/evidence.js";
