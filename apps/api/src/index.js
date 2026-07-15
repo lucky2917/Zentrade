@@ -39,6 +39,7 @@ import auth from "./middleware/auth.js";
 import { startEventBackbone, stopEventBackbone, getBackboneLag } from "./services/eventBackbone.js";
 import { seedReferenceData } from "./services/referenceData.js";
 import { startOutcomeLabeler, stopOutcomeLabeler } from "./services/outcomeLabeler.js";
+import { startRegimeLabeler, stopRegimeLabeler } from "./services/regimeLabeler.js";
 import instrumentRoutes from "./routes/instruments.js";
 import decisionRoutes from "./routes/decisions.js";
 import { runWithCorrelation, ensureCorrelationId, metrics } from "@zentrade/observability";
@@ -306,6 +307,7 @@ const start = async () => {
     startWebSocketBroadcaster(io);
     startSquareOffJob();
     startEventBackbone();
+    startRegimeLabeler();
     startOutcomeLabeler();
     startOpsAlarms();
 
@@ -347,6 +349,7 @@ const shutdown = async (signal) => {
     try {
         // X3: stop cron tasks so no new work fires during drain
         stopSquareOffJob();
+        stopRegimeLabeler();
         stopOutcomeLabeler();
         stopOpsAlarms();
         await stopEventBackbone();

@@ -9,6 +9,7 @@ import { currentCorrelationId, metrics } from "@zentrade/observability";
 import { pool } from "../config/db.js";
 import { instrumentResolver } from "./referenceData.js";
 import { enqueueEvent } from "./eventBackbone.js";
+import { currentRegimeTag } from "./regimeLabeler.js";
 import { raiseAlarm } from "./opsAlarms.js";
 import logger from "../utils/logger.js";
 
@@ -53,12 +54,16 @@ export const journalAnalysis = async ({ symbol, trigger, contextSnapshot, eviden
     try {
         await client.query("BEGIN");
 
+        // M12: stamp the regime effective right now (fails soft to unlabeled;
+        // history is always resolvable via the regimes table by date)
+        const regimeTag = (await currentRegimeTag().catch(() => null)) ?? { taxonomy: "none", label: "unlabeled" };
+
         const {
             rows: [request],
         } = await client.query(
-            `INSERT INTO decision_requests (instrument_id, requested_by, correlation_id, context_snapshot)
-             VALUES ($1, $2, $3, $4) RETURNING id`,
-            [instrument.instrumentId, trigger, correlationId, JSON.stringify(snapshot)]
+            `INSERT INTO decision_requests (instrument_id, requested_by, correlation_id, context_snapshot, regime)
+             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [instrument.instrumentId, trigger, correlationId, JSON.stringify(snapshot), JSON.stringify(regimeTag)]
         );
 
         // M8: observations first — the bundle every agent saw, stored once

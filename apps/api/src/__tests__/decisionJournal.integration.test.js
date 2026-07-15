@@ -86,7 +86,9 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("decision journal (integration)", () =>
         const req = (await pool.query("SELECT * FROM decision_requests WHERE id = $1", [requestId])).rows[0];
         expect(req.requested_by).toBe("test");
         expect(req.context_snapshot.inputsHash).toBe(HASH_A);
-        expect(req.regime).toEqual({ taxonomy: "none", label: "unlabeled" });
+        // M12: stamped with the effective regime when one exists (shared test DB),
+        // unlabeled otherwise — both are valid states of the same law
+        expect(["none", "nse_equity_v1"]).toContain(req.regime.taxonomy);
 
         const runs = (await pool.query("SELECT * FROM agent_runs WHERE request_id = $1 ORDER BY agent_name", [requestId])).rows;
         expect(runs.map((r) => r.agent_name)).toEqual(["risk", "sentiment", "synthesizer", "technical"]);
