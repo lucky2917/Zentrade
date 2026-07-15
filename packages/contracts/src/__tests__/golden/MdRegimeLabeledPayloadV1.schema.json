@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "venue": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16
+    },
+    "calDate": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+    },
+    "taxonomy": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "trend": {
+      "type": "string",
+      "enum": [
+        "UP",
+        "DOWN",
+        "SIDEWAYS"
+      ]
+    },
+    "volBucket": {
+      "type": "string",
+      "enum": [
+        "LOWVOL",
+        "MIDVOL",
+        "HIGHVOL"
+      ]
+    },
+    "breadth": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 16
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "composite": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 48
+    },
+    "inputsHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "venue",
+    "calDate",
+    "taxonomy",
+    "trend",
+    "volBucket",
+    "breadth",
+    "composite",
+    "inputsHash"
+  ],
+  "additionalProperties": false
+}
