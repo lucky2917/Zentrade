@@ -48,6 +48,7 @@ import decisionRoutes from "./routes/decisions.js";
 import calibrationRoutes from "./routes/calibration.js";
 import memoryRoutes from "./routes/memories.js";
 import reflectionRoutes from "./routes/reflections.js";
+import knowledgeRoutes from "./routes/knowledge.js";
 import { runWithCorrelation, ensureCorrelationId, metrics } from "@zentrade/observability";
 import { startOpsAlarms, stopOpsAlarms } from "./services/opsAlarms.js";
 
@@ -109,6 +110,10 @@ app.use(cors({
     credentials: true,
 }));
 app.use(cookieParser());
+// Knowledge ingestion carries document bodies far larger than product routes;
+// its own parser runs first so the domain size guard (not this ceiling) is the
+// authoritative limit. All other routes keep the tight 10kb default.
+app.use("/api/knowledge", express.json({ limit: "4mb" }));
 app.use(express.json({ limit: "10kb" }));
 
 // One-time IP resolution log — rateLimitClientIp is what the limiters key
@@ -238,6 +243,7 @@ app.use("/api/decisions", decisionRoutes);
 app.use("/api/calibration", calibrationRoutes);
 app.use("/api/memories", memoryRoutes);
 app.use("/api/reflections", reflectionRoutes);
+app.use("/api/knowledge", knowledgeRoutes);
 app.use("/fyers", fyersRoutes);
 
 // M6: process metrics — counters/gauges snapshot for ops

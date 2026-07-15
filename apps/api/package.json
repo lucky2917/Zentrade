@@ -17,6 +17,7 @@
         "@zentrade/adapter-postgres": "*",
         "@zentrade/contracts": "*",
         "@zentrade/domain-evaluation": "*",
+        "@zentrade/domain-knowledge": "*",
         "@zentrade/domain-memory": "*",
         "@zentrade/domain-intelligence": "*",
         "@zentrade/domain-marketdata": "*",
