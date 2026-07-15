@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 /**
- * Canonical input hashing (M7).
+ * Canonical hashing (M7, relocated to kernel in M12 — generic primitive).
  *
  * Journal rows store a sha256 of every agent's input instead of the raw
  * prompt (prompt text lives in versioned code; storing it would bloat the

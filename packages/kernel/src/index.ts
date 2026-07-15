@@ -22,3 +22,5 @@ export { ok, err, isOk, isErr, map, mapErr, andThen, unwrapOr, type Result, type
 export { systemClock, fixedClock, type Clock } from "./time/clock.js";
 
 export { isMarketOpen, isNseHoliday, istDateString, NSE_HOLIDAYS } from "./time/marketHours.js";
+
+export { canonicalStringify, canonicalHash } from "./hash/canonical.js";

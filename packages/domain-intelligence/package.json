@@ -4,7 +4,7 @@
     "private": true,
     "license": "MIT",
     "type": "module",
-    "description": "Intelligence domain logic: canonical input hashing, model cost accounting, journal record builders. Pure — no I/O.",
+    "description": "Intelligence domain logic: canonical input hashing, model cost accounting, journal record builders. Pure \u2014 no I/O.",
     "engines": {
         "node": ">=20"
     },
@@ -22,7 +22,8 @@
         "test": "vitest run"
     },
     "dependencies": {
-        "@zentrade/contracts": "*"
+        "@zentrade/contracts": "*",
+        "@zentrade/kernel": "*"
     },
     "devDependencies": {
         "fast-check": "^3.23.2",

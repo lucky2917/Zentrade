@@ -3,7 +3,8 @@
  * M7 scope: journal hashing, cost accounting, record validation.
  */
 
-export { canonicalStringify, canonicalHash } from "./journal/hash.js";
+// canonical hashing lives in kernel since M12; re-exported here so M7 consumers are unchanged
+export { canonicalStringify, canonicalHash } from "@zentrade/kernel";
 export { modelCostUsd, KNOWN_MODELS, type TokenUsage } from "./journal/cost.js";
 export {
     priceToMinor,
