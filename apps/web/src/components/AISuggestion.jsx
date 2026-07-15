@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Sparkles, TrendingUp, TrendingDown, Minus,
@@ -193,6 +194,9 @@ const AISuggestion = ({ symbol }) => {
                     <Sparkles size={15} style={{ color: "#a78bfa" }} />
                     Zentrade AI
                     <span style={{ fontSize: "0.62rem", color: "#64748b", fontWeight: 400 }}>top-down ensemble</span>
+                    <RouterLink to={`/decisions?instrument=${symbol}`} style={{ fontSize: "0.65rem", color: "#8e8e93", marginLeft: "auto", textDecoration: "underline" }}>
+                        journal
+                    </RouterLink>
                 </h3>
                 {result && !loading && (
                     <button onClick={fetchAnalysis} title="Refresh" style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", padding: 4, display: "flex" }}>

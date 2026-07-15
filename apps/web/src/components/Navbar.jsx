@@ -5,7 +5,7 @@ import { useTheme } from "../context/ThemeContext.jsx";
 import useGoogleAuth from "../hooks/useGoogleAuth.js";
 import GoogleIcon from "./GoogleIcon.jsx";
 import { formatPaise } from "../utils/format.js";
-import { Sun, Moon, LogOut, Activity, Briefcase, ListOrdered, Wallet, Star } from "lucide-react";
+import { Sun, Moon, LogOut, Activity, Briefcase, ListOrdered, Wallet, Star, Brain } from "lucide-react";
 import { useToast } from "../context/ToastContext.jsx";
 
 const Navbar = () => {
@@ -51,6 +51,9 @@ const Navbar = () => {
                 </Link>
                 <Link to="/orders" className={`nav-link ${location.pathname === "/orders" ? "active" : ""}`}>
                     <ListOrdered size={16} /> Orders
+                </Link>
+                <Link to="/decisions" className={`nav-link ${location.pathname.startsWith("/decision") ? "active" : ""}`}>
+                    <Brain size={16} /> Decisions
                 </Link>
             </div>
 

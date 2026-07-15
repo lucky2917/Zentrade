@@ -7,7 +7,8 @@ import { useToast } from "../context/ToastContext.jsx";
 import { formatPaise } from "../utils/format.js";
 import { staggerContainer, fadeUpItem } from "../utils/motionVariants.js";
 import { motion } from "framer-motion";
-import { ListOrdered, FileText } from "lucide-react";
+import { ListOrdered, FileText, Brain } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const Orders = () => {
     const [orders, setOrders] = useState([]);
@@ -129,6 +130,7 @@ const Orders = () => {
                                 <th>Qty</th>
                                 <th>Price</th>
                                 <th>Total</th>
+                                <th>Why</th>
                             </tr>
                         </thead>
                         <motion.tbody variants={containerVariants} initial="hidden" animate="show">
@@ -149,6 +151,15 @@ const Orders = () => {
                                     <td>{o.quantity}</td>
                                     <td>{formatCurrency(o.pricePaise)}</td>
                                     <td>{formatCurrency(o.totalValuePaise)}</td>
+                                    <td>
+                                        {o.decisionId ? (
+                                            <Link to={`/decision/${o.decisionId}`} className="xai-why-link" onClick={(e) => e.stopPropagation()}>
+                                                <Brain size={13} /> Why
+                                            </Link>
+                                        ) : (
+                                            <span className="xai-muted">—</span>
+                                        )}
+                                    </td>
                                 </motion.tr>
                             ))}
                         </motion.tbody>
