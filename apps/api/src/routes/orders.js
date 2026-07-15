@@ -17,11 +17,11 @@ router.get("/", auth, async (req, res) => {
 
         const result = before
             ? await pool.query(
-                "SELECT id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, pnl_paise, order_mode, created_at FROM orders WHERE user_id = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
+                "SELECT id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, pnl_paise, order_mode, decision_id, created_at FROM orders WHERE user_id = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
                 [req.userId, before, limit + 1]
             )
             : await pool.query(
-                "SELECT id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, pnl_paise, order_mode, created_at FROM orders WHERE user_id = $1 ORDER BY id DESC LIMIT $2",
+                "SELECT id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, pnl_paise, order_mode, decision_id, created_at FROM orders WHERE user_id = $1 ORDER BY id DESC LIMIT $2",
                 [req.userId, limit + 1]
             );
 
@@ -38,6 +38,7 @@ router.get("/", auth, async (req, res) => {
             brokeragePaise: Number(o.brokerage_paise),
             pnlPaise: o.pnl_paise != null ? Number(o.pnl_paise) : null,
             orderMode: o.order_mode,
+            decisionId: o.decision_id,
             createdAt: o.created_at,
         }));
 
