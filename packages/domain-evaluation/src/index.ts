@@ -13,3 +13,14 @@ export {
     type OutcomeLabel,
     type NotReady,
 } from "./labeler.js";
+
+export {
+    computeCalibrationCells,
+    claimedProbability,
+    decayWeight,
+    decisionSuccess,
+    stanceSuccess,
+    CALIBRATION_SEMANTICS,
+    type CalibrationSample,
+    type CalibrationCell,
+} from "./calibration.js";
