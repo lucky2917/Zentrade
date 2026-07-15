@@ -24,3 +24,15 @@ export {
     type CalibrationSample,
     type CalibrationCell,
 } from "./calibration.js";
+
+export {
+    computeReflections,
+    REFLECTION_SEMANTICS,
+    PRIOR_WINDOW_DAYS,
+    FINDING_KINDS,
+    type FindingKind,
+    type FindingSeverity,
+    type MemoryGroup,
+    type ReflectionInput,
+    type ReflectionFinding,
+} from "./reflection.js";
