@@ -30,3 +30,4 @@ export {
     CitationStatus,
     EVIDENCE_REF_PATTERN,
 } from "./intelligence/evidence.js";
+export { TradeExecutedV1, TradeExecutedPayloadV1, TRADE_EXECUTED } from "./trading/events.js";
