@@ -16,6 +16,7 @@
         "@sentry/node": "^10.64.0",
         "@zentrade/adapter-postgres": "*",
         "@zentrade/contracts": "*",
+        "@zentrade/domain-evaluation": "*",
         "@zentrade/domain-intelligence": "*",
         "@zentrade/domain-reference": "*",
         "@zentrade/eventbus": "*",

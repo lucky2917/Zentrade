@@ -38,6 +38,7 @@ import { STOCKS } from "./config/stocks.js";
 import auth from "./middleware/auth.js";
 import { startEventBackbone, stopEventBackbone, getBackboneLag } from "./services/eventBackbone.js";
 import { seedReferenceData } from "./services/referenceData.js";
+import { startOutcomeLabeler, stopOutcomeLabeler } from "./services/outcomeLabeler.js";
 import instrumentRoutes from "./routes/instruments.js";
 import decisionRoutes from "./routes/decisions.js";
 import { runWithCorrelation, ensureCorrelationId, metrics } from "@zentrade/observability";
@@ -305,6 +306,7 @@ const start = async () => {
     startWebSocketBroadcaster(io);
     startSquareOffJob();
     startEventBackbone();
+    startOutcomeLabeler();
     startOpsAlarms();
 
     // C3: catch positions missed while Render instance was sleeping

@@ -112,7 +112,7 @@ router.get("/:id", auth, async (req, res) => {
         const decision = decisionRows[0];
         if (!decision) return res.status(404).json({ error: "Decision not found" });
 
-        const [requestRows, runRows, evidenceRows, orderRows] = await Promise.all([
+        const [requestRows, runRows, evidenceRows, orderRows, outcomeRows] = await Promise.all([
             pool.query("SELECT * FROM decision_requests WHERE id = $1", [decision.request_id]),
             pool.query(
                 `SELECT id, agent_name, agent_version, model_id, input_hash, output, status,
@@ -129,6 +129,10 @@ router.get("/:id", auth, async (req, res) => {
                 `SELECT id, type, quantity, price_paise, total_value_paise, brokerage_paise, pnl_paise, order_mode, created_at
                  FROM orders WHERE decision_id = $1 AND user_id = $2 ORDER BY id`,
                 [id, req.userId]
+            ),
+            pool.query(
+                "SELECT id, horizon, basis, hit, entry_minor, exit_minor, realized_return_bps, sessions_used, data_source, labeled_at FROM outcomes WHERE decision_id = $1 ORDER BY horizon",
+                [id]
             ),
         ]);
         const request = requestRows.rows[0];
@@ -167,6 +171,18 @@ router.get("/:id", auth, async (req, res) => {
                 content: e.content,
                 weight: e.weight === null ? null : Number(e.weight),
                 createdAt: e.created_at,
+            })),
+            outcomes: outcomeRows.rows.map((o) => ({
+                outcomeId: o.id,
+                horizon: o.horizon,
+                basis: o.basis,
+                hit: o.hit,
+                entryMinor: o.entry_minor === null ? null : Number(o.entry_minor),
+                exitMinor: o.exit_minor === null ? null : Number(o.exit_minor),
+                realizedReturnBps: o.realized_return_bps,
+                sessionsUsed: o.sessions_used,
+                dataSource: o.data_source,
+                labeledAt: o.labeled_at,
             })),
             myOrders: orderRows.rows.map((o) => ({
                 orderId: o.id,
