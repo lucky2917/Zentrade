@@ -1,0 +1,31 @@
+{
+    "name": "@zentrade/domain-memory",
+    "version": "0.1.0",
+    "private": true,
+    "license": "MIT",
+    "type": "module",
+    "description": "Memory domain logic: deterministic episode formation over journal experience. Pure — no I/O, no models.",
+    "engines": {
+        "node": ">=20"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@zentrade/kernel": "*"
+    },
+    "devDependencies": {
+        "typescript": "^5.7.3",
+        "vitest": "^2.1.9"
+    }
+}
