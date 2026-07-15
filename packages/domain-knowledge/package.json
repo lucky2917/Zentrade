@@ -1,0 +1,31 @@
+{
+    "name": "@zentrade/domain-knowledge",
+    "version": "0.1.0",
+    "private": true,
+    "license": "MIT",
+    "type": "module",
+    "description": "Knowledge domain logic: deterministic normalization, chunking, and content-addressed identity for the immutable knowledge corpus. Pure — no I/O, no embeddings.",
+    "engines": {
+        "node": ">=20"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@zentrade/kernel": "*"
+    },
+    "devDependencies": {
+        "typescript": "^5.7.3",
+        "vitest": "^2.1.9"
+    }
+}
