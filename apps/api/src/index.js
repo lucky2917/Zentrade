@@ -345,8 +345,9 @@ const shutdown = async (signal) => {
     server.close(() => logger.info("Server", "HTTP server closed"));
 
     try {
-        // X3: stop cron task so no new square-off fires during drain
+        // X3: stop cron tasks so no new work fires during drain
         stopSquareOffJob();
+        stopOutcomeLabeler();
         stopOpsAlarms();
         await stopEventBackbone();
         stopAllLanes();
