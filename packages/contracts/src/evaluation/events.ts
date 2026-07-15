@@ -28,3 +28,22 @@ export type EvalOutcomeLabeledPayloadV1 = z.infer<typeof EvalOutcomeLabeledPaylo
 
 export const EvalOutcomeLabeledV1 = defineEvent("eval.outcome.labeled", 1, EvalOutcomeLabeledPayloadV1);
 export const EVAL_OUTCOME_LABELED = { type: "eval.outcome.labeled", v: 1 } as const;
+
+/**
+ * eval.calibration.updated v1 — a new calibration snapshot was computed (M13).
+ * Snapshots are append-only derived aggregates: each recompute inserts a new
+ * one; nothing about a prior snapshot ever changes. Measurement only —
+ * NOTHING consumes this to influence decisions yet.
+ */
+export const EvalCalibrationUpdatedPayloadV1 = z.strictObject({
+    snapshotId: z.uuid(),
+    asOf: z.iso.date(),
+    semantics: z.string().min(1).max(32),
+    cellCount: z.int().nonnegative(),
+    sufficientCells: z.int().nonnegative(),
+    sampleCount: z.int().nonnegative(),
+});
+export type EvalCalibrationUpdatedPayloadV1 = z.infer<typeof EvalCalibrationUpdatedPayloadV1>;
+
+export const EvalCalibrationUpdatedV1 = defineEvent("eval.calibration.updated", 1, EvalCalibrationUpdatedPayloadV1);
+export const EVAL_CALIBRATION_UPDATED = { type: "eval.calibration.updated", v: 1 } as const;

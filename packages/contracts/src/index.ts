@@ -38,4 +38,7 @@ export {
     EVAL_OUTCOME_LABELED,
     OutcomeHit,
     OutcomeBasis,
+    EvalCalibrationUpdatedPayloadV1,
+    EvalCalibrationUpdatedV1,
+    EVAL_CALIBRATION_UPDATED,
 } from "./evaluation/events.js";
