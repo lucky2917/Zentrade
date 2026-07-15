@@ -31,6 +31,12 @@ const fixtureRun = (agentName, overrides = {}) => ({
     ...overrides,
 });
 
+const fixtureEvidence = () => [
+    { ref: "price:live", kind: "price", sourceRef: "redis:stock-cache", content: { price: 1518.4 }, weight: null },
+    { ref: "ind:rsi14", kind: "indicator", sourceRef: "fyers:candles:D:365", content: { rsi14: 61.2 }, weight: null },
+    { ref: "news:1", kind: "news", sourceRef: "finnhub:company-news", content: { headline: "h", source: "s" }, weight: null },
+];
+
 const fixtureInput = (overrides = {}) => ({
     symbol: "RELIANCE",
     trigger: "test",
@@ -41,6 +47,7 @@ const fixtureInput = (overrides = {}) => ({
         marketOpen: false,
         inputsHash: HASH_A,
     },
+    evidence: fixtureEvidence(),
     runs: [fixtureRun("technical"), fixtureRun("sentiment"), fixtureRun("risk"), fixtureRun("synthesizer")],
     decision: {
         action: "BUY",

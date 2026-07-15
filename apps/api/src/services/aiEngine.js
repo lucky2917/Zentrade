@@ -8,8 +8,9 @@ import { getCandles } from "./fyers/fyersREST.js";
 import { toFyersStockSymbol } from "./fyers/smartWall.js";
 import { isMarketOpen } from "../utils/marketHours.js";
 import { emitClosedDailyCandle } from "./candleEvents.js";
-import { canonicalHash, modelCostUsd, priceToMinor } from "@zentrade/domain-intelligence";
+import { canonicalHash, modelCostUsd, priceToMinor, buildEvidenceBundle, renderEvidenceLegend, validateCitations } from "@zentrade/domain-intelligence";
 import { isJournalEnabled, journalSafely } from "./decisionJournal.js";
+import { metrics } from "@zentrade/observability";
 
 const CACHE_TTL = 1800;
 const CACHE_TTL_MARKET_HOURS = 300;
@@ -26,7 +27,8 @@ const MODELS = {
 // ─── Groq caller ─────────────────────────────────────────────────────────────
 
 // M7: version stamped on every journaled run; bump when prompts/pipeline change
-const AI_PIPELINE_VERSION = "v4.0.0";
+// v4.1.0 = M8 evidence citations (legend in prompts, structured keyPoints)
+const AI_PIPELINE_VERSION = "v4.1.0";
 
 async function callGroq(model, prompt, temperature = 0.15, maxTokens = 400) {
     const apiKey = process.env.GROQ_API_KEY;
@@ -107,6 +109,54 @@ async function callGroqSafe(model, prompt, temperature, maxTokens, sink, agentNa
     }
 }
 
+// ─── Citations (M8) ──────────────────────────────────────────────────────────
+
+const CITATION_SAMPLE_RATE = 0.05;
+const CITATION_REVIEW_KEY = "citation:review";
+
+/**
+ * Validate an agent's claims against the evidence bundle, stamp the verdict
+ * onto its journal record, normalize claims to {point, refs}, and sample a
+ * fraction into the review queue (citation-theater counter-metric).
+ * Returns the verdict status.
+ */
+const processCitations = (result, field, evidence, sink, agentName, symbol) => {
+    const report = validateCitations(result[field], evidence.refs);
+    result[field] = report.keyPoints;
+
+    if (sink) {
+        const rec = [...sink].reverse().find((r) => r.agentName === agentName);
+        if (rec) {
+            if (report.status === "invalid") rec.status = "invalid";
+            rec.citationReport = {
+                status: report.status,
+                uncitedCount: report.uncitedCount,
+                unknownRefs: report.unknownRefs.slice(0, 16),
+            };
+        }
+    }
+
+    metrics.counter(report.status === "ok" ? "citations.valid_runs" : "citations.invalid_runs").inc();
+    if (report.status === "ok" && Math.random() < CITATION_SAMPLE_RATE) {
+        metrics.counter("citations.sampled").inc();
+        redis.multi()
+            .lpush(CITATION_REVIEW_KEY, JSON.stringify({ at: new Date().toISOString(), symbol, agentName, keyPoints: report.keyPoints }))
+            .ltrim(CITATION_REVIEW_KEY, 0, 499)
+            .exec()
+            .catch(() => {});
+    }
+    return report.status;
+};
+
+const evidenceSection = (legend) => `
+━━ EVIDENCE TABLE (cite by ref) ━━
+${legend}
+
+CITATION RULES (mandatory):
+- Every keyPoint/reasoning item MUST be an object: {"point": "<claim with numbers>", "refs": ["<ref>"]}
+- refs may ONLY contain refs from the EVIDENCE TABLE above. A claim without a valid ref is discarded.
+`;
+
 // ─── Data fetch ───────────────────────────────────────────────────────────────
 
 const daysAgo = (n) => {
@@ -169,7 +219,7 @@ function computeConsensus(techSignal, sentimentSignal, riskBias) {
 
 // ─── Agent 1: Technical Analyst ───────────────────────────────────────────────
 
-async function runTechnicalAgent(stockInfo, symbol, priceData, ind, intradayCtx, sink) {
+async function runTechnicalAgent(stockInfo, symbol, priceData, ind, intradayCtx, evidence, sink) {
     const rsiLabel = ind.rsi14 != null
         ? `${ind.rsi14} ${
             ind.rsi14 > 70 ? "(Overbought — reversal risk)" :
@@ -225,23 +275,24 @@ DECISION GUIDE — intraday entry rules:
 4. Daily trend confirms intraday → boost confidence. Daily conflicts → reduce confidence.
 5. Only NEUTRAL if price is dead flat inside OR, RSI ≈50, and no gap — genuinely rare.
 
+${evidenceSection(evidence.legend)}
 Respond ONLY in this exact JSON — no markdown:
 {
   "signal": "BULLISH" | "BEARISH" | "NEUTRAL",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
-  "keyPoints": ["specific intraday observation with numbers", "second observation"]
+  "keyPoints": [{"point": "specific intraday observation with numbers", "refs": ["intra:vwap"]}, {"point": "second observation", "refs": ["ind:rsi14"]}]
 }`;
 
     const result = await callGroqSafe(MODELS.technical, prompt, 0.15, undefined, sink, "technical");
     if (!["BULLISH", "BEARISH", "NEUTRAL"].includes(result.signal)) result.signal = "NEUTRAL";
     if (!["HIGH", "MEDIUM", "LOW"].includes(result.confidence)) result.confidence = "MEDIUM";
-    if (!Array.isArray(result.keyPoints)) result.keyPoints = [];
+    result.citationStatus = processCitations(result, "keyPoints", evidence, sink, "technical", symbol);
     return result;
 }
 
 // ─── Agent 2: Sentiment Analyst ───────────────────────────────────────────────
 
-async function runSentimentAgent(stockInfo, symbol, news, priceData, ind, sink) {
+async function runSentimentAgent(stockInfo, symbol, news, priceData, ind, evidence, sink) {
     const newsBlock = news.length > 0
         ? news.map((n, i) => `${i + 1}. [${n.source}] ${n.headline}`).join("\n")
         : "No recent news headlines found.";
@@ -273,23 +324,24 @@ HOW TO DECIDE — be decisive:
 3. Sector tailwinds/headwinds visible in news → factor in.
 4. Never default to NEUTRAL just because news is thin — price IS the sentiment.
 
+${evidenceSection(evidence.legend)}
 Respond ONLY in this exact JSON — no markdown:
 {
   "sentiment": "BULLISH" | "BEARISH" | "NEUTRAL",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
-  "keyPoints": ["key sentiment finding", "second finding"]
+  "keyPoints": [{"point": "key sentiment finding", "refs": ["news:1"]}, {"point": "second finding", "refs": ["price:live"]}]
 }`;
 
     const result = await callGroqSafe(MODELS.sentiment, prompt, 0.2, undefined, sink, "sentiment");
     if (!["BULLISH", "BEARISH", "NEUTRAL"].includes(result.sentiment)) result.sentiment = "NEUTRAL";
     if (!["HIGH", "MEDIUM", "LOW"].includes(result.confidence)) result.confidence = "LOW";
-    if (!Array.isArray(result.keyPoints)) result.keyPoints = [];
+    result.citationStatus = processCitations(result, "keyPoints", evidence, sink, "sentiment", symbol);
     return result;
 }
 
 // ─── Agent 3: Risk Analyst ────────────────────────────────────────────────────
 
-async function runRiskAgent(stockInfo, symbol, priceData, ind, mktCtx, sink) {
+async function runRiskAgent(stockInfo, symbol, priceData, ind, mktCtx, evidence, sink) {
     const posLabel = ind.positionIn52W > 80
         ? "Near 52-week HIGH — limited upside headroom"
         : ind.positionIn52W < 20
@@ -320,12 +372,13 @@ BIAS RULES — always give BULLISH or BEARISH, never NEUTRAL:
 - Near 52W low + positive momentum → BULLISH (potential reversal)
 - NEUTRAL is not acceptable — commit to a direction.
 
+${evidenceSection(evidence.legend)}
 Respond ONLY in this exact JSON — no markdown:
 {
   "riskLevel": "LOW" | "MEDIUM" | "HIGH",
   "bias": "BULLISH" | "BEARISH",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
-  "keyPoints": ["specific risk observation with numbers", "second observation"]
+  "keyPoints": [{"point": "specific risk observation with numbers", "refs": ["ind:52w"]}, {"point": "second observation", "refs": ["macro:nifty"]}]
 }`;
 
     const result = await callGroqSafe(MODELS.risk, prompt, 0.2, undefined, sink, "risk");
@@ -333,7 +386,7 @@ Respond ONLY in this exact JSON — no markdown:
     if (!["BULLISH", "BEARISH"].includes(result.bias))
         result.bias = (ind.momentum?.fiveDay ?? 0) >= 0 ? "BULLISH" : "BEARISH";
     if (!["HIGH", "MEDIUM", "LOW"].includes(result.confidence)) result.confidence = "MEDIUM";
-    if (!Array.isArray(result.keyPoints)) result.keyPoints = [];
+    result.citationStatus = processCitations(result, "keyPoints", evidence, sink, "risk", symbol);
     return result;
 }
 
@@ -341,7 +394,7 @@ Respond ONLY in this exact JSON — no markdown:
 
 function roundToHalf(n) { return Math.round(n * 2) / 2; }
 
-async function runSynthesizer(stockInfo, symbol, priceData, tech, sent, risk, consensus, mktCtx, ind, intradayCtx, sink) {
+async function runSynthesizer(stockInfo, symbol, priceData, tech, sent, risk, consensus, mktCtx, ind, intradayCtx, evidence, sink) {
     const cp = priceData?.price ?? null;
     const todayChg = priceData?.changePercent != null
         ? (priceData.changePercent > 0 ? "+" : "") + priceData.changePercent.toFixed(2) + "%"
@@ -373,13 +426,13 @@ Macro score: ${mktScore === 1 ? "+1 (tailwind — confirm longs)" : mktScore ===
 
 ━━━ ANALYST VOTES ━━━
 TECHNICAL: ${tech.signal} (${tech.confidence})
-  • ${tech.keyPoints[0] ?? "—"}  • ${tech.keyPoints[1] ?? "—"}
+  • ${tech.keyPoints[0]?.point ?? "—"}  • ${tech.keyPoints[1]?.point ?? "—"}
 
 SENTIMENT: ${sent.sentiment} (${sent.confidence})
-  • ${sent.keyPoints[0] ?? "—"}
+  • ${sent.keyPoints[0]?.point ?? "—"}
 
 RISK: ${risk.riskLevel} risk | Bias: ${risk.bias} (${risk.confidence})
-  • ${risk.keyPoints[0] ?? "—"}
+  • ${risk.keyPoints[0]?.point ?? "—"}
 
 VOTE TALLY: ${voteSummary}
 
@@ -403,8 +456,8 @@ traderNote: 2–3 sentences, first person. Name the exact intraday trigger (OR b
 Mention actual ₹ levels. Say when to square off.
 Example: "Gap-up open and HDFC broke above the 9:44 AM OR high of ₹1,748 with intraday VWAP support at ₹1,742 — I'm long here. Target ₹1,768, stop at ₹1,734. Square off by 2:45 PM regardless."
 
-reasoning: Three sharp one-liners — intraday setup / sentiment / risk.
-
+reasoning: Three sharp one-liners — intraday setup / sentiment / risk — each citing evidence refs.
+${evidenceSection(evidence.legend)}
 Respond ONLY in this exact JSON — zero text outside JSON:
 {
   "action": "BUY" | "SELL" | "HOLD",
@@ -414,7 +467,7 @@ Respond ONLY in this exact JSON — zero text outside JSON:
   "target": <number>,
   "stopLoss": <number>,
   "traderNote": "<2-3 sentences, first person, specific ₹ levels>",
-  "reasoning": ["<intraday setup one-liner>", "<sentiment one-liner>", "<risk one-liner>"]
+  "reasoning": [{"point": "<intraday setup one-liner>", "refs": ["intra:or"]}, {"point": "<sentiment one-liner>", "refs": ["news:1"]}, {"point": "<risk one-liner>", "refs": ["ind:52w"]}]
 }`;
 
     const result = await callGroqSafe(MODELS.synthesizer, prompt, 0.4, 650, sink, "synthesizer");
@@ -448,8 +501,7 @@ Respond ONLY in this exact JSON — zero text outside JSON:
     if (result.entry && result.stopLoss)
         result.stopLossPct = Math.abs(Math.round(((result.stopLoss - result.entry) / result.entry) * 10000) / 100);
 
-    if (!Array.isArray(result.reasoning) || result.reasoning.length === 0)
-        result.reasoning = ["Technical indicators provide directional bias.", "Market sentiment reflects crowd positioning.", "Risk profile assessed for position sizing."];
+    result.citationStatus = processCitations(result, "reasoning", evidence, sink, "synthesizer", symbol);
     result.reasoning = result.reasoning.slice(0, 3);
 
     return result;
@@ -471,13 +523,19 @@ export async function analyseStock(symbol, trigger = "api") {
     // M7: dark-write collector — null when the journal flag is off
     const sink = isJournalEnabled() ? [] : null;
     let priceData = null;
+    let bundle = [];
 
     try {
         // Fetch everything in parallel — daily + 15-min + news + macro all at once
         const [candles, candles15m, news, rawPrice, mktCtx] = await Promise.all([
             fetchOHLCV(symbol),
             fetchIntraday(symbol),
-            fetchStockNews(stockInfo.yahooSymbol),
+            // news is optional evidence — a slow provider must not kill the
+            // deliberation, it just means no news items in the bundle
+            fetchStockNews(stockInfo.yahooSymbol).catch((err) => {
+                logger.warn("AIEngine", `news unavailable for ${symbol}, continuing without`, { error: err.message });
+                return [];
+            }),
             redis.get(`stock:${symbol}`),
             getMarketContext(stockInfo.sectorIndex, redis),
         ]);
@@ -488,19 +546,32 @@ export async function analyseStock(symbol, trigger = "api") {
 
         logger.info("AIEngine", `${symbol} | iVWAP: ₹${intradayCtx?.intradayVwap ?? "N/A"} | OR: ${intradayCtx?.orStatus ?? "not open"} | gap: ${intradayCtx?.gapPct != null ? intradayCtx.gapPct + "%" : "N/A"}`);
 
+        // M8: assemble the immutable observation bundle every agent will see
+        bundle = buildEvidenceBundle({ priceData, indicators, intradayCtx, marketCtx: mktCtx, news });
+        const evidence = { legend: renderEvidenceLegend(bundle), refs: new Set(bundle.map((i) => i.ref)) };
+
         const [techResult, sentResult, riskResult] = await Promise.all([
-            runTechnicalAgent(stockInfo, symbol, priceData, indicators, intradayCtx, sink),
-            runSentimentAgent(stockInfo, symbol, news, priceData, indicators, sink),
-            runRiskAgent(stockInfo, symbol, priceData, indicators, mktCtx, sink),
+            runTechnicalAgent(stockInfo, symbol, priceData, indicators, intradayCtx, evidence, sink),
+            runSentimentAgent(stockInfo, symbol, news, priceData, indicators, evidence, sink),
+            runRiskAgent(stockInfo, symbol, priceData, indicators, mktCtx, evidence, sink),
         ]);
 
         logger.info("AIEngine", `${symbol}: tech=${techResult.signal} sent=${sentResult.sentiment} risk=${riskResult.bias}`);
 
-        const consensus = computeConsensus(techResult.signal, sentResult.sentiment, riskResult.bias);
+        // M8: an invalid run (uncited/unknown citations) loses its vote and
+        // its claims — synthesis excludes it entirely
+        const techVote = techResult.citationStatus === "invalid" ? "NEUTRAL" : techResult.signal;
+        const sentVote = sentResult.citationStatus === "invalid" ? "NEUTRAL" : sentResult.sentiment;
+        const riskVote = riskResult.citationStatus === "invalid" ? "NEUTRAL" : riskResult.bias;
+        const techForSynth = techResult.citationStatus === "invalid" ? { ...techResult, signal: "NEUTRAL", keyPoints: [] } : techResult;
+        const sentForSynth = sentResult.citationStatus === "invalid" ? { ...sentResult, sentiment: "NEUTRAL", keyPoints: [] } : sentResult;
+        const riskForSynth = riskResult.citationStatus === "invalid" ? { ...riskResult, keyPoints: [] } : riskResult;
+
+        const consensus = computeConsensus(techVote, sentVote, riskVote);
         logger.info("AIEngine", `${symbol} consensus: ${consensus.direction} (${consensus.label}) | macro score: ${macroSignal(mktCtx)}`);
 
-        const finalResult = await runSynthesizer(stockInfo, symbol, priceData, techResult, sentResult, riskResult, consensus, mktCtx, indicators, intradayCtx, sink);
-        return await finishAnalysis({ symbol, trigger, sink, cacheKey, stockInfo, priceData, indicators, intradayCtx, mktCtx, news, consensus, finalResult, techResult, sentResult, riskResult });
+        const finalResult = await runSynthesizer(stockInfo, symbol, priceData, techForSynth, sentForSynth, riskForSynth, consensus, mktCtx, indicators, intradayCtx, evidence, sink);
+        return await finishAnalysis({ symbol, trigger, sink, bundle, cacheKey, stockInfo, priceData, indicators, intradayCtx, mktCtx, news, consensus, finalResult, techResult, sentResult, riskResult });
     } catch (err) {
         // a failed deliberation is still evidence: journal whatever was collected
         if (sink && sink.length > 0) {
@@ -508,6 +579,7 @@ export async function analyseStock(symbol, trigger = "api") {
                 symbol,
                 trigger,
                 contextSnapshot: buildSnapshot(priceData, { failed: true, symbol }),
+                evidence: bundle,
                 runs: sink,
                 decision: null,
             });
@@ -524,7 +596,18 @@ const buildSnapshot = (priceData, inputs) => ({
     inputsHash: canonicalHash(inputs),
 });
 
-async function finishAnalysis({ symbol, trigger, sink, cacheKey, stockInfo, priceData, indicators, intradayCtx, mktCtx, news, consensus, finalResult, techResult, sentResult, riskResult }) {
+// M8: claims are {point, refs} internally; the public API keeps its string
+// shape (refs surface through the journal API in M10, not this response)
+const displayPoints = (keyPoints) => (keyPoints ?? []).map((k) => (typeof k === "string" ? k : k.point));
+
+const FALLBACK_REASONING = [
+    "Technical indicators provide directional bias.",
+    "Market sentiment reflects crowd positioning.",
+    "Risk profile assessed for position sizing.",
+];
+
+async function finishAnalysis({ symbol, trigger, sink, bundle, cacheKey, stockInfo, priceData, indicators, intradayCtx, mktCtx, news, consensus, finalResult, techResult, sentResult, riskResult }) {
+    const reasoningPoints = displayPoints(finalResult.reasoning);
 
     const output = {
         action:      finalResult.action,
@@ -536,7 +619,7 @@ async function finishAnalysis({ symbol, trigger, sink, cacheKey, stockInfo, pric
         targetPct:   finalResult.targetPct,
         stopLossPct: finalResult.stopLossPct,
         traderNote:  finalResult.traderNote,
-        reasoning:   finalResult.reasoning,
+        reasoning:   reasoningPoints.length > 0 ? reasoningPoints : FALLBACK_REASONING,
         consensus:   consensus.label,
         vwap20:      indicators.vwap20,
         aboveVWAP:   indicators.aboveVWAP,
@@ -558,9 +641,9 @@ async function finishAnalysis({ symbol, trigger, sink, cacheKey, stockInfo, pric
             score:          macroSignal(mktCtx),
         },
         agents: {
-            technical: { signal: techResult.signal,    confidence: techResult.confidence, keyPoints: techResult.keyPoints },
-            sentiment: { signal: sentResult.sentiment, confidence: sentResult.confidence, keyPoints: sentResult.keyPoints },
-            risk:      { riskLevel: riskResult.riskLevel, bias: riskResult.bias, confidence: riskResult.confidence, keyPoints: riskResult.keyPoints },
+            technical: { signal: techResult.signal,    confidence: techResult.confidence, keyPoints: displayPoints(techResult.keyPoints), citationStatus: techResult.citationStatus },
+            sentiment: { signal: sentResult.sentiment, confidence: sentResult.confidence, keyPoints: displayPoints(sentResult.keyPoints), citationStatus: sentResult.citationStatus },
+            risk:      { riskLevel: riskResult.riskLevel, bias: riskResult.bias, confidence: riskResult.confidence, keyPoints: displayPoints(riskResult.keyPoints), citationStatus: riskResult.citationStatus },
         },
         cachedAt: Date.now(),
         cached: false,
@@ -580,6 +663,7 @@ async function finishAnalysis({ symbol, trigger, sink, cacheKey, stockInfo, pric
                 newsCount: news.length,
                 pipeline: AI_PIPELINE_VERSION,
             }),
+            evidence: bundle,
             runs: sink,
             decision: {
                 action: output.action,

@@ -4,7 +4,7 @@ import {
     buildDecision,
     buildContextSnapshot,
 } from "@zentrade/domain-intelligence";
-import { INTEL_DECISION_PUBLISHED } from "@zentrade/contracts";
+import { INTEL_DECISION_PUBLISHED, EvidenceItem } from "@zentrade/contracts";
 import { currentCorrelationId, metrics } from "@zentrade/observability";
 import { pool } from "../config/db.js";
 import { instrumentResolver } from "./referenceData.js";
@@ -30,11 +30,17 @@ import logger from "../utils/logger.js";
 export const isJournalEnabled = () =>
     process.env.JOURNAL_ENABLED === "1" || process.env.JOURNAL_ENABLED === "true";
 
-export const journalAnalysis = async ({ symbol, trigger, contextSnapshot, runs, decision }) => {
+export const journalAnalysis = async ({ symbol, trigger, contextSnapshot, evidence = [], runs, decision }) => {
     // validate everything before touching the database
     const snapshot = buildContextSnapshot(contextSnapshot);
+    const evidenceItems = evidence.map((e) => EvidenceItem.parse(e));
     const runRecords = runs.map((r) => buildAgentRun(r));
     const decisionRecord = decision ? buildDecision(decision) : null;
+
+    // fail before the tx, mirroring the database trigger (M8 DoD)
+    if (decisionRecord && evidenceItems.length === 0) {
+        throw new Error("a decision requires at least one evidence item");
+    }
 
     const instrument = await instrumentResolver.bySymbol("NSE", symbol);
     if (!instrument) {
@@ -55,12 +61,25 @@ export const journalAnalysis = async ({ symbol, trigger, contextSnapshot, runs, 
             [instrument.instrumentId, trigger, correlationId, JSON.stringify(snapshot)]
         );
 
+        // M8: observations first — the bundle every agent saw, stored once
+        const evidenceIds = [];
+        for (const ev of evidenceItems) {
+            const {
+                rows: [row],
+            } = await client.query(
+                `INSERT INTO evidence (request_id, ref, kind, source_ref, content, weight)
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                [request.id, ev.ref, ev.kind, ev.sourceRef, JSON.stringify(ev.content ?? null), ev.weight]
+            );
+            evidenceIds.push(row.id);
+        }
+
         for (const run of runRecords) {
             await client.query(
                 `INSERT INTO agent_runs
                    (request_id, agent_name, agent_version, model_id, input_hash, output,
-                    status, latency_ms, prompt_tokens, completion_tokens, cost_usd)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                    status, latency_ms, prompt_tokens, completion_tokens, cost_usd, citation_report)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
                 [
                     request.id,
                     run.agentName,
@@ -73,6 +92,7 @@ export const journalAnalysis = async ({ symbol, trigger, contextSnapshot, runs, 
                     run.promptTokens,
                     run.completionTokens,
                     run.costUsd,
+                    run.citationReport ? JSON.stringify(run.citationReport) : null,
                 ]
             );
         }
@@ -122,6 +142,7 @@ export const journalAnalysis = async ({ symbol, trigger, contextSnapshot, runs, 
                         targetMinor: decisionRecord.targetMinor,
                         stopMinor: decisionRecord.stopMinor,
                         agentRunCount: runRecords.length,
+                        evidenceIds,
                     },
                 },
                 client
@@ -131,8 +152,9 @@ export const journalAnalysis = async ({ symbol, trigger, contextSnapshot, runs, 
         await client.query("COMMIT");
         metrics.counter("journal.requests").inc();
         metrics.counter("journal.agent_runs").inc(runRecords.length);
+        metrics.counter("journal.evidence_items").inc(evidenceItems.length);
         if (decisionId) metrics.counter("journal.decisions").inc();
-        return { requestId: request.id, decisionId, correlationId };
+        return { requestId: request.id, decisionId, correlationId, evidenceIds };
     } catch (err) {
         await client.query("ROLLBACK").catch(() => {});
         throw err;
