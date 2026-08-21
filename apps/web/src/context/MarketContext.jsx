@@ -13,8 +13,13 @@ const MarketProvider = ({ children }) => {
     const socketRef = useRef(null);
 
     useEffect(() => {
+        // Vercel's rewrites proxy plain HTTP fine but do not proxy a
+        // WebSocket upgrade to an external origin (Render) — polling-only
+        // avoids repeated failed upgrade attempts and actually connects.
+        // The price feed is already batched to 1 update/sec server-side,
+        // so long-polling latency is not a meaningful loss here.
         const socket = io(SOCKET_URL, {
-            transports: ["websocket", "polling"],
+            transports: ["polling"],
         });
 
         socketRef.current = socket;
