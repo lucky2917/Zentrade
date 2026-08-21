@@ -43,15 +43,15 @@ describe("canonical hashing", () => {
 
 describe("model cost", () => {
     it("prices known models per published rates", () => {
-        // 1M in + 1M out on 70b = 0.59 + 0.79
-        expect(modelCostUsd("llama-3.3-70b-versatile", { promptTokens: 1_000_000, completionTokens: 1_000_000 })).toBe(1.38);
-        expect(modelCostUsd("llama-3.1-8b-instant", { promptTokens: 2_000_000, completionTokens: 0 })).toBe(0.1);
+        // 1M in + 1M out on gpt-oss-120b = 0.15 + 0.60
+        expect(modelCostUsd("openai/gpt-oss-120b", { promptTokens: 1_000_000, completionTokens: 1_000_000 })).toBe(0.75);
+        expect(modelCostUsd("openai/gpt-oss-20b", { promptTokens: 2_000_000, completionTokens: 0 })).toBe(0.15);
     });
 
     it("unknown model or missing usage is null, never a fake zero", () => {
         expect(modelCostUsd("gpt-unknown", { promptTokens: 10, completionTokens: 10 })).toBeNull();
-        expect(modelCostUsd("llama-3.3-70b-versatile", null)).toBeNull();
-        expect(modelCostUsd("llama-3.3-70b-versatile", { promptTokens: -1, completionTokens: 5 })).toBeNull();
+        expect(modelCostUsd("openai/gpt-oss-120b", null)).toBeNull();
+        expect(modelCostUsd("openai/gpt-oss-120b", { promptTokens: -1, completionTokens: 5 })).toBeNull();
     });
 });
 

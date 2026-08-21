@@ -17,18 +17,22 @@ const CACHE_TTL_MARKET_HOURS = 300;
 const getCacheTTL = () => (isMarketOpen() ? CACHE_TTL_MARKET_HOURS : CACHE_TTL);
 const GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions";
 
+// 2026-08-21: llama-3.3-70b-versatile and llama-3.1-8b-instant were retired
+// from Groq's catalog (calls 404 with model_not_found). Replaced with the
+// gpt-oss family, Groq's current general-purpose lineup.
 const MODELS = {
-    technical:   "llama-3.3-70b-versatile",
-    sentiment:   "llama-3.1-8b-instant",
-    risk:        "llama-3.3-70b-versatile",
-    synthesizer: "llama-3.3-70b-versatile",
+    technical:   "openai/gpt-oss-120b",
+    sentiment:   "openai/gpt-oss-20b",
+    risk:        "openai/gpt-oss-120b",
+    synthesizer: "openai/gpt-oss-120b",
 };
 
 // ─── Groq caller ─────────────────────────────────────────────────────────────
 
 // M7: version stamped on every journaled run; bump when prompts/pipeline change
 // v4.1.0 = M8 evidence citations (legend in prompts, structured keyPoints)
-const AI_PIPELINE_VERSION = "v4.1.0";
+// v4.2.0 = gpt-oss model swap (2026-08-21), reasoning_effort low
+const AI_PIPELINE_VERSION = "v4.2.0";
 
 async function callGroq(model, prompt, temperature = 0.15, maxTokens = 400) {
     const apiKey = process.env.GROQ_API_KEY;
@@ -49,6 +53,11 @@ async function callGroq(model, prompt, temperature = 0.15, maxTokens = 400) {
             // M4: JSON mode guarantees a valid JSON object in the response —
             // eliminates the regex extraction hack and multi-object parsing failures.
             response_format: { type: "json_object" },
+            // gpt-oss models spend completion tokens on hidden reasoning before
+            // the JSON body; "low" keeps that overhead small so the existing
+            // token budgets (400/650, sized for non-reasoning models) still
+            // leave room for the full response instead of truncating it.
+            reasoning_effort: "low",
         }),
         signal: AbortSignal.timeout(20000),
     });

@@ -1,8 +1,11 @@
 /**
  * Model cost accounting. Prices are USD per million tokens, as published by
- * Groq (checked 2026-07; update deliberately, the journal stores computed
+ * Groq (checked 2026-08; update deliberately, the journal stores computed
  * cost at write time so historical rows never re-price).
  * Unknown models cost null — never a silent zero, an unknown is an unknown.
+ *
+ * 2026-08: llama-3.3-70b-versatile and llama-3.1-8b-instant were retired
+ * from Groq's catalog and replaced by the gpt-oss family in aiEngine.js.
  */
 
 interface ModelPrice {
@@ -11,8 +14,8 @@ interface ModelPrice {
 }
 
 const GROQ_PRICES: Record<string, ModelPrice> = {
-    "llama-3.3-70b-versatile": { inputPerMTok: 0.59, outputPerMTok: 0.79 },
-    "llama-3.1-8b-instant": { inputPerMTok: 0.05, outputPerMTok: 0.08 },
+    "openai/gpt-oss-120b": { inputPerMTok: 0.15, outputPerMTok: 0.60 },
+    "openai/gpt-oss-20b": { inputPerMTok: 0.075, outputPerMTok: 0.30 },
 };
 
 export interface TokenUsage {
