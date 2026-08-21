@@ -15,8 +15,14 @@ const call = async (fn) => {
         return null;
     }
 
+    // Check auth BEFORE scheduling: with no token every call is doomed, and
+    // background pollers (MarketWorker, LaneManager, SymbolManager) keep
+    // scheduling regardless. Without this, doomed calls still occupy a
+    // queue slot and the rate limiter's throttle gap, so the shared queue
+    // grows unbounded while token-less and starves real requests behind it.
+    await ensureAuthenticated();
+
     return getRateLimiter().schedule(async () => {
-        await ensureAuthenticated();
         const result = await fn();
         await trackCall();
         return result;
