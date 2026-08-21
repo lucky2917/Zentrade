@@ -11,7 +11,16 @@ if (TEST_REDIS) process.env.REDIS_URL = TEST_REDIS;
 if (TEST_DB) process.env.DATABASE_URL = TEST_DB;
 
 const HASH_W = "7".repeat(64);
-const AS_OF = "2026-07-17";
+
+// journalFixture() writes decisions with created_at = NOW(); AS_OF and the
+// calibration baseline dates are computed relative to the clock so this
+// suite does not rot the next time it runs after a long wall-clock gap.
+const isoPlusDays = (days) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+};
+const AS_OF = isoPlusDays(2);
 
 const journalFixture = () => ({
     symbol: "WIPRO",
@@ -69,8 +78,8 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("reflection engine (integration)", () =
 
         // calibration history: a backdated baseline first, then the current view
         const calibration = await import("../services/calibrationEngine.js");
-        await calibration.computeCalibrationSnapshot({ asOf: "2026-07-06" });
-        await calibration.computeCalibrationSnapshot({ asOf: "2026-07-16" });
+        await calibration.computeCalibrationSnapshot({ asOf: isoPlusDays(-9) });
+        await calibration.computeCalibrationSnapshot({ asOf: isoPlusDays(1) });
     }, 60_000);
 
     afterAll(async () => {

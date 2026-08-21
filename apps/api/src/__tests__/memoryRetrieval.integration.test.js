@@ -9,6 +9,15 @@ if (TEST_DB) process.env.DATABASE_URL = TEST_DB;
 
 const HASH_R = "9".repeat(64);
 
+// journalFixture() writes decisions with created_at = NOW(); asOf must
+// always be strictly after "today" for the eligibility window to include
+// them, so it is computed relative to the clock instead of hardcoded.
+const tomorrowIso = () => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + 2); // +2 clears IST/UTC date-boundary skew
+    return d.toISOString().slice(0, 10);
+};
+
 const journalFixture = (action = "BUY") => ({
     symbol: "INFY",
     trigger: "test",
@@ -69,7 +78,7 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("memory retrieval (integration)", () =>
     });
 
     it("retrieves ranked historical observations verbatim, with regenerated narratives", async () => {
-        const tomorrow = "2026-07-17";
+        const tomorrow = tomorrowIso();
         const result = await retrieval.retrieveMemories({ symbol: "INFY", asOf: tomorrow });
         expect(result.semantics).toBe("retrieval_v1");
         expect(result.memories.length).toBeGreaterThanOrEqual(3);
@@ -88,7 +97,7 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("memory retrieval (integration)", () =>
     });
 
     it("replays: identical query + asOf -> byte-identical result; scores ordered", async () => {
-        const args = { symbol: "INFY", regime: "UP_LOWVOL", asOf: "2026-07-17" };
+        const args = { symbol: "INFY", regime: "UP_LOWVOL", asOf: tomorrowIso() };
         const a = await retrieval.retrieveMemories(args);
         const b = await retrieval.retrieveMemories(args);
         expect(b).toEqual(a);
@@ -107,7 +116,7 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("memory retrieval (integration)", () =>
 
     it("requires a symbol or regime and enforces the context budget", async () => {
         await expect(retrieval.retrieveMemories({})).rejects.toThrow(/symbol or a regime/);
-        const capped = await retrieval.retrieveMemories({ symbol: "INFY", asOf: "2026-07-17", limit: 2 });
+        const capped = await retrieval.retrieveMemories({ symbol: "INFY", asOf: tomorrowIso(), limit: 2 });
         expect(capped.memories.length).toBeLessThanOrEqual(2);
     });
 
@@ -119,7 +128,7 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("memory retrieval (integration)", () =>
 
     it("stays within the latency budget", async () => {
         const started = performance.now();
-        await retrieval.retrieveMemories({ symbol: "INFY", regime: "UP_LOWVOL", asOf: "2026-07-17" });
+        await retrieval.retrieveMemories({ symbol: "INFY", regime: "UP_LOWVOL", asOf: tomorrowIso() });
         expect(performance.now() - started).toBeLessThan(50);
     });
 });
