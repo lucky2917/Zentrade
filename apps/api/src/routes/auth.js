@@ -22,13 +22,14 @@ const COOKIE_OPTS = {
     sameSite: "lax",
 };
 
-// H4: short-lived access token (15 min) + long-lived refresh token (7 days)
-const ACCESS_TTL = "15m";
-const REFRESH_TTL_SECS = 7 * 24 * 60 * 60;
+// H4: access token (7 days) + refresh token (90 days), both still bounded —
+// a leaked cookie expires on its own instead of granting indefinite access
+const ACCESS_TTL_SECS = 7 * 24 * 60 * 60;
+const REFRESH_TTL_SECS = 90 * 24 * 60 * 60;
 
 const issueAccessToken = (userId) => {
     const jti = crypto.randomBytes(16).toString("hex");
-    return { token: jwt.sign({ userId, jti }, process.env.JWT_SECRET, { expiresIn: ACCESS_TTL }), jti };
+    return { token: jwt.sign({ userId, jti }, process.env.JWT_SECRET, { expiresIn: ACCESS_TTL_SECS }), jti };
 };
 
 const issueRefreshToken = (userId) => {
@@ -39,7 +40,7 @@ const issueRefreshToken = (userId) => {
 const setAuthCookies = (res, userId) => {
     const access = issueAccessToken(userId);
     const refresh = issueRefreshToken(userId);
-    res.cookie("token", access.token, { ...COOKIE_OPTS, maxAge: 15 * 60 * 1000 });
+    res.cookie("token", access.token, { ...COOKIE_OPTS, maxAge: ACCESS_TTL_SECS * 1000 });
     res.cookie("refreshToken", refresh.token, { ...COOKIE_OPTS, maxAge: REFRESH_TTL_SECS * 1000 });
     return { access, refresh };
 };
