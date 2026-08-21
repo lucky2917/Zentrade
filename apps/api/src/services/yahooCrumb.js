@@ -11,8 +11,18 @@ let failedUntil = 0;
 const looksLikeCrumb = (c) =>
     typeof c === "string" && c.length > 0 && c.length <= 32 && !/[<>{}\s]/.test(c);
 
+// Node's default fetch timeout is 5 minutes (undici's headersTimeout) --
+// Yahoo silently stalling a connection (common for a soft-blocked
+// datacenter IP) would hang every US-market request sharing this crumb
+// for that whole window. 10s matches the timeout already used for the
+// other Yahoo-bound calls in this file.
+const FETCH_TIMEOUT_MS = 10000;
+
 async function fetchCrumb() {
-    const cookieRes = await fetch("https://fc.yahoo.com", { headers: { "User-Agent": YAHOO_UA } });
+    const cookieRes = await fetch("https://fc.yahoo.com", {
+        headers: { "User-Agent": YAHOO_UA },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     const cookie = (cookieRes.headers.getSetCookie?.() || [])
         .map((c) => c.split(";")[0])
         .join("; ");
@@ -20,6 +30,7 @@ async function fetchCrumb() {
 
     const crumbRes = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
         headers: { "User-Agent": YAHOO_UA, Cookie: cookie },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     const crumb = await crumbRes.text();
     // Never cache a bad crumb — that poisons every request for the TTL window
@@ -74,4 +85,4 @@ export function startYahooCooldown() {
     failedUntil = Date.now() + FAIL_COOLDOWN_MS;
 }
 
-export { YAHOO_UA };
+export { YAHOO_UA, FETCH_TIMEOUT_MS };

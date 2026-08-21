@@ -49,6 +49,7 @@ import calibrationRoutes from "./routes/calibration.js";
 import memoryRoutes from "./routes/memories.js";
 import reflectionRoutes from "./routes/reflections.js";
 import knowledgeRoutes from "./routes/knowledge.js";
+import usMarketRoutes from "./routes/usMarket.js";
 import { runWithCorrelation, ensureCorrelationId, metrics } from "@zentrade/observability";
 import { startOpsAlarms, stopOpsAlarms } from "./services/opsAlarms.js";
 
@@ -243,6 +244,7 @@ app.use("/api/decisions", decisionRoutes);
 app.use("/api/calibration", calibrationRoutes);
 app.use("/api/memories", memoryRoutes);
 app.use("/api/reflections", reflectionRoutes);
+app.use("/api/us-market", usMarketRoutes);
 app.use("/api/knowledge", knowledgeRoutes);
 app.use("/fyers", fyersRoutes);
 

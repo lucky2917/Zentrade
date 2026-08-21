@@ -2384,3 +2384,102 @@ a:focus:not(:focus-visible) {
 .xai-flash { animation: xai-flash-anim 1.6s ease; }
 @keyframes xai-flash-anim { 0% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
 @media (max-width: 768px) { .xai-header { flex-direction: column; align-items: flex-start; } .xai-run-grid, .xai-evidence-grid { grid-template-columns: 1fr; } }
+
+/* ==================== US Markets ==================== */
+.us-hours {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 0.72rem; font-weight: 600;
+  padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.us-hours.open { color: var(--green); border-color: var(--green-border); background: var(--green-bg); }
+.us-hours.closed { color: var(--text-muted); }
+.us-hours-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.us-hours.open .us-hours-dot { box-shadow: 0 0 6px var(--green); animation: us-pulse 2s ease-in-out infinite; }
+@keyframes us-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.us-offline-panel { border: 1px solid var(--red-border); background: var(--red-bg); }
+.us-offline-panel .us-offline-head { display: flex; align-items: center; gap: 0.6rem; color: var(--red); font-weight: 600; }
+
+.us-decision-row { display: flex; align-items: center; gap: 8px; margin-top: 0.8rem; }
+.us-decision-pill {
+  font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
+  padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border);
+}
+.us-decision-pill.buy { color: var(--green); border-color: var(--green-border); background: var(--green-bg); }
+.us-decision-pill.sell { color: var(--red); border-color: var(--red-border); background: var(--red-bg); }
+.us-decision-pill.hold { color: var(--text-secondary); }
+.us-confidence-track { flex: 1; height: 4px; border-radius: 4px; background: var(--bg-hover); overflow: hidden; }
+.us-confidence-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+.us-confidence-fill.buy { background: var(--green); }
+.us-confidence-fill.sell { background: var(--red); }
+.us-confidence-fill.hold { background: var(--text-muted); }
+.us-confidence-label { font-family: var(--font-mono); font-size: 0.66rem; color: var(--text-muted); min-width: 2.4em; text-align: right; }
+
+.us-predict-reason { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.7rem; line-height: 1.4; }
+.us-predict-headlines { list-style: none; margin-top: 0.6rem; display: flex; flex-direction: column; gap: 3px; }
+.us-predict-headlines li { font-size: 0.68rem; color: var(--text-muted); padding-left: 0.9rem; position: relative; }
+.us-predict-headlines li::before { content: "—"; position: absolute; left: 0; }
+
+.us-predict-empty { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.8rem; }
+.rotating { animation: spin 0.75s linear infinite; }
+.us-predict-timestamp { font-family: var(--font-mono); font-size: 0.62rem; color: var(--text-muted); margin-top: 0.6rem; text-align: right; }
+
+/* ---- Agent activity timeline ---- */
+.us-activity-timeline { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
+
+.us-activity-cycle { padding: 1.2rem 1.4rem; }
+.us-activity-cycle-head {
+  display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;
+  padding-bottom: 0.8rem; margin-bottom: 0.8rem; border-bottom: 1px solid var(--border-subtle);
+}
+.us-activity-time { font-family: var(--font-mono); font-size: 0.95rem; font-weight: 600; color: var(--text-primary); }
+.us-activity-relative { font-size: 0.72rem; color: var(--text-muted); margin-left: 0.5rem; font-weight: 400; }
+.us-activity-cash { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); }
+.us-activity-cash strong { color: var(--text-secondary); font-weight: 600; }
+
+.us-activity-tickers { display: flex; flex-direction: column; gap: 0.9rem; }
+.us-activity-ticker { padding: 0.7rem 0.85rem; border-radius: var(--radius-sm); background: var(--bg-hover); }
+.us-activity-ticker.us-activity-traded { background: var(--green-bg); border: 1px solid var(--green-border); }
+.us-activity-ticker.us-activity-error { background: var(--red-bg); border: 1px solid var(--red-border); }
+
+.us-activity-ticker-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.us-activity-symbol { font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem; color: var(--text-primary); }
+.us-activity-price { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-secondary); }
+.us-activity-change { font-family: var(--font-mono); font-size: 0.7rem; }
+.us-activity-change.positive { color: var(--green); }
+.us-activity-change.negative { color: var(--red); }
+
+.us-activity-indicators { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.55rem; }
+.us-activity-indicator {
+  font-family: var(--font-mono); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.02em;
+  padding: 2px 8px; border-radius: 20px; border: 1px solid var(--border); color: var(--text-muted);
+}
+.us-activity-indicator.bull { color: var(--green); border-color: var(--green-border); }
+.us-activity-indicator.bear { color: var(--red); border-color: var(--red-border); }
+.us-activity-indicator.warn { color: var(--yellow); border-color: rgba(255, 214, 10, 0.25); }
+
+.us-activity-thought { margin-top: 0.5rem; padding-left: 0.1rem; }
+.us-activity-thought-label {
+  font-size: 0.6rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 0.2rem;
+}
+.us-activity-thought-text { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.45; }
+
+.us-activity-verdict {
+  display: flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem;
+  font-size: 0.72rem; font-weight: 600; padding-top: 0.5rem; border-top: 1px dashed var(--border-subtle);
+}
+.us-activity-verdict.held { color: var(--text-muted); }
+.us-activity-verdict.blocked { color: var(--yellow); }
+.us-activity-verdict.submitted { color: var(--green); }
+.us-activity-verdict.error { color: var(--red); }
+
+.us-activity-portfolio {
+  margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--border-subtle);
+  display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
+}
+.us-activity-portfolio-stat { font-size: 0.72rem; color: var(--text-muted); }
+.us-activity-portfolio-stat strong { font-family: var(--font-mono); color: var(--text-primary); font-weight: 600; }
+
+.us-activity-empty-icon { color: var(--text-muted); opacity: 0.5; }

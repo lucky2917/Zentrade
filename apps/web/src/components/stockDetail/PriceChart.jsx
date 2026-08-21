@@ -11,7 +11,7 @@ const RANGES = [
     { key: "5y", label: "5Y" },
 ];
 
-const ChartCanvas = ({ chartData, selectedRange }) => {
+const ChartCanvas = ({ chartData, selectedRange, timeOffsetSeconds = 19800 }) => {
     const wrapperRef = useRef(null);
     const chartInstanceRef = useRef(null);
     const timerRef = useRef(null);
@@ -75,16 +75,15 @@ const ChartCanvas = ({ chartData, selectedRange }) => {
                 scaleMargins: { top: 0.85, bottom: 0 },
             });
 
-            const IST_OFFSET = 19800; // 5.5 hours in seconds for IST
 
             const candles = chartData
                 .filter((c) => c.open != null && c.close != null && c.high != null && c.low != null)
-                .map((c) => ({ time: c.time + IST_OFFSET, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
+                .map((c) => ({ time: c.time + timeOffsetSeconds, open: +c.open, high: +c.high, low: +c.low, close: +c.close }));
 
             const vols = chartData
                 .filter((c) => c.close != null && c.open != null)
                 .map((c) => ({
-                    time: c.time + IST_OFFSET,
+                    time: c.time + timeOffsetSeconds,
                     value: +(c.volume || 0),
                     color: c.close >= c.open ? "rgba(48,209,88,0.3)" : "rgba(255,59,48,0.3)",
                 }));
@@ -113,12 +112,12 @@ const ChartCanvas = ({ chartData, selectedRange }) => {
                 chartInstanceRef.current = null;
             }
         };
-    }, [chartData, selectedRange]);
+    }, [chartData, selectedRange, timeOffsetSeconds]);
 
     return <div ref={wrapperRef} style={{ width: "100%", minHeight: "420px" }}></div>;
 };
 
-const PriceChart = ({ chartData, chartLoading, selectedRange, onRangeChange }) => (
+const PriceChart = ({ chartData, chartLoading, selectedRange, onRangeChange, timeOffsetSeconds = 19800 }) => (
     <div className="chart-section">
         <div className="chart-header">
             <h3><BarChart2 size={16} className="mr-2" /> Price Chart</h3>
@@ -139,7 +138,7 @@ const PriceChart = ({ chartData, chartLoading, selectedRange, onRangeChange }) =
         ) : chartData.length === 0 ? (
             <div className="chart-loading">No chart data available</div>
         ) : (
-            <ChartCanvas chartData={chartData} selectedRange={selectedRange} />
+            <ChartCanvas chartData={chartData} selectedRange={selectedRange} timeOffsetSeconds={timeOffsetSeconds} />
         )}
     </div>
 );

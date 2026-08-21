@@ -27,3 +27,7 @@ backups/
 PROJECT_STATE.md
 docs/
 CHANGELOG.md
+
+# US trading platform (HKUDS/AI-Trader), self-hosted for hackathon demo.
+# Separate nested repo + venv + secrets, deliberately kept out of history.
+us_agent/

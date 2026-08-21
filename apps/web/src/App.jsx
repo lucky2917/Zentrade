@@ -19,6 +19,9 @@ const Reauth = lazy(() => import("./pages/Reauth.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));
 const DecisionsList = lazy(() => import("./pages/DecisionsList.jsx"));
 const DecisionDetail = lazy(() => import("./pages/DecisionDetail.jsx"));
+const UsMarkets = lazy(() => import("./pages/UsMarkets.jsx"));
+const UsStockDetail = lazy(() => import("./pages/UsStockDetail.jsx"));
+const UsAgentActivity = lazy(() => import("./pages/UsAgentActivity.jsx"));
 
 const AppContent = () => {
   return (
@@ -37,6 +40,9 @@ const AppContent = () => {
               <Route path="/orders" element={<Orders />} />
               <Route path="/decisions" element={<DecisionsList />} />
               <Route path="/decision/:id" element={<DecisionDetail />} />
+              <Route path="/us-markets" element={<UsMarkets />} />
+              <Route path="/us-stock/:symbol" element={<UsStockDetail />} />
+              <Route path="/us-activity" element={<UsAgentActivity />} />
               <Route path="/reauth" element={<Reauth />} />
               <Route path="/login" element={<Login />} />
             </Routes>

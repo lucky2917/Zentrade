@@ -1,8 +1,9 @@
 import { Link, useLocation } from "react-router-dom";
-import { Activity, Star, Briefcase, ListOrdered } from "lucide-react";
+import { Activity, Star, Briefcase, ListOrdered, Globe } from "lucide-react";
 
 const NAV_ITEMS = [
-    { path: "/", icon: Activity, label: "Markets" },
+    { path: "/", icon: Activity, label: "India" },
+    { path: "/us-markets", icon: Globe, label: "US" },
     { path: "/watchlist", icon: Star, label: "Watchlist" },
     { path: "/portfolio", icon: Briefcase, label: "Portfolio" },
     { path: "/orders", icon: ListOrdered, label: "Orders" },

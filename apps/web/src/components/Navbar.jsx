@@ -5,7 +5,7 @@ import { useTheme } from "../context/ThemeContext.jsx";
 import useGoogleAuth from "../hooks/useGoogleAuth.js";
 import GoogleIcon from "./GoogleIcon.jsx";
 import { formatPaise } from "../utils/format.js";
-import { Sun, Moon, LogOut, Activity, Briefcase, ListOrdered, Wallet, Star, Brain } from "lucide-react";
+import { Sun, Moon, LogOut, Activity, Briefcase, ListOrdered, Wallet, Star, Brain, Globe, History } from "lucide-react";
 import { useToast } from "../context/ToastContext.jsx";
 
 const Navbar = () => {
@@ -41,7 +41,13 @@ const Navbar = () => {
 
             <div className="navbar-links">
                 <Link to="/" className={`nav-link ${location.pathname === "/" ? "active" : ""}`}>
-                    <Activity size={16} /> Markets
+                    <Activity size={16} /> Indian Markets
+                </Link>
+                <Link to="/us-markets" className={`nav-link ${location.pathname === "/us-markets" ? "active" : ""}`}>
+                    <Globe size={16} /> US Markets
+                </Link>
+                <Link to="/us-activity" className={`nav-link ${location.pathname === "/us-activity" ? "active" : ""}`}>
+                    <History size={16} /> Agent Activity
                 </Link>
                 <Link to="/watchlist" className={`nav-link ${location.pathname === "/watchlist" ? "active" : ""}`}>
                     <Star size={16} /> Watchlist
