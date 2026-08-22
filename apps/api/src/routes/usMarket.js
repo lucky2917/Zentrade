@@ -146,8 +146,13 @@ router.get("/predict/:symbol", auth, async (req, res) => {
 router.get("/activity", auth, async (req, res) => {
     const limit = Number.isInteger(Number(req.query.limit)) ? Number(req.query.limit) : 20;
     try {
+        // 60s, not 10s -- matches /predict's timeout below. Confirmed
+        // directly against the deployed predict service: Render's free
+        // tier spins it down after inactivity, and a cold start alone can
+        // take 30-90s before it answers at all. 10s guaranteed a false
+        // "not reachable" on the first request after any idle period.
         const upstream = await fetch(`${PREDICT_BASE_URL}/activity?limit=${encodeURIComponent(limit)}`, {
-            signal: AbortSignal.timeout(10000),
+            signal: AbortSignal.timeout(60000),
         });
         if (!upstream.ok) {
             const body = await upstream.text();
