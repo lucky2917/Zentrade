@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Activity, TrendingUp, TrendingDown, CheckCircle2, PauseCircle, AlertTriangle } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, CheckCircle2, PauseCircle, AlertTriangle, ChevronDown } from "lucide-react";
 import api from "../services/api.js";
 import { staggerContainer, fadeUpItem } from "../utils/motionVariants.js";
 import { useUsMarketHours } from "../hooks/useUsMarketHours.js";
@@ -126,6 +126,7 @@ const TickerCard = ({ ticker }) => {
 };
 
 const CycleCard = ({ cycle, now }) => {
+    const [expanded, setExpanded] = useState(false);
     const positions = cycle.portfolio_after?.positions || [];
     // Only sums positions that have actually been priced -- a position
     // still waiting on its first background refresh has pnl: null, and
@@ -135,24 +136,39 @@ const CycleCard = ({ cycle, now }) => {
     const holdingsValue = cycle.portfolio_after?.holdings_value;
     const totalAccountValue = cycle.portfolio_after?.total_account_value;
     const totalPnl = cycle.portfolio_after?.total_pnl;
+    const tradedCount = cycle.tickers.filter((t) => t.submitted).length;
 
     return (
         <motion.div variants={fadeUpItem} className="glass-panel us-activity-cycle">
-            <div className="us-activity-cycle-head">
+            <button
+                type="button"
+                className="us-activity-cycle-head"
+                onClick={() => setExpanded((v) => !v)}
+                aria-expanded={expanded}
+            >
                 <div>
                     <span className="us-activity-time">{formatTime(cycle.timestamp)}</span>
                     <span className="us-activity-relative">{relativeTime(cycle.timestamp, now)}</span>
                 </div>
-                <span className="us-activity-cash">
-                    Cash: <strong>{formatUsd(cycle.cash_before)}</strong>
-                </span>
-            </div>
+                <div className="us-activity-cycle-summary">
+                    <span className="us-activity-cash">
+                        Cash: <strong>{formatUsd(cycle.cash_before)}</strong>
+                    </span>
+                    <span className="us-activity-ticker-count">
+                        {cycle.tickers.length} ticker{cycle.tickers.length === 1 ? "" : "s"}
+                        {tradedCount > 0 ? ` · ${tradedCount} traded` : ""}
+                    </span>
+                    <ChevronDown size={16} className={`us-activity-chevron ${expanded ? "open" : ""}`} />
+                </div>
+            </button>
 
-            <div className="us-activity-tickers">
-                {cycle.tickers.map((t) => (
-                    <TickerCard key={t.ticker} ticker={t} />
-                ))}
-            </div>
+            {expanded && (
+                <div className="us-activity-tickers">
+                    {cycle.tickers.map((t) => (
+                        <TickerCard key={t.ticker} ticker={t} />
+                    ))}
+                </div>
+            )}
 
             <div className="us-activity-portfolio">
                 <span className="us-activity-portfolio-stat">

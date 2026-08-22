@@ -2571,13 +2571,25 @@ a:focus:not(:focus-visible) {
 
 .us-activity-cycle { padding: 1.2rem 1.4rem; }
 .us-activity-cycle-head {
+  width: 100%;
   display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;
-  padding-bottom: 0.8rem; margin-bottom: 0.8rem; border-bottom: 1px solid var(--border-subtle);
+  padding: 0 0 0.8rem; margin-bottom: 0.8rem; border-bottom: 1px solid var(--border-subtle);
+  background: none; border-top: none; border-left: none; border-right: none;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+  border-radius: 0;
+  transition: var(--transition);
 }
+.us-activity-cycle-head:hover { color: var(--text-primary); }
 .us-activity-time { font-family: var(--font-mono); font-size: 0.95rem; font-weight: 600; color: var(--text-primary); }
 .us-activity-relative { font-size: 0.72rem; color: var(--text-muted); margin-left: 0.5rem; font-weight: 400; }
 .us-activity-cash { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); }
 .us-activity-cash strong { color: var(--text-secondary); font-weight: 600; }
+
+.us-activity-cycle-summary { display: flex; align-items: center; gap: 0.9rem; }
+.us-activity-ticker-count { font-size: 0.72rem; color: var(--text-muted); }
+.us-activity-chevron { color: var(--text-muted); transition: transform 0.25s ease; flex-shrink: 0; }
+.us-activity-chevron.open { transform: rotate(180deg); }
+.us-activity-cycle-head:hover .us-activity-chevron { color: var(--accent); }
 
 .us-activity-tickers { display: flex; flex-direction: column; gap: 0.9rem; }
 .us-activity-ticker { padding: 0.7rem 0.85rem; border-radius: var(--radius-sm); background: var(--bg-hover); }
