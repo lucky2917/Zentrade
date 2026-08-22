@@ -18,11 +18,18 @@ const looksLikeCrumb = (c) =>
 // other Yahoo-bound calls in this file.
 const FETCH_TIMEOUT_MS = 10000;
 
-async function fetchCrumb() {
+const RATE_LIMIT_RETRY_DELAY_MS = 4000;
+
+async function attemptFetchCrumb() {
     const cookieRes = await fetch("https://fc.yahoo.com", {
         headers: { "User-Agent": YAHOO_UA },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
+    if (cookieRes.status === 429) {
+        const err = new Error("Yahoo cookie request failed (429)");
+        err.rateLimited = true;
+        throw err;
+    }
     const cookie = (cookieRes.headers.getSetCookie?.() || [])
         .map((c) => c.split(";")[0])
         .join("; ");
@@ -32,6 +39,11 @@ async function fetchCrumb() {
         headers: { "User-Agent": YAHOO_UA, Cookie: cookie },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
+    if (crumbRes.status === 429) {
+        const err = new Error("Yahoo crumb request failed (429)");
+        err.rateLimited = true;
+        throw err;
+    }
     const crumb = await crumbRes.text();
     // Never cache a bad crumb — that poisons every request for the TTL window
     if (!crumbRes.ok || !looksLikeCrumb(crumb)) {
@@ -39,6 +51,21 @@ async function fetchCrumb() {
     }
 
     return { cookie, crumb, expiresAt: Date.now() + CRUMB_TTL_MS };
+}
+
+// This is the actual point of failure confirmed in production -- the crumb
+// fetch itself getting 429'd, one layer before usMarketData.js's own quote/
+// chart fetches ever run. A 429 here means slow down, not broken, so it
+// gets one retry before falling through to getYahooCrumb()'s normal
+// failure path (a full FAIL_COOLDOWN_MS lockout on the shared crumb cache).
+async function fetchCrumb() {
+    try {
+        return await attemptFetchCrumb();
+    } catch (err) {
+        if (!err.rateLimited) throw err;
+        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_DELAY_MS));
+        return attemptFetchCrumb();
+    }
 }
 
 export async function getYahooCrumb() {
