@@ -64,12 +64,12 @@ const UsMarkets = () => {
 
     return (
         <motion.div className="us-markets-page" initial="hidden" animate="show" variants={staggerContainer}>
-            <div className="dashboard-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.8rem", marginTop: "0.5rem" }}>
+            <div className="us-page-header">
                 <div>
                     <h1>US Markets</h1>
                     <p className="text-muted">Self-hosted paper trading, separate from your Indian portfolio.</p>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.7rem", flexWrap: "wrap" }}>
+                <div className="us-page-actions">
                     <button className="btn-secondary" onClick={() => navigate("/us-activity")}>
                         <History size={14} /> Agent Activity
                     </button>
@@ -80,100 +80,127 @@ const UsMarkets = () => {
                 </div>
             </div>
 
-            <motion.div variants={fadeUpItem} className="glass-panel" style={{ padding: "1.5rem", marginTop: "1rem" }}>
-                <h2>Live Market</h2>
+            {!agentOffline && positions && (
+                <motion.div variants={fadeUpItem} className="us-stat-strip">
+                    <div className="us-stat-card">
+                        <span className="us-stat-label">Cash</span>
+                        <span className="us-stat-value">{formatUsd(positions.cash)}</span>
+                    </div>
+                    <div className="us-stat-card">
+                        <span className="us-stat-label">Holdings</span>
+                        <span className="us-stat-value">{formatUsd(positions.holdings_value)}</span>
+                    </div>
+                    <div className="us-stat-card">
+                        <span className="us-stat-label">Total Value</span>
+                        <span className="us-stat-value">{formatUsd(positions.total_account_value)}</span>
+                    </div>
+                    <div className="us-stat-card">
+                        <span className="us-stat-label">Total P&amp;L</span>
+                        <span className={`us-stat-value ${positions.total_pnl > 0 ? "positive" : positions.total_pnl < 0 ? "negative" : ""}`}>
+                            {formatUsd(positions.total_pnl)}
+                        </span>
+                    </div>
+                </motion.div>
+            )}
+
+            <motion.div variants={fadeUpItem} className="glass-panel us-panel">
+                <h2 className="us-panel-title">Live Market</h2>
                 {stocksError ? (
                     <p className="text-muted">{stocksError}</p>
                 ) : stocksLoading ? (
                     <p className="text-muted">Loading...</p>
                 ) : (
-                    <table className="stock-table">
-                        <thead>
-                            <tr>
-                                <th>Symbol</th>
-                                <th>Name</th>
-                                <th>Price</th>
-                                <th>Change</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {stocks.map((s) => {
-                                const isPositive = (s.changePercent ?? 0) >= 0;
-                                return (
-                                    <tr key={s.symbol} className="stock-row" onClick={() => navigate(`/us-stock/${s.symbol}`)}>
-                                        <td className="stock-symbol">{s.symbol}</td>
-                                        <td className="stock-name">{s.name}</td>
-                                        <td className="stock-price">{formatUsd(s.price)}</td>
-                                        <td className={`stock-change ${isPositive ? "positive" : "negative"}`}>
-                                            {s.changePercent != null ? formatPct(s.changePercent) : "—"}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                    <div className="stock-table-container">
+                        <table className="stock-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Name</th>
+                                    <th>Price</th>
+                                    <th>Change</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {stocks.map((s) => {
+                                    const isPositive = (s.changePercent ?? 0) >= 0;
+                                    return (
+                                        <tr key={s.symbol} className="stock-row" onClick={() => navigate(`/us-stock/${s.symbol}`)}>
+                                            <td className="stock-symbol">{s.symbol}</td>
+                                            <td className="stock-name">{s.name}</td>
+                                            <td className="stock-price">{formatUsd(s.price)}</td>
+                                            <td>
+                                                {s.changePercent != null ? (
+                                                    <span className={`us-change-pill ${isPositive ? "positive" : "negative"}`}>
+                                                        {formatPct(s.changePercent)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-muted">—</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </motion.div>
 
             {agentOffline && (
-                <motion.div variants={fadeUpItem} className="glass-panel us-offline-panel" style={{ padding: "1.2rem", marginTop: "1rem" }}>
+                <motion.div variants={fadeUpItem} className="glass-panel us-offline-panel">
                     <div className="us-offline-head">
                         <AlertTriangle size={18} />
                         US agent isn't running
                     </div>
-                    <p className="text-muted" style={{ marginTop: "0.4rem", fontSize: "0.85rem" }}>
+                    <p className="text-muted us-offline-detail">
                         Start it with <code>./us_agent/run_us.sh</code>, then refresh this page.
                     </p>
                 </motion.div>
             )}
 
             {!agentOffline && (
-                <motion.div variants={fadeUpItem} className="glass-panel" style={{ padding: "1.5rem", marginTop: "1rem" }}>
-                    <h2>Paper Positions</h2>
+                <motion.div variants={fadeUpItem} className="glass-panel us-panel">
+                    <h2 className="us-panel-title">Paper Positions</h2>
                     {loadingPositions ? (
                         <p className="text-muted">Loading...</p>
                     ) : positions?.positions?.length ? (
-                        <table className="stock-table">
-                            <thead>
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>Side</th>
-                                    <th>Qty</th>
-                                    <th>Entry</th>
-                                    <th>Current</th>
-                                    <th>P&amp;L</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {positions.positions.map((pos) => (
-                                    <tr key={`${pos.symbol}-${pos.id}`}>
-                                        <td>{pos.symbol}</td>
-                                        <td>{pos.side}</td>
-                                        <td>{pos.quantity}</td>
-                                        <td>{formatUsd(pos.entry_price)}</td>
-                                        <td>{formatUsd(pos.current_price)}</td>
-                                        <td className={pos.pnl > 0 ? "positive" : pos.pnl < 0 ? "negative" : ""}>
-                                            {pos.pnl == null ? "—" : formatUsd(pos.pnl)}
-                                        </td>
+                        <div className="stock-table-container">
+                            <table className="stock-table">
+                                <thead>
+                                    <tr>
+                                        <th>Symbol</th>
+                                        <th>Side</th>
+                                        <th>Qty</th>
+                                        <th>Entry</th>
+                                        <th>Current</th>
+                                        <th>P&amp;L</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    {positions.positions.map((pos) => (
+                                        <tr key={`${pos.symbol}-${pos.id}`}>
+                                            <td className="stock-symbol">{pos.symbol}</td>
+                                            <td className="stock-name">{pos.side}</td>
+                                            <td className="stock-price">{pos.quantity}</td>
+                                            <td className="stock-price">{formatUsd(pos.entry_price)}</td>
+                                            <td className="stock-price">{formatUsd(pos.current_price)}</td>
+                                            <td>
+                                                {pos.pnl == null ? (
+                                                    <span className="text-muted">—</span>
+                                                ) : (
+                                                    <span className={`us-change-pill ${pos.pnl > 0 ? "positive" : pos.pnl < 0 ? "negative" : ""}`}>
+                                                        {formatUsd(pos.pnl)}
+                                                    </span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     ) : (
-                        <p className="text-muted">No open positions yet — a prediction becomes a position once you act on it.</p>
+                        <div className="us-empty-state">No open positions yet. A prediction becomes a position once you act on it.</div>
                     )}
-                    <p className="text-muted" style={{ marginTop: "1rem" }}>
-                        Cash: <strong style={{ color: "var(--text-primary)" }}>{formatUsd(positions?.cash)}</strong>
-                        {" · "}
-                        Holdings: <strong style={{ color: "var(--text-primary)" }}>{formatUsd(positions?.holdings_value)}</strong>
-                        {" · "}
-                        Total: <strong style={{ color: "var(--text-primary)" }}>{formatUsd(positions?.total_account_value)}</strong>
-                        {" · "}
-                        Total P&amp;L:{" "}
-                        <strong style={{ color: positions?.total_pnl > 0 ? "var(--green)" : positions?.total_pnl < 0 ? "var(--red)" : "var(--text-primary)" }}>
-                            {formatUsd(positions?.total_pnl)}
-                        </strong>
-                    </p>
                 </motion.div>
             )}
         </motion.div>

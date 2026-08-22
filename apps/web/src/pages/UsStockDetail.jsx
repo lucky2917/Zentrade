@@ -74,12 +74,12 @@ const UsStockDetail = () => {
             </button>
 
             {error ? (
-                <div className="glass-panel us-offline-panel" style={{ padding: "1.2rem", marginTop: "1rem" }}>
+                <div className="glass-panel us-offline-panel">
                     <p>{error}</p>
                 </div>
             ) : (
                 <>
-                    <motion.div variants={fadeUpItem} className="stock-detail-header" style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
+                    <motion.div variants={fadeUpItem} className="stock-detail-header us-stock-hero">
                         <div className="stock-info">
                             <div className="stock-name-row flex items-center gap-2">
                                 <h1>{symbol}</h1>
@@ -94,17 +94,17 @@ const UsStockDetail = () => {
                             )}
                         </div>
                         <button className="btn-secondary" disabled={predicting} onClick={fetchPrediction}>
-                            {predicting ? <RefreshCw size={14} style={{ animation: "spin 0.75s linear infinite" }} /> : `Predict ${symbol}`}
+                            {predicting ? <RefreshCw size={14} className="rotating" /> : `Predict ${symbol}`}
                         </button>
                     </motion.div>
 
-                    <motion.div variants={fadeUpItem} className="glass-panel" style={{ padding: "1.5rem", marginTop: "1rem" }}>
-                        <h2>Prediction</h2>
-                        <p className="text-muted" style={{ fontSize: "0.85rem" }}>
-                            Generated on demand by AI, reading live price, momentum, and headlines — nothing here submits a trade.
+                    <motion.div variants={fadeUpItem} className="glass-panel us-panel">
+                        <h2 className="us-panel-title">Prediction</h2>
+                        <p className="us-panel-subtitle">
+                            Generated on demand by AI, reading live price, momentum, and headlines. Nothing here submits a trade.
                         </p>
                         {prediction ? (
-                            <div style={{ marginTop: "0.8rem" }}>
+                            <div className="us-predict-body">
                                 <div className="us-decision-row">
                                     <span className={`us-decision-pill ${decisionClass}`}>{prediction.decision}</span>
                                     <div className="us-confidence-track">
@@ -131,7 +131,7 @@ const UsStockDetail = () => {
                         )}
                     </motion.div>
 
-                    <motion.div variants={fadeUpItem} className="glass-panel" style={{ padding: "1.5rem", marginTop: "1rem" }}>
+                    <motion.div variants={fadeUpItem} className="glass-panel us-panel">
                         <PriceChart
                             chartData={chartData}
                             chartLoading={chartLoading}
@@ -142,16 +142,18 @@ const UsStockDetail = () => {
                     </motion.div>
 
                     {stock && (
-                        <motion.div variants={fadeUpItem} className="glass-panel" style={{ padding: "1.5rem", marginTop: "1.5rem" }}>
-                            <h2>Stats</h2>
-                            <table className="stock-table">
-                                <tbody>
-                                    <tr><td>Day Range</td><td>{formatUsd(stock.dayLow)} – {formatUsd(stock.dayHigh)}</td></tr>
-                                    <tr><td>52-Week Range</td><td>{formatUsd(stock.fiftyTwoWeekLow)} – {formatUsd(stock.fiftyTwoWeekHigh)}</td></tr>
-                                    <tr><td>Market Cap</td><td>{formatMarketCap(stock.marketCap)}</td></tr>
-                                    <tr><td>Market State</td><td>{stock.marketState}</td></tr>
-                                </tbody>
-                            </table>
+                        <motion.div variants={fadeUpItem} className="glass-panel us-panel">
+                            <h2 className="us-panel-title">Stats</h2>
+                            <div className="stock-table-container">
+                                <table className="stock-table">
+                                    <tbody>
+                                        <tr><td className="stock-name">Day Range</td><td className="stock-price">{formatUsd(stock.dayLow)} – {formatUsd(stock.dayHigh)}</td></tr>
+                                        <tr><td className="stock-name">52-Week Range</td><td className="stock-price">{formatUsd(stock.fiftyTwoWeekLow)} – {formatUsd(stock.fiftyTwoWeekHigh)}</td></tr>
+                                        <tr><td className="stock-name">Market Cap</td><td className="stock-price">{formatMarketCap(stock.marketCap)}</td></tr>
+                                        <tr><td className="stock-name">Market State</td><td className="stock-price">{stock.marketState}</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </motion.div>
                     )}
                 </>

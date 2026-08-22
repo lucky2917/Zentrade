@@ -77,14 +77,14 @@ const TickerCard = ({ ticker }) => {
                     </span>
                 )}
                 {ticker.llm_decision && (
-                    <span className={`us-decision-pill ${decisionClass}`} style={{ marginLeft: "auto" }}>
+                    <span className={`us-decision-pill us-decision-pill-end ${decisionClass}`}>
                         {ticker.llm_decision}
                     </span>
                 )}
             </div>
 
             {ticker.llm_confidence != null && (
-                <div className="us-decision-row" style={{ marginTop: "0.5rem" }}>
+                <div className="us-decision-row us-decision-row-tight">
                     <div className="us-confidence-track">
                         <div className={`us-confidence-fill ${decisionClass}`} style={{ width: `${ticker.llm_confidence}%` }} />
                     </div>
@@ -161,19 +161,18 @@ const CycleCard = ({ cycle, now }) => {
                 <span className="us-activity-portfolio-stat">
                     Open positions: <strong>{positions.length}</strong>
                     {pricedPositions.length < positions.length && (
-                        <span style={{ color: "var(--text-muted)" }}> ({positions.length - pricedPositions.length} awaiting first price)</span>
+                        <span className="text-muted"> ({positions.length - pricedPositions.length} awaiting first price)</span>
                     )}
                 </span>
                 <span className="us-activity-portfolio-stat">
                     Holdings value: <strong>{formatUsd(holdingsValue)}</strong>
                 </span>
                 <span className="us-activity-portfolio-stat">
-                    Total money (cash + holdings):{" "}
-                    <strong style={{ color: "var(--text-primary)" }}>{formatUsd(totalAccountValue)}</strong>
+                    Total money (cash + holdings): <strong className="us-total-value">{formatUsd(totalAccountValue)}</strong>
                 </span>
                 <span className="us-activity-portfolio-stat">
                     Total P&amp;L:{" "}
-                    <strong style={{ color: totalPnl > 0 ? "var(--green)" : totalPnl < 0 ? "var(--red)" : undefined }}>
+                    <strong className={totalPnl > 0 ? "positive" : totalPnl < 0 ? "negative" : ""}>
                         {formatUsd(totalPnl)}
                     </strong>
                 </span>
@@ -214,11 +213,11 @@ const UsAgentActivity = () => {
 
     return (
         <motion.div className="us-markets-page" initial="hidden" animate="show" variants={staggerContainer}>
-            <div className="dashboard-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.8rem", marginTop: "0.5rem" }}>
+            <div className="us-page-header">
                 <div>
                     <h1>Agent Activity</h1>
                     <p className="text-muted">
-                        Every autonomous cycle, minute by minute — what the model saw, what it decided, and what the risk engine actually let through.
+                        Every autonomous cycle, minute by minute. What the model saw, what it decided, and what the risk engine actually let through.
                     </p>
                 </div>
                 <span className={`us-hours ${marketHours.open ? "open" : "closed"}`}>
@@ -228,22 +227,22 @@ const UsAgentActivity = () => {
             </div>
 
             {error ? (
-                <motion.div variants={fadeUpItem} className="glass-panel us-offline-panel" style={{ padding: "1.2rem", marginTop: "1rem" }}>
+                <motion.div variants={fadeUpItem} className="glass-panel us-offline-panel">
                     <div className="us-offline-head">
                         <AlertTriangle size={18} />
                         US agent isn't running
                     </div>
-                    <p className="text-muted" style={{ marginTop: "0.4rem", fontSize: "0.85rem" }}>
+                    <p className="text-muted us-offline-detail">
                         Start it with <code>./us_agent/run_us.sh</code>, then refresh this page.
                     </p>
                 </motion.div>
             ) : loading ? (
-                <motion.div variants={fadeUpItem} className="glass-panel" style={{ padding: "1.5rem", marginTop: "1rem" }}>
+                <motion.div variants={fadeUpItem} className="glass-panel us-panel">
                     <p className="text-muted">Loading...</p>
                 </motion.div>
             ) : cycles.length === 0 ? (
-                <motion.div variants={fadeUpItem} className="glass-panel" style={{ padding: "2rem", marginTop: "1rem", textAlign: "center" }}>
-                    <Activity size={28} className="us-activity-empty-icon" style={{ marginBottom: "0.6rem" }} />
+                <motion.div variants={fadeUpItem} className="glass-panel us-empty-state">
+                    <Activity size={28} className="us-activity-empty-icon" />
                     <p className="text-muted">
                         No cycles yet. Start the autonomous loop with <code>./us_agent/run_decision_loop.sh</code> and its first
                         decision will show up here within a minute.
