@@ -32,7 +32,9 @@ const RANGE_TO_INTERVAL = { "1d": "5m", "5d": "15m", "1mo": "1d", "3mo": "1d", "
 let consecutive401s = 0;
 const CONSECUTIVE_401_COOLDOWN_THRESHOLD = 2;
 
-const fetchQuotes = async (symbols) => {
+const RATE_LIMIT_RETRY_DELAY_MS = 4000;
+
+const attemptFetchQuotes = async (symbols) => {
     const { cookie, crumb } = await getYahooCrumb();
     const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(",")}&crumb=${encodeURIComponent(crumb)}`;
     const res = await fetch(url, {
@@ -48,6 +50,11 @@ const fetchQuotes = async (symbols) => {
         }
         throw new Error("Yahoo crumb expired");
     }
+    if (res.status === 429) {
+        const err = new Error("Yahoo quote request failed (429)");
+        err.rateLimited = true;
+        throw err;
+    }
     if (!res.ok) {
         startYahooCooldown();
         throw new Error(`Yahoo quote request failed (${res.status})`);
@@ -56,6 +63,31 @@ const fetchQuotes = async (symbols) => {
 
     const body = await res.json();
     return body?.quoteResponse?.result || [];
+};
+
+// A 429 means "slow down, try again shortly" -- a different signal from
+// every other failure this file treats as "something is actually broken."
+// Previously any non-ok response, 429 included, went straight to a 5-minute
+// cooldown, so a single rate-limit response could lock out every request
+// for the next 5 minutes with no retry at all. Confirmed directly in
+// production: us_agent's identical yfinance rate-limit ("Too Many Requests
+// ... Try after a while") resolved on a single retry, so only a 429 gets
+// this same second chance here; every other failure still goes straight to
+// startYahooCooldown() as before.
+const fetchQuotes = async (symbols) => {
+    try {
+        return await attemptFetchQuotes(symbols);
+    } catch (err) {
+        if (!err.rateLimited) throw err;
+        logger.warn("UsMarketData", "quote fetch rate limited, retrying once", { symbols });
+        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_DELAY_MS));
+        try {
+            return await attemptFetchQuotes(symbols);
+        } catch (retryErr) {
+            startYahooCooldown();
+            throw retryErr;
+        }
+    }
 };
 
 // Dedupes concurrent identical requests (e.g. every open tab's poll firing
@@ -120,13 +152,17 @@ export const getUsChart = async (symbol, range) => {
     return inFlight;
 };
 
-async function fetchChart(symbol, chartRange) {
-    const cacheKey = `us:chart:${symbol}:${chartRange}`;
+async function attemptFetchChart(symbol, chartRange) {
     const interval = RANGE_TO_INTERVAL[chartRange];
     const res = await fetch(
         `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${chartRange}&interval=${interval}`,
         { headers: { "User-Agent": YAHOO_UA }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }
     );
+    if (res.status === 429) {
+        const err = new Error(`Yahoo chart request failed (429)`);
+        err.rateLimited = true;
+        throw err;
+    }
     if (!res.ok) {
         // Unlike fetchQuotes, this doesn't need a crumb, so a failure here
         // isn't crumb staleness -- it's Yahoo rejecting/rate-limiting this
@@ -136,8 +172,26 @@ async function fetchChart(symbol, chartRange) {
         startYahooCooldown();
         throw new Error(`Yahoo chart request failed (${res.status})`);
     }
+    return res.json();
+}
 
-    const body = await res.json();
+async function fetchChart(symbol, chartRange) {
+    const cacheKey = `us:chart:${symbol}:${chartRange}`;
+    let body;
+    try {
+        body = await attemptFetchChart(symbol, chartRange);
+    } catch (err) {
+        if (!err.rateLimited) throw err;
+        logger.warn("UsMarketData", "chart fetch rate limited, retrying once", { symbol, chartRange });
+        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_DELAY_MS));
+        try {
+            body = await attemptFetchChart(symbol, chartRange);
+        } catch (retryErr) {
+            startYahooCooldown();
+            throw retryErr;
+        }
+    }
+
     const result = body?.chart?.result?.[0];
     if (!result?.timestamp) return [];
 
