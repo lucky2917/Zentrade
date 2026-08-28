@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+*.egg-info/
+
+# Downloaded archives and derived datasets. Reproducible from the adapters,
+# large, and never a source of truth.
+#
+# LEADING SLASH IS LOAD-BEARING: an unanchored "data/" also matches
+# src/zentrade/adapters/data/, which silently excluded the entire data-adapter
+# package from version control until this was caught.
+/data/
