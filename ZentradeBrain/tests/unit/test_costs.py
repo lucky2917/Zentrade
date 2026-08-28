@@ -1,7 +1,7 @@
 """Transaction costs and the bootstrap slippage model."""
 import pytest
 
-from zentrade.core.costs import (
+from zentrade.costs import (
     CALIBRATION_STAGE, CostSchedule, ProductType, SlippageModel, compute_costs,
 )
 from zentrade.core.orders import Side

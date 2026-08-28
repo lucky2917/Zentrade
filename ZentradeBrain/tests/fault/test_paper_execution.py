@@ -5,7 +5,7 @@ import pytest
 from zentrade.adapters.execution.paper import (
     ExecutionConfig, PaperBroker, SessionBar, UnknownOrder,
 )
-from zentrade.core.costs import ProductType, SlippageModel
+from zentrade.costs import ProductType, SlippageModel
 from zentrade.core.orders import OrderState, RejectReason, Side
 
 CASH = 100_000_000_00

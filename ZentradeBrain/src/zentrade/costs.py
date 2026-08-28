@@ -1,4 +1,9 @@
-"""NSE equity transaction costs and the bootstrap slippage model."""
+"""NSE equity transaction costs and the bootstrap slippage model.
+
+Pure arithmetic with no state and no authority, so it sits outside core/.
+The boundary rule exists to stop Research and Learning trading or mutating
+state, not to stop them costing a trade they are only measuring.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ import math
 from dataclasses import dataclass
 from enum import Enum
 
-from .orders import Side
+from .kernel.side import Side
 
 CALIBRATION_STAGE = "bootstrap"
 

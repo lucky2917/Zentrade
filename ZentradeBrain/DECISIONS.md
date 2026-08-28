@@ -293,3 +293,39 @@ spec's rule that ambiguous order state halts rather than guesses.
 **Exits under HALTED still obey correctness.** Being allowed to exit is not
 being allowed to exit incorrectly: an oversized sell is still refused for
 insufficient position, and cash and quantity conservation still hold.
+
+## P6: baseline predictor and calibration
+
+**No model demonstrated out-of-sample value after costs.** This is the result,
+not a setback, and it was reached without forcing a promotion.
+
+**The cost hurdle exceeds the average gross move.** Round trip is 73.55 bps
+against a mean forward return of roughly 30 bps on the evaluation window.
+Random entry at every rate returns about -44 bps net. That is the number any
+edge has to clear before anything else matters.
+
+**The base rate is not stationary.** TRAIN 0.4162, CALIBRATION 0.3132,
+EVALUATION 0.3588. A ten point swing in how often a 2x ATR target is reached
+before a 1x ATR stop. A model fitted at 41.6 percent is miscalibrated by
+construction on a 35.9 percent period, which is exactly what the results show.
+
+**Two apparent positives were artifacts, and both were killed.** A constant
+predictor has no spread, so its "top decile" is whichever rows argsort left
+first, which here means the alphabetically earliest symbols. That produced a
+spurious +27.64 bps at t=3.49. Selections now detect ties and report degenerate
+rankings rather than attributing a return to a signal that does not exist.
+Separately, a p>=0.35 tail of 98 rows out of 24,066 showed +94 bps at t=1.17,
+below the deflated threshold of 2.23 at twelve trials. Every decision metric
+now carries a t-statistic, because a net return with no t-statistic beside it
+is a number rather than evidence.
+
+**Cost arithmetic does not belong in core/.** The architecture guard caught
+learning importing core.costs. The boundary exists to stop Research and
+Learning trading or mutating state, not to stop them costing a trade they are
+only measuring, so costs moved to the package root and Side lifted into the
+kernel. The guard was right and the fix was structural, not an exemption.
+
+**High volatility is the only regime near break-even.** LOW -52.59 bps,
+MID -74.96 bps, HIGH -3.80 bps net. Not evidence of anything yet, and it comes
+from a tercile proxy rather than the frozen taxonomy, but it is where a later
+search would start.

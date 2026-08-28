@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from ...core.costs import CostBreakdown, CostSchedule, ProductType, SlippageModel, compute_costs
+from ...costs import CostBreakdown, CostSchedule, ProductType, SlippageModel, compute_costs
 from ...core.orders import (
     Fill, InvalidTransition, Order, OrderState, RejectReason, Side,
 )

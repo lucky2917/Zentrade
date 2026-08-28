@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from enum import Enum
 
+from ..kernel.side import Side
+
 
 class OrderState(str, Enum):
     NEW = "NEW"
@@ -37,15 +39,6 @@ VALID_TRANSITIONS: dict[OrderState, frozenset[OrderState]] = {
     OrderState.EXPIRED: frozenset(),
     OrderState.AMBIGUOUS: frozenset(),
 }
-
-
-class Side(str, Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-
-    @property
-    def sign(self) -> int:
-        return 1 if self is Side.BUY else -1
 
 
 class RejectReason(str, Enum):
