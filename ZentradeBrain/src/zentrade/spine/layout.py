@@ -1,13 +1,4 @@
-"""
-Hive-partitioned paths for spine_v1.
-
-Partitioning follows the dominant read pattern rather than the write pattern.
-Cross-sectional ranking ("every symbol on this date") is what the research loop
-runs constantly, so bars partition by time and carry the symbol as a column;
-Parquet row-group statistics prune single-symbol reads well enough without a
-partition per symbol. Minute bars add a month level because a year of them in
-one file is large enough to hurt.
-"""
+"""Hive-partitioned paths for spine_v1."""
 
 from __future__ import annotations
 

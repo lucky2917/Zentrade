@@ -1,7 +1,4 @@
-"""
-Point-in-time liquidity screen. The property under test is that the screen
-never sees the day it is about to trade.
-"""
+"""Point-in-time liquidity screen. The property under test is that the screen."""
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -15,8 +12,7 @@ def ts(d: date) -> int:
 
 
 def seed(base, symbol_turnovers, days=90, start=date(2024, 1, 1)):
-    """Write `days` sessions where each symbol holds a constant close/volume,
-    so median turnover is exactly close*volume and ranking is unambiguous."""
+    """Write `days` sessions where each symbol holds a constant close/volume,."""
     rows = []
     for offset in range(days):
         day = start + timedelta(days=offset)
@@ -46,11 +42,9 @@ class TestRanking:
 
 class TestPointInTime:
     def test_as_of_day_is_excluded(self, tmp_path):
-        """A screen that includes as_of has seen the session it is about to
-        trade. The boundary must be strict."""
+        """A screen that includes as_of has seen the session it is about to."""
         start = date(2024, 1, 1)
         seed(tmp_path, {"OLD": (100, 100)}, days=30, start=start)
-        # a symbol that ONLY trades on the as_of day itself
         as_of = start + timedelta(days=30)
         write_bars(tmp_path, "NSE", "1d", [{
             "symbol": "FUTURE", "ts_utc": ts(as_of), "open": 100, "high": 100,

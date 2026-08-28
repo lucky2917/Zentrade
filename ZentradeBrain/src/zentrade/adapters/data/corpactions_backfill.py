@@ -1,10 +1,4 @@
-"""
-Corporate-action backfill into the spine adjustment table.
-
-Fetched in windows because the endpoint returns a bounded result set; windows
-overlap by a day so an action on a boundary cannot fall between two requests,
-and the writer's identity key absorbs the duplicate that overlap creates.
-"""
+"""Corporate-action backfill into the spine adjustment table."""
 
 from __future__ import annotations
 

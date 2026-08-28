@@ -1,9 +1,4 @@
-"""
-P1 acceptance verification. Every criterion from the build plan, checked
-against the real ingested spine, with a pass/fail verdict per criterion.
-
-Run:  .venv/bin/python scripts/verify_p1.py
-"""
+"""P1 acceptance verification. Every criterion from the build plan, checked."""
 from __future__ import annotations
 
 import csv
@@ -57,7 +52,6 @@ def main() -> int:
     print("P1 ACCEPTANCE VERIFICATION")
     print("=" * 74)
 
-    # ---- inventory -------------------------------------------------------
     print("\n[1] Spine inventory")
     table = read_bars(SPINE, "NSE", "1d")
     rows = table.num_rows
@@ -71,7 +65,6 @@ def main() -> int:
           f"{(sessions[-1]-sessions[0]).days/365.25:.2f} yr")
     check("symbol count plausible for NSE", 2000 <= len(symbols) <= 5000, f"{len(symbols)}")
 
-    # ---- format parity ---------------------------------------------------
     print("\n[2] Format parity on the 2024 overlap")
     mismatches = 0
     checked = 0
@@ -96,7 +89,6 @@ def main() -> int:
     check("legacy and UDiFF agree to the paise", mismatches == 0 and checked > 0,
           f"{checked} sessions, {mismatches} mismatches")
 
-    # ---- idempotency -----------------------------------------------------
     print("\n[3] Idempotent re-ingest")
     before = read_bars(SPINE, "NSE", "1d").num_rows
     sample = sessions[len(sessions) // 2]
@@ -107,7 +99,6 @@ def main() -> int:
     check("re-ingest reports replacement not insertion", result.inserted == 0,
           f"inserted {result.inserted}, replaced {result.replaced}")
 
-    # ---- clean-room reproduction ----------------------------------------
     print("\n[4] Clean re-run reproduces the same spine")
     year = sessions[len(sessions) // 2].year
     with tempfile.TemporaryDirectory() as tmp:
@@ -129,7 +120,6 @@ def main() -> int:
               f"{built} sessions, {a.num_rows:,} rows")
         check("clean rebuild has identical content", a.equals(b))
 
-    # ---- universe reconstruction ----------------------------------------
     print("\n[5] Point-in-time universe reconstruction")
     for y in sorted({d.year for d in sessions}):
         u = universe_on(SPINE, "NSE", "1d", ts(date(y, 1, 1)), ts(date(y + 1, 1, 1)))
@@ -143,7 +133,6 @@ def main() -> int:
     check("universe grows over time", len(late) > 0 and len(early) > 0,
           f"2021 {len(early):,} -> 2026 {len(late):,}")
 
-    # ---- corporate actions ----------------------------------------------
     print("\n[6] Corporate actions")
     factors = adjustment_factors(SPINE, "NSE", ts(date(2026, 8, 27)))
     n_adj = factors.num_rows if factors is not None else 0
@@ -155,11 +144,6 @@ def main() -> int:
               all(f > 0 and f == f and f != float("inf") for f in pf),
               f"min {min(pf):.4f} max {max(pf):.4f}")
 
-        # Direction is the real invariant, and it is per kind. Splits and
-        # bonuses add shares so history scales DOWN; a consolidation removes
-        # shares so history scales UP. An earlier version of this check
-        # asserted every factor was <= 1, which is false: VERTOZ consolidated
-        # Re 1 -> Rs 10 in 2025 and its close jumped 9.17 -> 87.11.
         import polars as _pl
         raw = _pl.read_parquet(SPINE / "spine_v1/adjustments/venue=NSE/adjustments.parquet")
         raw = raw.with_columns((_pl.col("numerator") / _pl.col("denominator")).alias("f"))
@@ -176,7 +160,6 @@ def main() -> int:
               bool(((raw["f"] > 1e-4) & (raw["f"] < 1e4)).all()),
               f"range {raw['f'].min():.5f} .. {raw['f'].max():.2f}")
 
-    # ---- symbology -------------------------------------------------------
     print("\n[7] Entity resolution over the full cache")
     obs = []
     for f in sorted(CACHE.glob("*.csv")):
@@ -197,7 +180,6 @@ def main() -> int:
         span = (zydus.last_seen - zydus.first_seen).days / 365.25
         check("renamed entity has continuous multi-year history", span >= 4.5, f"{span:.2f} yr")
 
-    # ---- liquidity screen ------------------------------------------------
     print("\n[8] Point-in-time liquidity screen")
     screens = {}
     for as_of in (date(2022, 1, 3), date(2024, 1, 2), date(2026, 8, 24)):
@@ -213,7 +195,6 @@ def main() -> int:
     repeat = liquidity_screen(SPINE, date(2024, 1, 2), size=100)
     check("screen is deterministic", list(repeat.symbols) == list(screens[date(2024, 1, 2)].symbols))
 
-    # ---- verdict ---------------------------------------------------------
     print("\n" + "=" * 74)
     failed = [n for n, ok, _ in results if not ok]
     print(f"P1 CRITERIA: {len(results) - len(failed)}/{len(results)} passed")

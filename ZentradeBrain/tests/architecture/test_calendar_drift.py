@@ -1,13 +1,4 @@
-"""
-The NSE session calendar is GENERATED from the ZenTrade JS kernel, not
-maintained here. This is the tripwire: if the kernel's holiday list moves and
-reference/nse_calendar.json is not regenerated, the two silently disagree and
-every session-state decision in replay is wrong for those dates.
-
-The brain is standalone, so the JS repo may legitimately be absent. Point
-ZENTRADE_JS_ROOT at it to enable the check; CI on a machine with both must
-set it, and a machine with only the brain skips rather than fails.
-"""
+"""The NSE session calendar is GENERATED from the ZenTrade JS kernel, not."""
 import json
 import os
 import re

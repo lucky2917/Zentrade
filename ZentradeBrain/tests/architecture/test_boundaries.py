@@ -1,7 +1,4 @@
-"""
-Architecture enforcement. These are release-blocking: they encode the
-structural guarantees that Research and Learning cannot trade.
-"""
+"""Architecture enforcement. These are release-blocking: they encode the."""
 import ast
 from pathlib import Path
 
@@ -15,8 +12,6 @@ FORBIDDEN_IMPORTS = {
 }
 
 CLOCK_MODULE = "kernel/clock.py"
-# Suffixes, not pairs: datetime.now() and datetime.datetime.now() are both
-# wall-clock reads, and an earlier version of this check saw only the first.
 BANNED_CLOCK_SUFFIXES = ("datetime.now", "datetime.utcnow", "datetime.today",
                          "date.today", "time.time", "time.monotonic")
 
@@ -80,8 +75,7 @@ def dotted(node: ast.AST) -> str:
 
 
 def test_no_wall_clock_reads_outside_the_clock_module():
-    """Decisions must be reproducible from a FixedClock, which is impossible if
-    any module reads the wall clock directly."""
+    """Decisions must be reproducible from a FixedClock, which is impossible if."""
     offenders = []
     for path in modules():
         if path.as_posix().endswith(CLOCK_MODULE):

@@ -1,17 +1,4 @@
-"""
-Point-in-time liquidity screen.
-
-The tradeable universe on a past date must be what was actually liquid THEN,
-not what is liquid now. Selecting today's top 100 and backtesting them over
-five years is the textbook survivorship error: it silently conditions on
-having survived and stayed liquid, which is information from the future.
-
-Turnover is close x volume. The bhavcopy carries a true traded-value column,
-but spine_v1's bar schema is frozen without it, and close x volume is the
-standard proxy. Using it is a deliberate approximation, recorded here rather
-than hidden: it misprices days with a wide intraday range, and it is a
-ranking input rather than a traded quantity, so the error is tolerable.
-"""
+"""Point-in-time liquidity screen."""
 
 from __future__ import annotations
 
@@ -51,9 +38,7 @@ def liquidity_screen(
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     min_sessions: int = MIN_SESSIONS,
 ) -> ScreenResult:
-    """Top `size` symbols by median daily turnover over the lookback window
-    ending STRICTLY BEFORE as_of. The strictness is the whole point: a screen
-    that includes as_of has seen the day it is about to trade."""
+    """Top `size` symbols by median daily turnover over the lookback window."""
     start = as_of - timedelta(days=lookback_days)
     table = read_bars(base, venue, "1d", start_ts=_ts(start), end_ts=_ts(as_of))
     if table.num_rows == 0:
@@ -71,7 +56,6 @@ def liquidity_screen(
             pl.len().alias("sessions"),
         )
         .filter(pl.col("sessions") >= min(min_sessions, sessions))
-        # symbol breaks ties so the screen is reproducible, never arbitrary
         .sort(["median_turnover", "symbol"], descending=[True, False])
         .head(size)
     )

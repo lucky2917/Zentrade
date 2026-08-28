@@ -1,11 +1,4 @@
-"""
-Idempotent partition writes for spine_v1.
-
-A write merges into the existing partition, de-duplicates on the identity key
-(symbol, ts_utc) keeping the newest row, re-sorts, and rewrites the file. Two
-identical ingests therefore leave identical bytes, and the returned counts make
-a vendor correction visible instead of silent.
-"""
+"""Idempotent partition writes for spine_v1."""
 
 from __future__ import annotations
 
@@ -80,9 +73,7 @@ def write_bars(base: Path, venue: str, granularity: str, rows: list[dict]) -> Wr
 
 
 def write_adjustments(base: Path, venue: str, rows: list[dict]) -> WriteResult:
-    """Append-only adjustment table, deduplicated on (symbol, effective_ts_utc,
-    kind). Re-ingesting an overlapping date range must not double-apply a split,
-    which is the failure this identity key exists to prevent."""
+    """Append-only adjustment table, deduplicated on (symbol, effective_ts_utc,."""
     from .layout import adjustments_path
     from .semantics import ADJUSTMENT_SCHEMA
 

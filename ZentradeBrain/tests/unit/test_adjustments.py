@@ -49,7 +49,6 @@ class TestCumulativeFactor:
         ])
         table = adjustment_factors(tmp_path, "NSE", ts(2025, 1, 1))
         factors = sorted(table.column("price_factor").to_pylist())
-        # bars before both see 1/10; bars between see 1/5
         assert abs(factors[0] - 0.1) < 1e-12
         assert abs(factors[1] - 0.2) < 1e-12
 

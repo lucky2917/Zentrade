@@ -1,20 +1,4 @@
-"""
-Resumable NSE daily backfill into spine_v1.
-
-Two properties that matter more than speed:
-
-Resumable. Every archive file is cached on disk before parsing, and past
-archives are immutable, so a re-run costs no network for days already held.
-An interrupted backfill continues rather than restarting.
-
-Partition-batched. The spine writer rewrites a whole partition per call, so
-writing day-by-day would rewrite the same year-partition 250 times. Bars are
-accumulated per partition and written once, which turns O(days) rewrites into
-O(years).
-
-Holidays are not errors. The archive simply has no file, which surfaces as
-BhavcopyUnavailable and is counted, not raised.
-"""
+"""Resumable NSE daily backfill into spine_v1."""
 
 from __future__ import annotations
 
@@ -59,8 +43,6 @@ def _partition_year(day: date) -> int:
 
 
 def _flushing_print(*args) -> None:
-    # A 45-minute job whose output is block-buffered is a job you cannot
-    # supervise. Progress must reach the log as it happens.
     print(*args, flush=True)
 
 
@@ -129,8 +111,6 @@ def backfill_daily(
 def main(argv: list[str]) -> int:
     root = Path(__file__).resolve().parents[4]
     start = date.fromisoformat(argv[1]) if len(argv) > 1 else date(2021, 6, 1)
-    # Even an operator default goes through the clock: the guard permits no
-    # exceptions, and an exception here is how the rule erodes.
     today = SystemClock().now().date()
     end = date.fromisoformat(argv[2]) if len(argv) > 2 else today - timedelta(days=1)
 

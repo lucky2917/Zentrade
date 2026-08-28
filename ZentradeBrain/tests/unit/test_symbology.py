@@ -1,8 +1,4 @@
-"""
-Entity resolution. Cases derived from real NSE data across 449+ sessions,
-where 219 ISINs appeared under several symbols and 279 symbols under several
-ISINs. Neither identifier is stable, so the entity is the connected component.
-"""
+"""Entity resolution. Cases derived from real NSE data across 449+ sessions,."""
 from datetime import date
 
 from zentrade.adapters.data.symbology import Observation, build
@@ -46,8 +42,8 @@ class TestIsinReassignment:
     def test_a_chain_of_both_changes_stays_one_entity(self):
         sg = build(obs([
             ("OLDCO", "INE111A01011", D1),
-            ("NEWCO", "INE111A01011", D2),   # rename
-            ("NEWCO", "INE111A01029", D3),   # then ISIN reissue
+            ("NEWCO", "INE111A01011", D2),
+            ("NEWCO", "INE111A01029", D3),
         ]))
         assert len(sg.entities) == 1
         entity = sg.entity_for_symbol("OLDCO")

@@ -1,14 +1,4 @@
-"""
-DuckDB read surface for spine_v1.
-
-Reads return RAW prices by default, and that default is deliberate.
-Back-adjusted prices carry information that did not exist at the bar's
-timestamp: a 2024 bar restated for a 2026 split silently encodes knowledge of
-that split. A backtest making entry decisions on back-adjusted levels is
-therefore using the future. `adjustment_factors` exists for return
-computation and takes a mandatory as_of, so it can only ever apply corporate
-actions already known at that point.
-"""
+"""DuckDB read surface for spine_v1."""
 
 from __future__ import annotations
 
@@ -49,9 +39,6 @@ def read_bars(
         params.append(end_ts)
 
     pattern = bars_glob(base, venue, granularity)
-    # An empty spine is a legitimate state, not a failure: a screen run before
-    # any ingestion should return nothing rather than raise. DuckDB errors on a
-    # glob matching no files, so the absence is handled here.
     if not _glob.glob(pattern):
         return BAR_SCHEMA.empty_table()
 
@@ -67,8 +54,7 @@ def read_bars(
 
 
 def adjustment_factors(base: Path, venue: str, as_of_ts: int):
-    """Cumulative back-adjustment factor per (symbol, effective_ts), using only
-    corporate actions already effective at as_of_ts."""
+    """Cumulative back-adjustment factor per (symbol, effective_ts), using only."""
     path = adjustments_path(base, venue)
     if not path.exists():
         return None
@@ -91,9 +77,7 @@ def adjustment_factors(base: Path, venue: str, as_of_ts: int):
 
 
 def universe_on(base: Path, venue: str, granularity: str, start_ts: int, end_ts: int) -> list[str]:
-    """Symbols that actually traded in the window. Reconstructing the tradeable
-    universe from what printed, rather than from a current listing, is what
-    keeps delisted names in the sample."""
+    """Symbols that actually traded in the window. Reconstructing the tradeable."""
     require_granularity(granularity)
     pattern = bars_glob(base, venue, granularity)
     if not _glob.glob(pattern):

@@ -1,22 +1,4 @@
-"""
-Entity resolution across symbol and ISIN changes.
-
-Neither identifier is stable on its own, and this was measured rather than
-assumed. Across 449 ingested NSE sessions:
-
-    219 ISINs appear under more than one symbol   (renames, e.g. CADILAHC -> ZYDUSLIFE)
-    279 symbols appear under more than one ISIN   (reassignment, typically on a
-                                                   face-value split)
-
-So a company is not its symbol and it is not its ISIN. It is the connected
-component of the bipartite graph linking the two over time. An entity's
-identity is the lexicographically smallest ISIN in its component, chosen
-because it is stable under insertion order and therefore reproducible.
-
-This matters for any history longer than a corporate action: without it, five
-years of ZYDUSLIFE silently begins in 2022 and the CADILAHC years look like a
-different company that ceased to exist.
-"""
+"""Entity resolution across symbol and ISIN changes."""
 
 from __future__ import annotations
 
@@ -88,8 +70,7 @@ class Symbology:
 
 
 def build(observations: list[Observation]) -> Symbology:
-    """Connected components over symbol<->ISIN edges. Prefixes keep the two
-    namespaces disjoint, so a symbol can never collide with an ISIN."""
+    """Connected components over symbol<->ISIN edges. Prefixes keep the two."""
     uf = UnionFind()
     for obs in observations:
         uf.union(f"S:{obs.symbol.upper()}", f"I:{obs.isin.upper()}")

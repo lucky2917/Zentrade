@@ -1,23 +1,4 @@
-"""
-spine_v1 - frozen semantics for the local market data spine.
-
-Laws. Changing any of these requires a spine_v2, which coexists with v1 and
-never reinterprets rows written under it:
-
-1. Prices are stored RAW, as integers in currency minor units. Corporate
-   actions are never applied in place and history is never rewritten.
-2. Timestamps are UTC microseconds since the epoch. Venue-local session time
-   is derived at read time and never stored.
-3. A bar's identity is (venue, symbol, granularity, ts_utc). Ingestion is
-   idempotent on that key.
-4. Adjustment factors live in their own append-only table and are applied at
-   read time.
-5. No row may carry information that was unavailable at its ts_utc.
-
-Law 1 is the one that costs something up front and pays later: storing
-adjusted prices means every new split silently rewrites history, which breaks
-the byte-for-byte reproducibility the rest of this codebase is built on.
-"""
+"""spine_v1 - frozen semantics for the local market data spine."""
 
 from __future__ import annotations
 
@@ -61,8 +42,6 @@ ADJUSTMENT_SCHEMA = pa.schema(
     ]
 )
 
-# consolidation (reverse split) added after live data showed VERTOZ going
-# Re 1 -> Rs 10. Additive: no existing row changes meaning.
 ADJUSTMENT_KINDS = ("split", "bonus", "consolidation", "dividend")
 
 SORT_KEY = ("ts_utc", "symbol")

@@ -1,7 +1,4 @@
-"""
-Corporate-action classification. Every case here was read off the live NSE
-feed, not invented, so a regression means the feed changed shape.
-"""
+"""Corporate-action classification. Every case here was read off the live NSE."""
 from datetime import date
 
 import pytest
@@ -13,9 +10,9 @@ from zentrade.adapters.data.nse_corpactions import (
 
 class TestBonus:
     @pytest.mark.parametrize("subject,num,den", [
-        ("Bonus 1:1", 1, 2),   # 1 new per 1 held -> 2 shares, half the price
-        ("Bonus 1:2", 2, 3),   # 1 new per 2 held -> 3 for 2
-        ("Bonus 3:1", 1, 4),   # 3 new per 1 held -> 4 for 1
+        ("Bonus 1:1", 1, 2),
+        ("Bonus 1:2", 2, 3),
+        ("Bonus 3:1", 1, 4),
         ("Bonus 2:5", 5, 7),
     ])
     def test_ratio(self, subject, num, den):
@@ -37,9 +34,7 @@ class TestSplit:
 
 
 class TestConsolidation:
-    """A reverse split: fewer shares, higher price, so history scales UP.
-    VERTOZ went Re 1 -> Rs 10 on 2025-06-25 and its close jumped 9.17 -> 87.11,
-    which is why factors above 1 are legitimate and must not be clamped away."""
+    """A reverse split: fewer shares, higher price, so history scales UP."""
 
     @pytest.mark.parametrize("subject,num,den", [
         ("Consolidation Of Equity Shares From Re 1 Per Share To Rs 10 Per Share", 10, 1),

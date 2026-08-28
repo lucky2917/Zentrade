@@ -1,23 +1,4 @@
-"""
-NSE corporate actions, date-ranged.
-
-Only two subject forms carry a computable price ratio, and both were read off
-live data rather than guessed:
-
-    Bonus 1:1
-    Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share
-
-Everything else (dividends, demergers, rights) is retained verbatim with
-kind="other" and no factor. Nothing is discarded, and the parse rate is
-reported so the fragility of free-text parsing stays visible instead of
-silently degrading the adjustment table.
-
-POINT-IN-TIME LIMITATION, recorded deliberately. The feed exposes a
-caBroadcastDate field but it is empty on every one of 3,152 sampled rows, so
-there is no announcement timestamp. known_at is therefore taken as the
-ex-date, which is LATER than the true announcement. That errs toward knowing
-less, not more, which is the only safe direction for a point-in-time store.
-"""
+"""NSE corporate actions, date-ranged."""
 
 from __future__ import annotations
 
@@ -39,11 +20,6 @@ SPLIT_RE = re.compile(
 )
 
 KIND_SPLIT, KIND_BONUS, KIND_OTHER = "split", "bonus", "other"
-# A consolidation is a face-value change in the opposite direction: fewer
-# shares, higher price, so historical prices scale UP. Detected by the
-# direction of the ratio rather than the wording, because NSE writes both
-# "Face Value Split ... From X To Y" and "Consolidation Of Equity Shares
-# From X To Y" and only the numbers distinguish them reliably.
 KIND_CONSOLIDATION = "consolidation"
 
 
@@ -87,13 +63,11 @@ def _parse_ex_date(text: str) -> date | None:
 
 
 def classify(subject: str) -> tuple[str, int, int]:
-    """Return (kind, numerator, denominator). The factor multiplies prices
-    BEFORE the ex-date so history is comparable with today."""
+    """Return (kind, numerator, denominator). The factor multiplies prices."""
     text = (subject or "").strip()
 
     bonus = BONUS_RE.search(text)
     if bonus:
-        # "Bonus a:b" = a new shares for every b held, so b old become a+b.
         a, b = int(bonus.group(1)), int(bonus.group(2))
         if a >= 0 and b > 0:
             ratio = Fraction(b, a + b)
@@ -101,9 +75,6 @@ def classify(subject: str) -> tuple[str, int, int]:
 
     split = SPLIT_RE.search(text)
     if split:
-        # Face value 10 -> 1 means ten times the shares, so a tenth the price.
-        # Face value 1 -> 10 is the reverse: a tenth the shares, ten times the
-        # price, and historical prices must scale UP to stay comparable.
         old, new = Fraction(split.group(1)), Fraction(split.group(2))
         if old > 0 and new > 0:
             ratio = new / old
@@ -141,8 +112,7 @@ def parse(rows: list[dict]) -> tuple[list[CorporateAction], ParseReport]:
 
 
 def to_adjustment_rows(actions: list[CorporateAction]) -> list[dict]:
-    """Only price-affecting actions enter the adjustment table. `other` is
-    retained upstream but must never silently contribute a factor of 1."""
+    """Only price-affecting actions enter the adjustment table. `other` is."""
     rows = []
     for action in actions:
         if action.kind not in (KIND_SPLIT, KIND_BONUS, KIND_CONSOLIDATION):

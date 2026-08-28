@@ -1,12 +1,4 @@
-"""
-Injected time and NSE session state.
-
-Time is a parameter here, never a wall-clock read inside logic, so the whole
-runtime replays deterministically. The session calendar is generated from
-@zentrade/kernel into infra/reference/nse_calendar.json rather than
-transcribed: this would otherwise be the third hand-maintained copy of the NSE
-holiday list, and a drift tripwire test asserts it still matches the kernel.
-"""
+"""Injected time and NSE session state."""
 
 from __future__ import annotations
 
@@ -20,8 +12,6 @@ from typing import Protocol
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# The brain owns its own copy. It is GENERATED from the ZenTrade JS kernel, never
-# hand-edited; tests/architecture/test_calendar_drift.py fails if the two diverge.
 CALENDAR_PATH = Path(__file__).resolve().parents[3] / "reference" / "nse_calendar.json"
 
 

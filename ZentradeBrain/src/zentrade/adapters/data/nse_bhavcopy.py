@@ -1,17 +1,4 @@
-"""
-NSE daily bhavcopy, both archive formats.
-
-NSE changed format in 2024. Verified 2026-08-28 from this machine:
-  legacy  cm<DD><MON><YYYY>bhav.csv.zip     2021-06 .. 2024-03
-  UDiFF   BhavCopy_NSE_CM_..._<YYYYMMDD>_F_0000.csv.zip   2024-01-01 .. present
-
-They overlap through early 2024, which is what makes the parity test possible:
-the same session parsed by both readers must agree to the paise.
-
-A daily bar's timestamp is session close (15:30 IST = 10:00 UTC), because that
-is the first moment the bar is complete. Stamping it at midnight would place
-information before it existed, which spine_v1 law 5 forbids.
-"""
+"""NSE daily bhavcopy, both archive formats."""
 
 from __future__ import annotations
 
@@ -60,8 +47,7 @@ def legacy_url(day: date) -> str:
 
 
 def formats_for(day: date) -> tuple[Format, ...]:
-    """Preferred first. UDiFF wins on overlapping dates: it is the current
-    format and carries more fields."""
+    """Preferred first. UDiFF wins on overlapping dates: it is the current."""
     if day >= UDIFF_FIRST_DATE:
         return (Format("udiff", udiff_url(day)), Format("legacy", legacy_url(day)))
     return (Format("legacy", legacy_url(day)),)
@@ -80,8 +66,7 @@ def _download(url: str, timeout: float) -> bytes:
 
 
 def fetch_raw(day: date, fmt: Format, cache_dir: Path | None = None, timeout: float = 30.0) -> str:
-    """Return the decoded CSV, from cache when present. The archive is
-    immutable for past dates, so a cache hit needs no revalidation."""
+    """Return the decoded CSV, from cache when present. The archive is."""
     cached = None
     if cache_dir is not None:
         cached = Path(cache_dir) / f"{day:%Y%m%d}_{fmt.name}.csv"

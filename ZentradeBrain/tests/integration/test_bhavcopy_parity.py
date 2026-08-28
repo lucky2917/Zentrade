@@ -1,9 +1,4 @@
-"""
-Phase 1 blocking criterion: the two NSE archive formats must agree.
-
-Network-gated the way the JS suite gates on TEST_DATABASE_URL:
-    ZENTRADE_NETWORK_TESTS=1 pytest tests/integration
-"""
+"""Phase 1 blocking criterion: the two NSE archive formats must agree."""
 import os
 from datetime import date
 from pathlib import Path
@@ -25,8 +20,7 @@ def test_format_selection_by_date():
 
 
 def test_session_timestamp_is_close_not_midnight():
-    """A daily bar is only complete at the close; stamping midnight would place
-    the bar before the information in it existed."""
+    """A daily bar is only complete at the close; stamping midnight would place."""
     from datetime import datetime, timezone
     ts = session_timestamp(date(2024, 3, 1))
     moment = datetime.fromtimestamp(ts / 1e6, tz=timezone.utc)
@@ -56,7 +50,6 @@ def test_formats_agree_to_the_paise(day):
 
 @pytest.mark.skipif(not NETWORK, reason="set ZENTRADE_NETWORK_TESTS=1")
 def test_bars_survive_contract_validation():
-    """DailyBar rejects OHLC that cannot be a real bar. A full session passing
-    means the parser is not silently transposing columns."""
+    """DailyBar rejects OHLC that cannot be a real bar. A full session passing."""
     _, bars = load_day(date(2024, 3, 1), CACHE, prefer="udiff")
     assert all(b.low <= b.open <= b.high and b.low <= b.close <= b.high for b in bars)

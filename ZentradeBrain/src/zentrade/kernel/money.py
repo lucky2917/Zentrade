@@ -1,10 +1,4 @@
-"""
-Integer minor-unit arithmetic. Kernel-level: imports nothing internal.
-
-A float major amount is exactly the bug this module exists to prevent, so
-`to_minor` rejects float outright. Callers decoding vendor JSON must use
-`decimal_from_json` rather than letting a price round-trip through a float.
-"""
+"""Integer minor-unit arithmetic. Kernel-level: imports nothing internal."""
 
 from __future__ import annotations
 
