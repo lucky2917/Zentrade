@@ -161,3 +161,50 @@ the results that matter most.
 using parents[4] worked for modules two levels deep and silently pointed at
 the wrong directory for one at three, producing an empty universe rather than
 an error.
+
+## P4: paper execution and cost model
+
+**Latency is structural, not simulated.** An order is only eligible against a
+bar strictly later than its submission timestamp, so there is no code path
+from signal to fill within the same session. Nothing needs to remember to
+insert a delay.
+
+**Zero volume is not a rejection.** An accepted order facing an untradeable
+session could not fill; the venue did not refuse it. REJECTED belongs to
+submission time. The order ages toward expiry instead, which also means a
+permanently suspended symbol releases its order rather than holding it
+forever. The transition table caught this: ACCEPTED to REJECTED is not a legal
+edge, and the table was right.
+
+**Cash is reserved at submission and released on any terminal state.** Without
+it, several orders sized independently against the same balance can
+collectively overspend it. Reservation makes that arithmetically impossible
+rather than unlikely.
+
+**Bootstrap cost assumptions, none of them calibrated.** No realised fill
+exists yet, so every rate is the published-rate estimate and every one is set
+at or above the expected true value:
+
+    brokerage        0.03% capped at Rs20
+    STT              0.1% delivery both sides; 0.025% intraday sell only
+    exchange txn     0.003%
+    SEBI turnover    0.0001%
+    stamp duty       0.015% delivery buy; 0.003% intraday buy
+    GST              18% on brokerage + exchange + SEBI
+    DP charge        Rs15.93 flat, delivery sell only
+
+Measured on a real simulated book: 0.12% to 0.17% of turnover depending on
+order size. All charges round UP, never down, because rounding a fee down
+flatters exactly the results that matter.
+
+**Slippage is half-spread plus square-root impact, times a conservatism
+multiplier of 1.5.** The multiplier is not tuned and is not meant to be. It
+exists so the first results cannot be flattered by an optimistic cost
+assumption, and it should come down only when real fills justify it. Stage 3
+of the cost plan refits this; stage 1 is where we are.
+
+**A simulation that only fills cleanly proves nothing.** The first
+verification run exercised only FILLED and passed 25 of 26 checks. The
+scenario was too easy, not the code. It now deliberately submits oversized,
+unaffordable and cancelled orders so partial fills, expiry, rejection and
+ambiguity all run.
