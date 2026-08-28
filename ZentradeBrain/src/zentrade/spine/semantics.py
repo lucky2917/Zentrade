@@ -89,3 +89,17 @@ def bars_per_session(granularity: str) -> int:
     """How many bars one trading session yields at this granularity."""
     require_granularity(granularity)
     return EXPECTED_CANDLES_PER_SESSION.get(granularity, 1)
+
+
+def last_bar_minute(granularity: str) -> int:
+    """IST minute of the final bar of a session.
+
+    A bar stamped T covers [T, T + interval), so it belongs to the session only
+    if it closes by the bell. Fyers emits a bar stamped exactly at 15:30 on
+    some sessions, 45 such 15m bars measured on 2026-08-28; that bar would
+    cover 15:30 to 15:45 and is outside the session.
+    """
+    require_granularity(granularity)
+    if granularity == DAILY:
+        return NSE_SESSION_CLOSE_IST
+    return NSE_SESSION_CLOSE_IST - GRANULARITY_MINUTES[granularity]

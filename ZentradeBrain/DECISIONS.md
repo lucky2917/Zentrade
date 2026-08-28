@@ -736,3 +736,38 @@ into a fresh tree is byte-identical.
 State invariants after the migration: holdout looks 0, trial count 156
 (threshold 3.178), active schema (symbol_technical, setup_typing), 19 features.
 No model was fitted in this phase.
+
+## Intraday session boundary, corrected during the full backfill
+
+The first spine_v2 rule admitted any bar stamped at or before 15:30. That is
+wrong. A bar stamped T covers [T, T + interval), so it belongs to the session
+only if it closes by the bell, and the last valid stamp is 15:29 at 1m, 15:25
+at 5m and 15:15 at 15m.
+
+The June sample never exposed this because Fyers did not emit a 15:30 bar in
+that month. The full archive does: 45 fifteen-minute bars stamped exactly
+15:30, each one a 26th candle in a 25-candle session. The bug was found by the
+over-count check, not by the out-of-session check, which had been written
+against the same wrong constant.
+
+`last_bar_minute` now derives the cutoff from the interval, and the three
+values it produces match the maxima independently observed in the June sample.
+
+**Correcting a parse rule requires a purge, not a re-ingest.** write_bars
+merges incoming rows into whatever the partition already holds, which is what
+makes ingestion idempotent, but it also means a row the parser has stopped
+emitting survives another pass. intraday_backfill grew an explicit --rebuild
+that drops the granularity's partitions first. It refuses any granularity that
+is not intraday.
+
+**Verification must not run against a cache that is still being written.** The
+harness read a growing cache mid-backfill and reported idempotency and
+clean-room failures that were pure artefacts. It now detects a running fetch
+and skips the cache-dependent checks rather than reporting a false negative.
+
+**Bulk backfill runs at the provider cap, not the idle policy.** MODE_RATES
+throttles to 1 req/s outside market hours, which is a politeness policy for
+quiet live-trading periods. PER_MINUTE_CAP is the provider constraint. At the
+idle rate the full archive takes long enough that the access token expires
+mid-run, so the backfill script raises its own limiter to the cap and leaves
+the shared policy alone.

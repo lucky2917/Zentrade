@@ -8,7 +8,7 @@ from zentrade.adapters.data.fyers_intraday import (
 from zentrade.spine.layout import bars_partition, partition_key
 from zentrade.spine.semantics import (
     EXPECTED_CANDLES_PER_SESSION, GRANULARITIES, INTRADAY_GRANULARITIES,
-    SemanticsError, bars_per_session, require_granularity,
+    SemanticsError, bars_per_session, last_bar_minute, require_granularity,
 )
 
 OPEN_IST_EPOCH = int(datetime(2026, 6, 1, 3, 45, tzinfo=timezone.utc).timestamp())
@@ -39,6 +39,12 @@ class TestSemantics:
     def test_bars_per_session_treats_daily_as_one(self):
         assert bars_per_session("1d") == 1
         assert bars_per_session("15m") == 25
+
+    def test_last_bar_must_close_by_the_bell(self):
+        assert last_bar_minute("15m") == 15 * 60 + 15
+        assert last_bar_minute("5m") == 15 * 60 + 25
+        assert last_bar_minute("1m") == 15 * 60 + 29
+        assert last_bar_minute("1d") == 15 * 60 + 30
 
     def test_unknown_granularity_rejected(self):
         with pytest.raises(SemanticsError):
@@ -94,6 +100,20 @@ class TestParse:
         assert report.unordered_files == 1
         assert [r["ts_utc"] for r in rows] == sorted(r["ts_utc"] for r in rows)
 
+    def test_bar_stamped_at_the_close_is_out_of_session(self, tmp_path):
+        close = OPEN_IST_EPOCH + (15 * 60 + 30 - (9 * 60 + 15)) * 60
+        path = write_cache(tmp_path / "a.json", "15",
+                           [candle(OPEN_IST_EPOCH), candle(close)])
+        report = ParseReport()
+        rows = parse_file(path, report)
+        assert len(rows) == 1
+        assert report.out_of_session == 1
+
+    def test_last_valid_15m_bar_is_kept(self, tmp_path):
+        last = OPEN_IST_EPOCH + (15 * 60 + 15 - (9 * 60 + 15)) * 60
+        path = write_cache(tmp_path / "a.json", "15", [candle(last)])
+        assert len(parse_file(path, ParseReport())) == 1
+
     def test_prices_stored_as_integer_minor_units(self, tmp_path):
         path = write_cache(tmp_path / "a.json", "15", [candle(OPEN_IST_EPOCH, close=100.55)])
         rows = parse_file(path, ParseReport())
@@ -113,3 +133,25 @@ class TestCompleteness:
         result = session_completeness(rows, "15m")
         assert result["expected"] == 25
         assert len(result["short"]) == 1
+
+
+class TestPurge:
+    def test_purge_removes_only_the_named_granularity(self, tmp_path):
+        from zentrade.adapters.data.intraday_backfill import purge
+        from zentrade.spine.layout import bars_partition
+        from zentrade.spine.writer import write_bars
+
+        ts = OPEN_IST_EPOCH * 1_000_000
+        row = {"symbol": "X", "ts_utc": ts, "open": 1, "high": 1,
+               "low": 1, "close": 1, "volume": 1}
+        for g in ("15m", "5m"):
+            write_bars(tmp_path, "NSE", g, [row])
+
+        purge(tmp_path, "15m")
+        assert not bars_partition(tmp_path, "NSE", "15m", ts).exists()
+        assert bars_partition(tmp_path, "NSE", "5m", ts).exists()
+
+    def test_purge_refuses_daily(self, tmp_path):
+        from zentrade.adapters.data.intraday_backfill import purge
+        with pytest.raises(ValueError):
+            purge(tmp_path, "1d")

@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from ...kernel.money import to_minor
 from ...spine.semantics import (
     EXPECTED_CANDLES_PER_SESSION, GRANULARITY_MINUTES, INTRADAY_GRANULARITIES,
-    NSE_SESSION_CLOSE_IST, NSE_SESSION_OPEN_IST, SemanticsError,
+    NSE_SESSION_OPEN_IST, SemanticsError, last_bar_minute,
 )
 
 VENUE = "NSE"
@@ -30,6 +31,7 @@ class ParseReport:
     unordered_files: int = 0
     symbols: set[str] = field(default_factory=set)
     sessions: set[str] = field(default_factory=set)
+    per_cell: dict[tuple[str, str], int] = field(default_factory=dict)
 
     def summary(self) -> str:
         return (f"files {self.files} | raw {self.raw_candles:,} | rows {self.rows:,} | "
@@ -51,15 +53,17 @@ def parse_file(path: Path, report: ParseReport) -> list[dict]:
     """One cache file to spine rows.
 
     Deduplication happens here as well as in the writer. Fyers returns the
-    trailing session twice on a full-length request, 375 duplicate candles
-    observed on 2026-08-28, and catching it at parse time makes the count
-    visible instead of letting the writer silently absorb it.
+    trailing session twice on a full-length request, 25 duplicate 15m candles
+    measured on 2026-08-28, and that same response arrives out of order.
+    Catching both here makes the count visible instead of letting the writer
+    silently absorb it.
     """
     payload = json.loads(path.read_text())
     granularity = RESOLUTION_TO_GRANULARITY.get(str(payload["resolution"]))
     if granularity is None:
         raise SemanticsError(f"unmapped resolution {payload['resolution']!r} in {path.name}")
 
+    last_minute = last_bar_minute(granularity)
     symbol = strip_symbol(payload["symbol"])
     report.files += 1
     report.symbols.add(symbol)
@@ -77,7 +81,7 @@ def parse_file(path: Path, report: ParseReport) -> list[dict]:
         previous = epoch
 
         session, minutes = ist_parts(epoch)
-        if minutes < NSE_SESSION_OPEN_IST or minutes > NSE_SESSION_CLOSE_IST:
+        if minutes < NSE_SESSION_OPEN_IST or minutes > last_minute:
             report.out_of_session += 1
             continue
 
@@ -87,6 +91,8 @@ def parse_file(path: Path, report: ParseReport) -> list[dict]:
             continue
 
         report.sessions.add(session)
+        cell = (symbol, session)
+        report.per_cell[cell] = report.per_cell.get(cell, 0) + 1
         seen[ts_utc] = {
             "symbol": symbol, "ts_utc": ts_utc,
             "open": to_minor(str(open_), CURRENCY), "high": to_minor(str(high), CURRENCY),
@@ -102,37 +108,56 @@ def parse_file(path: Path, report: ParseReport) -> list[dict]:
     return rows
 
 
-def load_cache(cache_dir: Path, granularity: str) -> tuple[list[dict], ParseReport]:
+def _window_start(path: Path) -> str:
+    return path.name.split("__")[2]
+
+
+def iter_cache_files(cache_dir: Path, granularity: str) -> Iterator[tuple[Path, date]]:
+    """Cache files for one granularity, oldest window first.
+
+    Ordering by window start is what lets the caller flush finished months: no
+    later file can contribute rows to a month that ends before the current
+    file begins.
+    """
     if granularity not in INTRADAY_GRANULARITIES:
         raise SemanticsError(f"{granularity!r} is not an intraday granularity")
     resolution = str(GRANULARITY_MINUTES[granularity])
 
+    matched = []
+    for path in Path(cache_dir).glob("*.json"):
+        parts = path.name.split("__")
+        if len(parts) == 4 and parts[1] == resolution:
+            matched.append((path, date.fromisoformat(_window_start(path))))
+    matched.sort(key=lambda item: (item[1], item[0].name))
+    yield from matched
+
+
+def load_cache(cache_dir: Path, granularity: str) -> tuple[list[dict], ParseReport]:
+    """Collect a whole granularity in memory. Small ranges and tests only."""
     report = ParseReport()
     rows: list[dict] = []
-    for path in sorted(Path(cache_dir).glob("*.json")):
-        payload_resolution = json.loads(path.read_text())["resolution"]
-        if str(payload_resolution) != resolution:
-            continue
+    for path, _ in iter_cache_files(cache_dir, granularity):
         rows.extend(parse_file(path, report))
-
     rows.sort(key=lambda row: (row["ts_utc"], row["symbol"]))
     return rows, report
 
 
+def completeness_from_report(report: ParseReport, granularity: str) -> dict:
+    expected = EXPECTED_CANDLES_PER_SESSION[granularity]
+    counts = sorted(report.per_cell.values())
+    return {
+        "expected": expected, "symbol_sessions": len(report.per_cell),
+        "min": counts[0] if counts else 0, "max": counts[-1] if counts else 0,
+        "short": {k: n for k, n in report.per_cell.items() if n < expected},
+        "over": {k: n for k, n in report.per_cell.items() if n > expected},
+    }
+
+
 def session_completeness(rows: list[dict], granularity: str) -> dict:
     """Candles per session against what the granularity implies."""
-    expected = EXPECTED_CANDLES_PER_SESSION[granularity]
-    per_session: dict[tuple[str, str], int] = {}
+    report = ParseReport()
     for row in rows:
         session, _ = ist_parts(row["ts_utc"] // 1_000_000)
-        key = (row["symbol"], session)
-        per_session[key] = per_session.get(key, 0) + 1
-
-    counts = sorted(per_session.values())
-    short = {key: n for key, n in per_session.items() if n < expected}
-    over = {key: n for key, n in per_session.items() if n > expected}
-    return {
-        "expected": expected, "symbol_sessions": len(per_session),
-        "min": counts[0] if counts else 0, "max": counts[-1] if counts else 0,
-        "short": short, "over": over,
-    }
+        cell = (row["symbol"], session)
+        report.per_cell[cell] = report.per_cell.get(cell, 0) + 1
+    return completeness_from_report(report, granularity)
