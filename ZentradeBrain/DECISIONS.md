@@ -626,3 +626,52 @@ The penalty is correct, since testing more hypotheses should raise the
 evidence required rather than the evidence available, but it does mean the
 order blocks are tested in affects which of them clear. A block tested early
 faces a lower bar than the same block tested late.
+
+## Data capability audit (2026-08-28)
+
+Feature research on daily data is frozen. Every capability below was probed
+against a live source rather than recalled. Five of nine are obtainable, four
+of them cheaply, and one is already in the cache.
+
+**Four capabilities recorded as blocked were not blocked.** They were assumed
+unavailable rather than checked.
+
+**VWAP is already on disk.** Every bhavcopy carries traded value and traded
+quantity in both formats. Their ratio landed inside the session low-high range
+on 2,865 of 2,865 UDiFF rows and 2,128 of 2,128 legacy rows. Only a schema
+column separates the system from it.
+
+**The announcement feed has better timestamps than the one already in use.**
+NSE corporate-announcements carries exchdisstime, populated to the second on
+2,594 of 2,594 sampled rows, back to at least 2020-01. The corporate-actions
+feed already consumed has an equivalent field empty on all 3,152 rows.
+
+**Sectoral indices remove the point-in-time problem a sector map creates.**
+One daily file carries 165 indices including 50 sectoral ones, verified to
+2019-01. A symbol-to-sector map is a current snapshot and using it for 2022
+would be a mild look-ahead; comparing against a sector index needs no
+membership map at all.
+
+**Order flow does not exist at this access level.** No free NSE archive carries
+depth or aggressor side, and Fyers streams live only, so there is no history to
+train on. v4 7.4's ruling is confirmed.
+
+Two rejected blocks were rejected partly for missing data that exists.
+Relative strength used a universe average because no sector or index series was
+available, and market context used a universe proxy for the same reason.
+Neither result is invalidated, since both were tested honestly against what was
+available, but neither settles the question its block was asking.
+
+### Sequence
+
+    0  run the Fyers depth probe          one command, ~12 calls
+       Gates capabilities 1, 2 and 3, and would reorder everything below.
+       Not knowing this number is the largest avoidable unknown in the project.
+    1  spine_v2 turnover + trade_count    no network, rebuild from cache
+    2  index_bars table                   ~1,300 requests, ~13 MB
+    3  delivery data into spine_v2        ~1,300 requests, ~325 MB
+    4  Event Store from announcements     ~260 requests, highest complexity
+    -  order flow: never, the data does not exist
+
+Nothing is built until step 0 has run. The sequence assumes intraday is
+unavailable; if it proves deep, the intraday capabilities move to the front.
