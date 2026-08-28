@@ -4,9 +4,10 @@ import pytest
 
 from zentrade.features.blocks import (
     ACTIVE, ALL_BLOCKS, BASE_BLOCK_NAME, MTF_ALIGNMENT_FEATURES, MTF_ALIGNMENT_NAME,
-    MTF_HORIZONS, REJECTED, RELATIVE_STRENGTH_NAME, RejectedBlock, active_blocks,
-    block_feature_names, multi_timeframe_alignment, relative_strength,
-    require_active, schema_hash_for,
+    MTF_HORIZONS, PENDING, REJECTED, RELATIVE_STRENGTH_NAME, TRADE_LOCATION_FEATURES,
+    TRADE_LOCATION_NAME, RejectedBlock, active_blocks, block_feature_names,
+    multi_timeframe_alignment, relative_strength, require_active, schema_hash_for,
+    trade_location,
 )
 from zentrade.features.schema import FEATURE_NAMES, schema_hash
 from zentrade.learning.ablation import paired_log_loss_test
@@ -245,3 +246,35 @@ class TestMultiTimeframeAlignment:
         """v4 6.2 lists compression_state; the base block already carries."""
         assert "vol_compression" in FEATURE_NAMES
         assert not any("compression" in f for f in MTF_ALIGNMENT_FEATURES)
+
+
+class TestTradeLocation:
+    def test_volatility_normalisation_separates_quiet_from_loud_names(self):
+        """The same percent extension is a different trade location depending."""
+        quiet = _horizons(sma20_ratio=0.05, atr14_pct=0.01)
+        loud = _horizons(sma20_ratio=0.05, atr14_pct=0.05)
+        assert trade_location(quiet)[0] == pytest.approx(5.0)
+        assert trade_location(loud)[0] == pytest.approx(1.0)
+
+    def test_a_degenerate_atr_makes_the_feature_undefined(self):
+        """A near-zero ATR makes the ratio meaningless rather than large."""
+        assert trade_location(_horizons(sma20_ratio=0.05, atr14_pct=0.0)) == (None, None, None)
+        assert trade_location(_horizons(sma20_ratio=0.05, atr14_pct=-1.0)) == (None, None, None)
+
+    def test_sign_is_preserved(self):
+        below = trade_location(_horizons(sma20_ratio=-0.04, atr14_pct=0.02))
+        assert below[0] == pytest.approx(-2.0)
+
+    def test_three_features_declared(self):
+        assert len(TRADE_LOCATION_FEATURES) == 3
+
+    def test_block_is_held_pending_not_silently_activated(self):
+        assert ALL_BLOCKS[TRADE_LOCATION_NAME].status == PENDING
+        assert "anti-duplication" in ALL_BLOCKS[TRADE_LOCATION_NAME].verdict
+
+    def test_a_pending_block_cannot_enter_an_active_schema(self):
+        with pytest.raises(RejectedBlock, match=TRADE_LOCATION_NAME):
+            require_active((BASE_BLOCK_NAME, TRADE_LOCATION_NAME))
+
+    def test_only_the_base_block_is_active(self):
+        assert active_blocks() == (BASE_BLOCK_NAME,)

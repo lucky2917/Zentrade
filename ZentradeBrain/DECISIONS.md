@@ -425,3 +425,53 @@ The deflated threshold has risen from 2.23 at 12 trials to 2.86 at 60. Each
 block tested raises the bar for the next one, which is the intended behaviour:
 testing more hypotheses raises the evidence required rather than the evidence
 available.
+
+## Feature block 3: trade location — PENDING an operator ruling
+
+Three features, each an existing percent distance divided by atr14_pct:
+extension_atr_20, extension_atr_50, high_distance_atr. The hypothesis was that
+five percent above a moving average is an extended position in a quiet name
+and noise in a volatile one, and that a linear model cannot recover this from
+the distance and the ATR separately because a ratio is not a weighted sum.
+
+**Two frozen rules disagree, so the block is held rather than decided.**
+
+The pre-registered paired test says KEEP. Three of twelve configurations
+improve significantly at t>2.98: logistic_elasticnet/identity t=4.56,
+logistic_unpenalised/identity t=4.41, logistic_elasticnet/platt t=3.21.
+Nothing is significantly worse.
+
+The v4 5.3 anti-duplication rule says REJECT. The three features correlate
+0.920, 0.917 and 0.855 with the percent distances they divide, against a 0.80
+ceiling. My hypothesis was wrong about why: ATR varies far less across the
+cross-section than the distance does, so each ratio is dominated by its
+numerator.
+
+**A caveat that matters more than either rule.** Two of the three significant
+results sit on the identity calibrator, which has the worst absolute log loss
+at 0.6467 against 0.6264 for the calibrated arms. The improvement shrinks as
+calibration improves: identity 0.00098, platt 0.00033, isotonic 0.00014. That
+pattern says much of what the block adds is calibration-like information,
+useful to an uncalibrated model and largely redundant once Platt or isotonic
+has already pulled predictions toward the base rate. Exactly one significant
+improvement lands on a well-calibrated configuration.
+
+Effect size is 0.0004 log loss, roughly 0.06 percent relative.
+
+Four v4 trade-location features could not be built: distance_from_trigger and
+time_since_trigger need setup typing, distance_from_vwap needs a turnover
+column the frozen bar schema lacks (the bhavcopy carries traded value and
+quantity, whose ratio is exactly daily VWAP), time_since_catalyst needs the
+Event Store, and session_phase needs intraday timestamps.
+
+A PENDING status was added so the block is neither active nor rejected, and
+require_active now gates on ACTIVE rather than merely excluding REJECTED.
+
+## Economic observation, still recorded separately
+
+Unchanged and still not used to tune anything. On dev-validation the ranked
+top decile returns -10.96 to -24.72 bps net against random entry at -108.31
+bps. Ranking beats chance; net economics stay negative because the round-trip
+hurdle is 73.55 bps against a window whose mean gross return was negative.
+The one positive selection this round, top 5 percent at +33.56 bps, carries
+t=1.47 and is not significant.

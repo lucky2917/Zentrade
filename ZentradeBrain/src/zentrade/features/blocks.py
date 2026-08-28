@@ -20,9 +20,14 @@ MTF_ALIGNMENT_FEATURES = ("mtf_alignment", "mtf_conflict", "mtf_dispersion")
 MTF_HORIZONS = ("return_1d", "return_5d", "return_21d", "sma20_ratio", "sma50_ratio")
 MTF_WEIGHTS = (1.0, 2.0, 3.0, 4.0, 5.0)
 
+TRADE_LOCATION_NAME = "trade_location"
+TRADE_LOCATION_FEATURES = ("extension_atr_20", "extension_atr_50", "high_distance_atr")
+MIN_ATR_PCT = 1e-6
+
 
 ACTIVE = "active"
 REJECTED = "rejected"
+PENDING = "pending_operator_decision"
 
 
 @dataclass(frozen=True)
@@ -44,7 +49,7 @@ RELATIVE_STRENGTH_BLOCK = FeatureBlock(
 
 
 class RejectedBlock(RuntimeError):
-    """Raised when a block that failed its ablation is put into a live schema."""
+    """Raised when a block that is not ACTIVE is put into a live schema."""
 
 MTF_ALIGNMENT_BLOCK = FeatureBlock(
     MTF_ALIGNMENT_NAME, "v1", MTF_ALIGNMENT_FEATURES, status=REJECTED,
@@ -55,9 +60,20 @@ MTF_ALIGNMENT_BLOCK = FeatureBlock(
              "timeframes were untestable, so this rejects daily alignment and "
              "says nothing about 1m to 1h."))
 
+TRADE_LOCATION_BLOCK = FeatureBlock(
+    TRADE_LOCATION_NAME, "v1", TRADE_LOCATION_FEATURES, status=PENDING,
+    verdict=("Two frozen rules disagree and the conflict is not mine to settle. "
+             "The pre-registered paired test says KEEP: 3 of 12 configurations "
+             "improve significantly at t>2.98 (4.56, 4.41, 3.21) and none is "
+             "worse. The v4 5.3 anti-duplication rule says REJECT: the three "
+             "features correlate 0.920, 0.917 and 0.855 with the percent "
+             "distances they divide, against a 0.80 ceiling. Held pending an "
+             "operator ruling; not active, not rejected."))
+
 ALL_BLOCKS = {BASE_BLOCK_NAME: BASE_BLOCK,
               RELATIVE_STRENGTH_NAME: RELATIVE_STRENGTH_BLOCK,
-              MTF_ALIGNMENT_NAME: MTF_ALIGNMENT_BLOCK}
+              MTF_ALIGNMENT_NAME: MTF_ALIGNMENT_BLOCK,
+              TRADE_LOCATION_NAME: TRADE_LOCATION_BLOCK}
 
 
 def active_blocks() -> tuple[str, ...]:
@@ -65,11 +81,12 @@ def active_blocks() -> tuple[str, ...]:
 
 
 def require_active(blocks: tuple[str, ...]) -> None:
-    """A block that failed its ablation may still be measured, but it may not."""
-    rejected = [b for b in blocks if ALL_BLOCKS[b].status == REJECTED]
-    if rejected:
-        details = "; ".join(f"{b}: {ALL_BLOCKS[b].verdict}" for b in rejected)
-        raise RejectedBlock(f"rejected block(s) in an active schema -> {details}")
+    """Only ACTIVE blocks may run. Rejected and pending blocks stay measurable."""
+    blocked = [b for b in blocks if ALL_BLOCKS[b].status != ACTIVE]
+    if blocked:
+        details = "; ".join(f"{b} ({ALL_BLOCKS[b].status}): {ALL_BLOCKS[b].verdict}"
+                            for b in blocked)
+        raise RejectedBlock(f"non-active block(s) in an active schema -> {details}")
 
 
 def block_feature_names(blocks: tuple[str, ...]) -> tuple[str, ...]:
@@ -148,3 +165,18 @@ def multi_timeframe_alignment(values: tuple) -> tuple[float | None, ...]:
     dispersion = sum(1 for a, b in pairs if a != b) / len(pairs)
 
     return (weighted, conflict, dispersion)
+
+
+IDX_SMA20 = FEATURE_NAMES.index("sma20_ratio")
+IDX_SMA50 = FEATURE_NAMES.index("sma50_ratio")
+IDX_ATR = FEATURE_NAMES.index("atr14_pct")
+IDX_HIGH_252 = FEATURE_NAMES.index("dist_from_252d_high")
+
+
+def trade_location(values: tuple) -> tuple[float | None, ...]:
+    """Existing distances re-expressed in the instrument's own volatility."""
+    atr = values[IDX_ATR]
+    if atr is None or atr <= MIN_ATR_PCT:
+        return (None, None, None)
+    return (values[IDX_SMA20] / atr, values[IDX_SMA50] / atr,
+            values[IDX_HIGH_252] / atr)
