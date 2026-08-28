@@ -771,3 +771,29 @@ quiet live-trading periods. PER_MINUTE_CAP is the provider constraint. At the
 idle rate the full archive takes long enough that the access token expires
 mid-run, so the backfill script raises its own limiter to the cap and leaves
 the shared policy alone.
+
+## The rate limiter reservoir never refilled
+
+The backfill stalled twice at exactly 180 fetched chunks, three hours apart,
+with no failed requests and no provider error. 180 is PER_MINUTE_CAP, which is
+the Bottleneck reservoir size, and that was the whole story.
+
+Bottleneck cancels the `reservoirRefreshInterval` timer the first time
+`updateSettings` is called. `applyLimiterSettings` calls it on the first REST
+call of every process, to apply the time-of-day mode. So the reservoir drained
+once and never refilled, and REST stopped permanently after 180 calls. Passing
+the reservoir options again to `updateSettings` does not restore the timer;
+only `incrementReservoir` still works.
+
+This is not a backfill bug. It is in the shared limiter, so any long-lived
+process making more than 180 REST calls in its lifetime stops making them, and
+does so silently: no error, no log, just a queue that never drains. Measured
+throughput while stalled was 0.015 req/s against 2.91 after the fix.
+
+The fix refills the reservoir on our own timer, topping up to PER_MINUTE_CAP
+and never past it, so the intended ceiling is restored rather than raised.
+
+Diagnosis worth keeping: the provider was never the problem. A fresh process
+answered the same request in 0.1 to 1.0 seconds while the long-running one
+averaged 67 seconds per chunk. Latency measured from outside a stalled process
+says nothing about what is stalling it.
