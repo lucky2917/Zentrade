@@ -1,9 +1,4 @@
-"""NSE equity transaction costs and the bootstrap slippage model.
-
-Pure arithmetic with no state and no authority, so it sits outside core/.
-The boundary rule exists to stop Research and Learning trading or mutating
-state, not to stop them costing a trade they are only measuring.
-"""
+"""NSE equity transaction costs and the bootstrap slippage model."""
 
 from __future__ import annotations
 

@@ -13,6 +13,10 @@ import numpy as np
 import polars as pl
 
 from ..adapters.data.pit import PitDataSource
+from ..features.blocks import (
+    BASE_BLOCK_NAME, RELATIVE_STRENGTH_FEATURES, RELATIVE_STRENGTH_NAME,
+    block_feature_names, relative_strength, schema_hash_for,
+)
 from ..features.engine import compute_features
 from ..features.schema import FEATURE_NAMES, schema_hash
 from .labeler import LabelSpec, label_population
@@ -35,6 +39,14 @@ class Dataset:
     feature_schema_hash: str
     label_spec_hash: str
     data_version: str
+    feature_names: tuple[str, ...] = FEATURE_NAMES
+    blocks: tuple[str, ...] = (BASE_BLOCK_NAME,)
+
+    def columns_for(self, blocks: tuple[str, ...]) -> np.ndarray:
+        """Ablation is a column selection, so the shared features are bit."""
+        wanted = block_feature_names(blocks)
+        index = [self.feature_names.index(name) for name in wanted]
+        return self.X[:, index]
 
     def __len__(self) -> int:
         return len(self.y)
@@ -50,6 +62,7 @@ class Dataset:
             outcome=tuple(self.outcome[i] for i in idx),
             feature_schema_hash=self.feature_schema_hash,
             label_spec_hash=self.label_spec_hash, data_version=self.data_version,
+            feature_names=self.feature_names, blocks=self.blocks,
         )
 
 
@@ -58,7 +71,8 @@ def _ts(day: date) -> int:
 
 
 def build(source: PitDataSource, symbols: list[str], as_of: date,
-          spec: LabelSpec | None = None, log=print) -> Dataset:
+          spec: LabelSpec | None = None, log=print,
+          blocks: tuple[str, ...] = (BASE_BLOCK_NAME,)) -> Dataset:
     """Features at a decision session are computed with as_of one microsecond."""
     spec = spec or LabelSpec()
     labels = label_population(source, as_of=_ts(as_of), spec=spec, symbols=symbols)
@@ -77,13 +91,21 @@ def build(source: PitDataSource, symbols: list[str], as_of: date,
         session_labels = {label.symbol: label for label in by_session[session]}
         snapshot = compute_features(source, as_of=session + 1,
                                     symbols=sorted(session_labels))
+        extra = (relative_strength(snapshot)
+                 if RELATIVE_STRENGTH_NAME in blocks else {})
         for row in snapshot.rows:
             if not row.complete:
                 continue
             label = session_labels.get(row.symbol)
             if label is None:
                 continue
-            rows_X.append(row.values)
+            values = row.values
+            if RELATIVE_STRENGTH_NAME in blocks:
+                addition = extra.get(row.symbol)
+                if addition is None or any(v is None for v in addition):
+                    continue
+                values = values + tuple(addition)
+            rows_X.append(values)
             rows_y.append(1 if label.outcome == TARGET_OUTCOME else 0)
             syms.append(row.symbol)
             stamps.append(session)
@@ -100,15 +122,16 @@ def build(source: PitDataSource, symbols: list[str], as_of: date,
     y = np.asarray(rows_y, dtype=int)
     version = hashlib.sha256(json.dumps({
         "symbols": sorted(symbols), "as_of": as_of.isoformat(),
-        "rows": len(y), "schema": schema_hash(), "label": spec.spec_hash(),
+        "rows": len(y), "schema": schema_hash_for(blocks), "label": spec.spec_hash(),
+        "blocks": list(blocks),
     }, sort_keys=True).encode()).hexdigest()[:16]
 
     return Dataset(
         X=X, y=y, symbols=tuple(syms), decision_ts=tuple(stamps),
         entry=np.asarray(entry), target=np.asarray(target), stop=np.asarray(stop),
         forward_return=np.asarray(forward, dtype=float), outcome=tuple(outcomes),
-        feature_schema_hash=schema_hash(), label_spec_hash=spec.spec_hash(),
-        data_version=version,
+        feature_schema_hash=schema_hash_for(blocks), label_spec_hash=spec.spec_hash(),
+        data_version=version, feature_names=block_feature_names(blocks), blocks=blocks,
     )
 
 
@@ -120,21 +143,24 @@ def save(dataset: Dataset, path: Path) -> None:
         "target": dataset.target.tolist(), "stop": dataset.stop.tolist(),
         "forward_return": dataset.forward_return.tolist(),
         "outcome": list(dataset.outcome),
-        **{name: dataset.X[:, i].tolist() for i, name in enumerate(FEATURE_NAMES)},
+        **{name: dataset.X[:, i].tolist()
+           for i, name in enumerate(dataset.feature_names)},
     })
     frame.write_parquet(path)
     path.with_suffix(".json").write_text(json.dumps({
         "feature_schema_hash": dataset.feature_schema_hash,
         "label_spec_hash": dataset.label_spec_hash,
         "data_version": dataset.data_version, "rows": len(dataset),
+        "feature_names": list(dataset.feature_names), "blocks": list(dataset.blocks),
     }, indent=2))
 
 
 def load(path: Path) -> Dataset:
     frame = pl.read_parquet(path)
     meta = json.loads(path.with_suffix(".json").read_text())
+    names = tuple(meta.get("feature_names", FEATURE_NAMES))
     return Dataset(
-        X=np.column_stack([frame[name].to_numpy() for name in FEATURE_NAMES]),
+        X=np.column_stack([frame[name].to_numpy() for name in names]),
         y=frame["y"].to_numpy(), symbols=tuple(frame["symbol"].to_list()),
         decision_ts=tuple(frame["decision_ts"].to_list()),
         entry=frame["entry"].to_numpy(), target=frame["target"].to_numpy(),
@@ -143,4 +169,5 @@ def load(path: Path) -> Dataset:
         outcome=tuple(frame["outcome"].to_list()),
         feature_schema_hash=meta["feature_schema_hash"],
         label_spec_hash=meta["label_spec_hash"], data_version=meta["data_version"],
+        feature_names=names, blocks=tuple(meta.get("blocks", (BASE_BLOCK_NAME,))),
     )

@@ -329,3 +329,44 @@ kernel. The guard was right and the fix was structural, not an exemption.
 MID -74.96 bps, HIGH -3.80 bps net. Not evidence of anything yet, and it comes
 from a tercile proxy rather than the frozen taxonomy, but it is where a later
 search would start.
+
+## Development protocol (protocol_v1)
+
+**The P6 evaluation window is a frozen holdout: 2025-08-05 to 2026-08-25.**
+Development runs on 2022-06-03 to 2025-07-09 and is split again inside itself
+into dev-train, dev-calibration and dev-validation. Every decision about a
+feature, threshold or model is made on dev-validation.
+
+The holdout's value comes entirely from never having informed anything, so a
+single look destroys it permanently and silently. `assert_no_holdout` runs
+before anything is fitted, and `HoldoutLedger` makes a look an explicit
+recorded act rather than an ordinary function call. Looks recorded so far: 0.
+
+## Feature block 1: relative strength — REJECTED
+
+Three features against the cross-section of the same session: excess return at
+5 and 21 days, and percentile rank of 21-day return. Sector-relative and
+beta-adjusted variants were not built: the spine carries no sector map and no
+index series, and inventing either would make the block untestable rather than
+complete.
+
+**Verdict: 0 of 12 configurations improved significantly.** Best was
+logistic_unpenalised with Platt at t=1.70 against a deflated threshold of 2.68
+at 36 cumulative trials. Several configurations were significantly worse, the
+identity-calibrated arms at t=-4.40 and -4.36, which is three extra parameters
+adding variance without signal.
+
+**The first verdict rule was wrong and was replaced.** It compared best arm
+against best arm, which selected isotonic in one arm and Platt in the other
+and reported that selection as if it were the block. The test is now paired:
+same model, same calibrator, same rows, only the features differ. That is the
+only comparison that answers whether the block adds information.
+
+**A rejected block cannot enter an active schema.** `require_active` refuses
+it. The code stays as the record of the trial; what it may not do is quietly
+become part of what the system runs on.
+
+**Worth carrying forward:** on dev-validation the ranked top decile returned
+-16.90 bps net against random entry at -108.31 bps. The models rank better
+than chance while still losing money, because the whole window had a negative
+mean gross return. Ranking is not the binding problem; the cost hurdle is.
