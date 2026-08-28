@@ -17,6 +17,7 @@ from zentrade.adapters.data.nse_bhavcopy import BhavcopyUnavailable, load_day, t
 from zentrade.adapters.data.symbology import Observation, build as build_symbology
 from zentrade.adapters.data.pit import SpinePitSource
 from zentrade.features.universe import liquidity_screen
+from zentrade.spine.layout import adjustments_path, spine_root
 from zentrade.spine.reader import adjustment_factors, read_bars, universe_on
 from zentrade.spine.writer import write_bars
 
@@ -112,8 +113,9 @@ def main() -> int:
                 continue
             write_bars(fresh, "NSE", "1d", to_spine_rows(bars))
             built += 1
-        original = SPINE / f"spine_v1/bars/venue=NSE/granularity=1d/year={year}/bars.parquet"
-        rebuilt = fresh / f"spine_v1/bars/venue=NSE/granularity=1d/year={year}/bars.parquet"
+        leaf = f"bars/venue=NSE/granularity=1d/year={year}/bars.parquet"
+        original = spine_root(SPINE) / leaf
+        rebuilt = spine_root(fresh) / leaf
         same_bytes = original.read_bytes() == rebuilt.read_bytes()
         a = read_bars(SPINE, "NSE", "1d", start_ts=ts(date(year, 1, 1)), end_ts=ts(date(year + 1, 1, 1)))
         b = read_bars(fresh, "NSE", "1d", start_ts=ts(date(year, 1, 1)), end_ts=ts(date(year + 1, 1, 1)))
@@ -146,7 +148,7 @@ def main() -> int:
               f"min {min(pf):.4f} max {max(pf):.4f}")
 
         import polars as _pl
-        raw = _pl.read_parquet(SPINE / "spine_v1/adjustments/venue=NSE/adjustments.parquet")
+        raw = _pl.read_parquet(adjustments_path(SPINE, "NSE"))
         raw = raw.with_columns((_pl.col("numerator") / _pl.col("denominator")).alias("f"))
         dilutive = raw.filter(_pl.col("kind").is_in(["split", "bonus"]))
         accretive = raw.filter(_pl.col("kind") == "consolidation")

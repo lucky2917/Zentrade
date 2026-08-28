@@ -1,11 +1,11 @@
-"""Hive-partitioned paths for spine_v1."""
+"""Hive-partitioned paths for the spine."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .semantics import DAILY, MINUTE, SEMANTICS_ID, require_granularity
+from .semantics import DAILY, SEMANTICS_ID, require_granularity
 
 BARS = "bars"
 ADJUSTMENTS = "adjustments"

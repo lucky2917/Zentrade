@@ -1,4 +1,4 @@
-"""Idempotent partition writes for spine_v1."""
+"""Idempotent partition writes for the spine."""
 
 from __future__ import annotations
 

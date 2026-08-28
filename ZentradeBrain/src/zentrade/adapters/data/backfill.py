@@ -1,4 +1,4 @@
-"""Resumable NSE daily backfill into spine_v1."""
+"""Resumable NSE daily backfill into the spine."""
 
 from __future__ import annotations
 

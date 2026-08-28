@@ -1,4 +1,4 @@
-"""spine_v1 - frozen semantics for the local market data spine."""
+"""spine_v2 - frozen semantics for the local market data spine."""
 
 from __future__ import annotations
 
@@ -6,11 +6,26 @@ import pyarrow as pa
 
 from ..kernel.money import CURRENCY_SCALES, scale_for_currency
 
-SEMANTICS_ID = "spine_v1"
+SEMANTICS_ID = "spine_v2"
 
 DAILY = "1d"
 MINUTE = "1m"
-GRANULARITIES = (DAILY, MINUTE)
+FIVE_MINUTE = "5m"
+FIFTEEN_MINUTE = "15m"
+GRANULARITIES = (DAILY, MINUTE, FIVE_MINUTE, FIFTEEN_MINUTE)
+
+INTRADAY_GRANULARITIES = (MINUTE, FIVE_MINUTE, FIFTEEN_MINUTE)
+
+GRANULARITY_MINUTES = {MINUTE: 1, FIVE_MINUTE: 5, FIFTEEN_MINUTE: 15}
+
+NSE_SESSION_MINUTES = 375
+NSE_SESSION_OPEN_IST = 9 * 60 + 15
+NSE_SESSION_CLOSE_IST = 15 * 60 + 30
+
+EXPECTED_CANDLES_PER_SESSION = {
+    granularity: NSE_SESSION_MINUTES // minutes
+    for granularity, minutes in GRANULARITY_MINUTES.items()
+}
 
 VENUE_CURRENCY = {
     "NSE": "INR",
@@ -48,7 +63,7 @@ SORT_KEY = ("ts_utc", "symbol")
 
 
 class SemanticsError(ValueError):
-    """Raised when an input violates a frozen spine_v1 law."""
+    """Raised when an input violates a frozen spine law."""
 
 
 def currency_for(venue: str) -> str:
@@ -68,3 +83,9 @@ def require_granularity(granularity: str) -> str:
             f"unknown granularity {granularity!r}, expected one of {GRANULARITIES}"
         )
     return granularity
+
+
+def bars_per_session(granularity: str) -> int:
+    """How many bars one trading session yields at this granularity."""
+    require_granularity(granularity)
+    return EXPECTED_CANDLES_PER_SESSION.get(granularity, 1)

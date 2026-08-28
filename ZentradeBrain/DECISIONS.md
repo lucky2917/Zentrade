@@ -675,3 +675,64 @@ available, but neither settles the question its block was asking.
 
 Nothing is built until step 0 has run. The sequence assumes intraday is
 unavailable; if it proves deep, the intraday capabilities move to the front.
+
+## spine_v2 intraday storage
+
+The probe returned INTRADAY-FIRST, so the spine gained 1m, 5m and 15m
+alongside the existing daily. The four spine laws are unchanged. spine_v2 is a
+superset of spine_v1, not a reinterpretation of it.
+
+**The daily migration is proven, not assumed.** Bumping SEMANTICS_ID moves the
+whole tree, so daily was rebuilt under v2 from the bhavcopy cache with no
+network. All six year partitions came back byte-identical to v1, 2,778,160
+rows across 1,296 sessions, 2021-06-01 to 2026-08-27. A copy would have been
+faster and would have proven nothing.
+
+**The adjustment table could not be rebuilt the same way.** Corporate actions
+are fetched live and there is no raw cache behind them, unlike bhavcopy, so
+that one file was copied forward and verified identical by hash. This is a real
+gap: the adjustment table is the only part of the spine that is not
+reproducible offline. Worth closing when corpactions next needs a change.
+
+**Deduplication is enforced at parse time, not left to the writer.** The writer
+already deduped on (ts_utc, symbol) and would have absorbed provider
+duplication silently. Catching it in the parser makes the count visible.
+Measured on a full 100-day 15m request for RELIANCE: 1,775 raw candles, 1,750
+distinct, 25 dropped, exactly one trailing session repeated. The 30-day sample
+showed zero duplicates, so a sample-only test would have proven nothing about
+the dedup path.
+
+**The provider stream is not chronological when it duplicates.** The same
+100-day request tripped the unordered-file flag. The parser's sort is
+load-bearing, not tidiness.
+
+**lookback_sessions counts bars, so it needed a granularity divisor.** At 1m a
+request for 375 would previously have bought 375 calendar days of window
+instead of one session. SpinePitSource now divides by bars_per_session, which
+leaves daily behaviour unchanged because daily yields one bar per session.
+
+**as_of is exclusive at the reader, so the FutureDataRequested guard is
+unreachable through read_bars.** read_bars filters ts_utc < end_ts, so a bar
+stamped exactly at as_of is dropped before the guard sees it. The guard stays
+as defence against a future reader change. The harness now tests both halves
+separately: that the reader withholds the bar at as_of, and that the guard
+fires when a source does hand one back.
+
+### Sample validation, 2026-08-28
+
+3 symbols (RELIANCE, TCS, SBIN), June 2026, all three granularities, 63
+symbol-sessions each. verify_intraday.py: 33/33.
+
+    granularity   rows     per session   sessions   IST span
+    1m            23,625   375 exact     21         09:15..15:29
+    5m             4,725    75 exact     21         09:15..15:25
+    15m            1,575    25 exact     21         09:15..15:15
+
+Every symbol-session is exactly complete, no duplicates, no out-of-session
+stamps, chronological per symbol, no sessions missing against the daily spine,
+re-ingestion inserts nothing and leaves bytes stable, and a clean-room rebuild
+into a fresh tree is byte-identical.
+
+State invariants after the migration: holdout looks 0, trial count 156
+(threshold 3.178), active schema (symbol_technical, setup_typing), 19 features.
+No model was fitted in this phase.

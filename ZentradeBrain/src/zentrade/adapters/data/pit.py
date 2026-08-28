@@ -12,7 +12,7 @@ import pyarrow as pa
 
 from ...spine.layout import adjustments_path
 from ...spine.reader import read_bars
-from ...spine.semantics import BAR_SCHEMA
+from ...spine.semantics import BAR_SCHEMA, bars_per_session
 
 
 class FutureDataRequested(RuntimeError):
@@ -65,7 +65,7 @@ def _cumulative_factors(base: Path, venue: str, as_of: int) -> dict[str, tuple[l
 
 @dataclass(frozen=True)
 class SpinePitSource:
-    """Reads spine_v1 with a hard as_of boundary. There is no unfiltered path."""
+    """Reads the spine with a hard as_of boundary. There is no unfiltered path."""
 
     base: Path
     venue: str = "NSE"
@@ -73,9 +73,17 @@ class SpinePitSource:
     adjust: bool = True
 
     def _window_start(self, as_of: int, lookback_sessions: int) -> int | None:
+        """Widen a bar count into a calendar span.
+
+        lookback_sessions counts bars, so at intraday granularities it buys far
+        less calendar time than at daily. Dividing by the bars one session
+        yields keeps the window meaning the same thing everywhere.
+        """
         if lookback_sessions <= 0:
             return None
-        calendar_days = int(lookback_sessions * 1.55) + 10
+        per_session = bars_per_session(self.granularity)
+        sessions = -(-lookback_sessions // per_session)
+        calendar_days = int(sessions * 1.55) + 10
         return as_of - calendar_days * SESSION_MICROS
 
     def bars_before(self, *, as_of: int, symbols: list[str] | None = None,

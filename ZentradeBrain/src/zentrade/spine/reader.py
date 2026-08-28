@@ -1,4 +1,4 @@
-"""DuckDB read surface for spine_v1."""
+"""DuckDB read surface for the spine."""
 
 from __future__ import annotations
 
