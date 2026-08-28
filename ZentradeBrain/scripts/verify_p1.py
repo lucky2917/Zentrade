@@ -151,8 +151,30 @@ def main() -> int:
     check("adjustment table populated", n_adj > 300, f"{n_adj} rows")
     if n_adj:
         pf = factors.column("price_factor").to_pylist()
-        check("all price factors in (0, 1]", all(0 < f <= 1 for f in pf),
+        check("all cumulative factors positive and finite",
+              all(f > 0 and f == f and f != float("inf") for f in pf),
               f"min {min(pf):.4f} max {max(pf):.4f}")
+
+        # Direction is the real invariant, and it is per kind. Splits and
+        # bonuses add shares so history scales DOWN; a consolidation removes
+        # shares so history scales UP. An earlier version of this check
+        # asserted every factor was <= 1, which is false: VERTOZ consolidated
+        # Re 1 -> Rs 10 in 2025 and its close jumped 9.17 -> 87.11.
+        import polars as _pl
+        raw = _pl.read_parquet(SPINE / "spine_v1/adjustments/venue=NSE/adjustments.parquet")
+        raw = raw.with_columns((_pl.col("numerator") / _pl.col("denominator")).alias("f"))
+        dilutive = raw.filter(_pl.col("kind").is_in(["split", "bonus"]))
+        accretive = raw.filter(_pl.col("kind") == "consolidation")
+        check("splits and bonuses scale history down",
+              bool((dilutive["f"] <= 1).all()),
+              f"{dilutive.height} rows, max {dilutive['f'].max():.4f}")
+        check("consolidations scale history up",
+              accretive.height == 0 or bool((accretive["f"] > 1).all()),
+              f"{accretive.height} rows"
+              + (f", min {accretive['f'].min():.4f}" if accretive.height else ""))
+        check("no factor is absurd (parser sanity)",
+              bool(((raw["f"] > 1e-4) & (raw["f"] < 1e4)).all()),
+              f"range {raw['f'].min():.5f} .. {raw['f'].max():.2f}")
 
     # ---- symbology -------------------------------------------------------
     print("\n[7] Entity resolution over the full cache")

@@ -61,7 +61,9 @@ ADJUSTMENT_SCHEMA = pa.schema(
     ]
 )
 
-ADJUSTMENT_KINDS = ("split", "bonus", "dividend")
+# consolidation (reverse split) added after live data showed VERTOZ going
+# Re 1 -> Rs 10. Additive: no existing row changes meaning.
+ADJUSTMENT_KINDS = ("split", "bonus", "consolidation", "dividend")
 
 SORT_KEY = ("ts_utc", "symbol")
 

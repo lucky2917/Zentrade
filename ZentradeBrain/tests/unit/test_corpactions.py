@@ -33,7 +33,29 @@ class TestSplit:
 
     def test_re_and_rs_both_accepted(self):
         """NSE writes 'Re' for one rupee and 'Rs' otherwise; both are the same field."""
-        assert classify("From Re 1/- Per Share To Rs 10/- Per Share")[0] == "split"
+        assert classify("From Rs 10/- Per Share To Re 1/- Per Share")[0] == "split"
+
+
+class TestConsolidation:
+    """A reverse split: fewer shares, higher price, so history scales UP.
+    VERTOZ went Re 1 -> Rs 10 on 2025-06-25 and its close jumped 9.17 -> 87.11,
+    which is why factors above 1 are legitimate and must not be clamped away."""
+
+    @pytest.mark.parametrize("subject,num,den", [
+        ("Consolidation Of Equity Shares From Re 1 Per Share To Rs 10 Per Share", 10, 1),
+        ("From Rs 2/- Per Share To Rs 10/- Per Share", 5, 1),
+    ])
+    def test_direction_decides_kind_not_wording(self, subject, num, den):
+        assert classify(subject) == ("consolidation", num, den)
+
+    def test_consolidation_scales_history_up(self):
+        _, num, den = classify("Consolidation Of Equity Shares From Re 1 Per Share To Rs 10 Per Share")
+        assert num / den > 1, "a consolidation must raise historical prices"
+
+    def test_split_and_consolidation_are_inverses(self):
+        _, sn, sd = classify("From Rs 10/- Per Share To Re 1/- Per Share")
+        _, cn, cd = classify("From Re 1/- Per Share To Rs 10/- Per Share")
+        assert (sn / sd) * (cn / cd) == 1
 
 
 class TestUnparseable:

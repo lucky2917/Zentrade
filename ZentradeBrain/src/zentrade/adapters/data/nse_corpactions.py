@@ -39,6 +39,12 @@ SPLIT_RE = re.compile(
 )
 
 KIND_SPLIT, KIND_BONUS, KIND_OTHER = "split", "bonus", "other"
+# A consolidation is a face-value change in the opposite direction: fewer
+# shares, higher price, so historical prices scale UP. Detected by the
+# direction of the ratio rather than the wording, because NSE writes both
+# "Face Value Split ... From X To Y" and "Consolidation Of Equity Shares
+# From X To Y" and only the numbers distinguish them reliably.
+KIND_CONSOLIDATION = "consolidation"
 
 
 @dataclass(frozen=True)
@@ -96,10 +102,13 @@ def classify(subject: str) -> tuple[str, int, int]:
     split = SPLIT_RE.search(text)
     if split:
         # Face value 10 -> 1 means ten times the shares, so a tenth the price.
+        # Face value 1 -> 10 is the reverse: a tenth the shares, ten times the
+        # price, and historical prices must scale UP to stay comparable.
         old, new = Fraction(split.group(1)), Fraction(split.group(2))
         if old > 0 and new > 0:
             ratio = new / old
-            return KIND_SPLIT, ratio.numerator, ratio.denominator
+            kind = KIND_SPLIT if ratio < 1 else KIND_CONSOLIDATION
+            return kind, ratio.numerator, ratio.denominator
 
     return KIND_OTHER, 1, 1
 
@@ -136,7 +145,7 @@ def to_adjustment_rows(actions: list[CorporateAction]) -> list[dict]:
     retained upstream but must never silently contribute a factor of 1."""
     rows = []
     for action in actions:
-        if action.kind not in (KIND_SPLIT, KIND_BONUS):
+        if action.kind not in (KIND_SPLIT, KIND_BONUS, KIND_CONSOLIDATION):
             continue
         effective = datetime(action.ex_date.year, action.ex_date.month, action.ex_date.day,
                              tzinfo=timezone.utc)
