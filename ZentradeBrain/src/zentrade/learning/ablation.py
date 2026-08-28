@@ -20,7 +20,8 @@ from .splits import Split, SplitSpec, split_by_time
 
 
 def paired_log_loss_test(y: np.ndarray, p_without: np.ndarray,
-                         p_with: np.ndarray) -> dict:
+                         p_with: np.ndarray,
+                         cluster_by: np.ndarray | None = None) -> dict:
     """Per-sample log loss, same rows, same model, only the block differs."""
     eps = 1e-15
     def loss(p):
@@ -28,10 +29,27 @@ def paired_log_loss_test(y: np.ndarray, p_without: np.ndarray,
         return -(y * np.log(clipped) + (1 - y) * np.log(1 - clipped))
 
     difference = loss(p_without) - loss(p_with)
-    mean = float(np.mean(difference))
-    spread = float(np.std(difference, ddof=1))
-    t_stat = (mean / (spread / np.sqrt(len(difference)))) if spread > 0 else float("nan")
-    return {"mean_improvement": mean, "t_stat": float(t_stat), "n": int(len(difference))}
+
+    def t_of(values: np.ndarray) -> float:
+        if len(values) < 2:
+            return float("nan")
+        spread = float(np.std(values, ddof=1))
+        if spread <= 0:
+            return float("nan")
+        return float(np.mean(values) / (spread / np.sqrt(len(values))))
+
+    unclustered = t_of(difference)
+    result = {"mean_improvement": float(np.mean(difference)),
+              "t_stat": unclustered, "t_unclustered": unclustered,
+              "n": int(len(difference)), "clusters": None}
+
+    if cluster_by is not None:
+        keys = np.asarray(cluster_by)
+        cluster_means = np.array([difference[keys == key].mean()
+                                  for key in np.unique(keys)])
+        result["t_stat"] = t_of(cluster_means)
+        result["clusters"] = int(len(cluster_means))
+    return result
 
 
 @dataclass(frozen=True)
@@ -113,7 +131,7 @@ def run_arm(arm: str, blocks: tuple[str, ...], development: Dataset, split: Spli
 
 def ablate(data: Dataset, block: str, registry: TrialRegistry,
            protocol: DevelopmentProtocol | None = None,
-           spec: SplitSpec | None = None) -> dict:
+           spec: SplitSpec | None = None, cluster_by_day: bool = False) -> dict:
     protocol = protocol or DevelopmentProtocol()
     spec = spec or SplitSpec(train_fraction=protocol.train_fraction,
                              calibration_fraction=protocol.calibration_fraction,
@@ -128,11 +146,13 @@ def ablate(data: Dataset, block: str, registry: TrialRegistry,
                          registry, spec, cost_bps)
     validation = development.take(split.evaluation)
 
+    clusters = (np.asarray(validation.decision_ts) if cluster_by_day else None)
     paired = {}
     for key, p_without in (without.probabilities or {}).items():
         p_with = (with_block.probabilities or {}).get(key)
         if p_with is not None:
-            paired[key] = paired_log_loss_test(validation.y, p_without, p_with)
+            paired[key] = paired_log_loss_test(validation.y, p_without, p_with,
+                                               cluster_by=clusters)
 
     return {"development": development, "split": split, "validation": validation,
             "without": without, "with_block": with_block, "cost_bps": cost_bps,

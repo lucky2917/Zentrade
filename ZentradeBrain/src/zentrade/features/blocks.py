@@ -20,6 +20,11 @@ MTF_ALIGNMENT_FEATURES = ("mtf_alignment", "mtf_conflict", "mtf_dispersion")
 MTF_HORIZONS = ("return_1d", "return_5d", "return_21d", "sma20_ratio", "sma50_ratio")
 MTF_WEIGHTS = (1.0, 2.0, 3.0, 4.0, 5.0)
 
+MARKET_CONTEXT_NAME = "market_context"
+MARKET_CONTEXT_FEATURES = ("breadth_above_ma20", "breadth_advancing",
+                           "cross_sectional_disp")
+MIN_UNIVERSE_FOR_BREADTH = 10
+
 TRADE_LOCATION_NAME = "trade_location"
 TRADE_LOCATION_FEATURES = ("extension_atr_20", "extension_atr_50", "high_distance_atr")
 MIN_ATR_PCT = 1e-6
@@ -61,19 +66,66 @@ MTF_ALIGNMENT_BLOCK = FeatureBlock(
              "says nothing about 1m to 1h."))
 
 TRADE_LOCATION_BLOCK = FeatureBlock(
-    TRADE_LOCATION_NAME, "v1", TRADE_LOCATION_FEATURES, status=PENDING,
-    verdict=("Two frozen rules disagree and the conflict is not mine to settle. "
-             "The pre-registered paired test says KEEP: 3 of 12 configurations "
-             "improve significantly at t>2.98 (4.56, 4.41, 3.21) and none is "
-             "worse. The v4 5.3 anti-duplication rule says REJECT: the three "
-             "features correlate 0.920, 0.917 and 0.855 with the percent "
-             "distances they divide, against a 0.80 ceiling. Held pending an "
-             "operator ruling; not active, not rejected."))
+    TRADE_LOCATION_NAME, "v1", TRADE_LOCATION_FEATURES, status=REJECTED,
+    verdict=("Operator ruling 2026-08-28. Rejected on four grounds: the three "
+             "features breach the frozen anti-duplication ceiling at 0.920, "
+             "0.917 and 0.855 against 0.80; the incremental benefit "
+             "concentrates in the poorly calibrated identity configuration; it "
+             "shrinks materially under proper calibration, from 0.00098 to "
+             "0.00014; and the remaining calibrated effect is too small to "
+             "justify permanent schema complexity. The paired test had said "
+             "KEEP at 3 of 12 significant, which the ruling overrides."))
+
+
+FUTURE = "future_untested"
+
+
+@dataclass(frozen=True)
+class FutureVariant:
+    """Recorded so a rejection of what was testable is not mistaken for a."""
+
+    name: str
+    concept: str
+    blocked_on: str
+
+
+TRADE_LOCATION_FUTURE = (
+    FutureVariant("distance_from_trigger",
+                  "how far price has travelled past the setup trigger, in ATR",
+                  "setup typing, which defines a trigger level at all"),
+    FutureVariant("time_since_trigger",
+                  "how long since the trigger fired; intraday edge decays fast",
+                  "setup typing plus intraday timestamps"),
+    FutureVariant("distance_from_vwap",
+                  "location relative to the session volume-weighted price",
+                  "a turnover column in the bar schema. The bhavcopy carries "
+                  "traded value and traded quantity and their ratio is exactly "
+                  "daily VWAP, so this is a spine_v2 schema change rather than "
+                  "a data gap"),
+    FutureVariant("time_since_catalyst",
+                  "minutes since the event became public",
+                  "the Event Store, which is not built"),
+    FutureVariant("session_phase",
+                  "open, midday and close behave differently",
+                  "intraday timestamps; the spine holds daily bars only"),
+)
+
+MARKET_CONTEXT_BLOCK = FeatureBlock(
+    MARKET_CONTEXT_NAME, "v1", MARKET_CONTEXT_FEATURES, status=REJECTED,
+    verdict=("0 of 12 configurations improved significantly at a day-clustered "
+             "t>3.06. The block passed the anti-duplication gate cleanly at "
+             "0.446, so this is a rejection on evidence rather than on "
+             "redundancy. The result that matters is the inflation: raw "
+             "per-row t reached 4.46 and 4.41, comfortably over the threshold, "
+             "while the clustered values were 0.98 and 0.97. Treating 14,350 "
+             "rows as independent observations of a feature that varies 161 "
+             "times would have promoted noise."))
 
 ALL_BLOCKS = {BASE_BLOCK_NAME: BASE_BLOCK,
               RELATIVE_STRENGTH_NAME: RELATIVE_STRENGTH_BLOCK,
               MTF_ALIGNMENT_NAME: MTF_ALIGNMENT_BLOCK,
-              TRADE_LOCATION_NAME: TRADE_LOCATION_BLOCK}
+              TRADE_LOCATION_NAME: TRADE_LOCATION_BLOCK,
+              MARKET_CONTEXT_NAME: MARKET_CONTEXT_BLOCK}
 
 
 def active_blocks() -> tuple[str, ...]:
@@ -180,3 +232,21 @@ def trade_location(values: tuple) -> tuple[float | None, ...]:
         return (None, None, None)
     return (values[IDX_SMA20] / atr, values[IDX_SMA50] / atr,
             values[IDX_HIGH_252] / atr)
+
+
+IDX_RETURN_1D = FEATURE_NAMES.index("return_1d")
+
+
+def market_context(snapshot) -> tuple[float | None, ...]:
+    """State of the universe on this session. One value shared by every symbol."""
+    complete = [row for row in snapshot.rows if row.complete]
+    if len(complete) < MIN_UNIVERSE_FOR_BREADTH:
+        return (None, None, None)
+
+    above = sum(1 for row in complete if row.values[IDX_SMA20] > 0) / len(complete)
+    advancing = sum(1 for row in complete if row.values[IDX_RETURN_1D] > 0) / len(complete)
+
+    twenty_one = [row.values[IDX_RETURN_21D] for row in complete]
+    mean = fmean(twenty_one)
+    variance = sum((value - mean) ** 2 for value in twenty_one) / (len(twenty_one) - 1)
+    return (above, advancing, variance ** 0.5)

@@ -37,7 +37,11 @@ def main() -> int:
     before = registry.trial_count()
 
     print(f"\n  block features: {list(ALL_BLOCKS[block].features)}")
-    out = ablate(data, block, registry)
+    cluster = block == "market_context"
+    if cluster:
+        print("  INFERENCE: day-clustered. This block takes one value per session,")
+        print("  so rows within a session are not independent observations of it.")
+    out = ablate(data, block, registry, cluster_by_day=cluster)
     dev, split, cost = out["development"], out["split"], out["cost_bps"]
     validation = out["validation"]
 
@@ -98,14 +102,17 @@ def main() -> int:
 
     threshold = deflated_threshold(registry.trial_count())
     print("\n  PAIRED like-for-like test (same model, same calibrator, same rows)")
-    print(f"  {'model':22} {'calib':10} {'mean improvement':>18} {'t':>8}  verdict")
+    header_t = "t (clustered)" if any(v.get("clusters") for v in out["paired"].values()) else "t"
+    print(f"  {'model':22} {'calib':10} {'mean improvement':>18} {header_t:>14}"
+          f" {'t (raw)':>9}  verdict")
     significant = []
     for (model_name, calibrator), stats in sorted(out["paired"].items()):
         passes = stats["t_stat"] > threshold
         if passes:
             significant.append((model_name, calibrator))
         print(f"  {model_name:22} {calibrator:10} {stats['mean_improvement']:+18.6f} "
-              f"{stats['t_stat']:8.2f}  {'significant' if passes else 'not significant'}")
+              f"{stats['t_stat']:14.2f} {stats.get('t_unclustered', float('nan')):9.2f}"
+              f"  {'significant' if passes else 'not significant'}")
 
     print("\n" + "=" * 78)
     if significant:

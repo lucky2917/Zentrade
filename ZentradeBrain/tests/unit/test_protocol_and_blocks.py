@@ -4,10 +4,11 @@ import pytest
 
 from zentrade.features.blocks import (
     ACTIVE, ALL_BLOCKS, BASE_BLOCK_NAME, MTF_ALIGNMENT_FEATURES, MTF_ALIGNMENT_NAME,
-    MTF_HORIZONS, PENDING, REJECTED, RELATIVE_STRENGTH_NAME, TRADE_LOCATION_FEATURES,
-    TRADE_LOCATION_NAME, RejectedBlock, active_blocks, block_feature_names,
-    multi_timeframe_alignment, relative_strength, require_active, schema_hash_for,
-    trade_location,
+    MARKET_CONTEXT_FEATURES, MARKET_CONTEXT_NAME, MTF_HORIZONS, PENDING, REJECTED,
+    RELATIVE_STRENGTH_NAME, TRADE_LOCATION_FEATURES, TRADE_LOCATION_NAME,
+    TRADE_LOCATION_FUTURE, RejectedBlock, active_blocks, block_feature_names,
+    market_context, multi_timeframe_alignment, relative_strength, require_active,
+    schema_hash_for, trade_location,
 )
 from zentrade.features.schema import FEATURE_NAMES, schema_hash
 from zentrade.learning.ablation import paired_log_loss_test
@@ -268,13 +269,112 @@ class TestTradeLocation:
     def test_three_features_declared(self):
         assert len(TRADE_LOCATION_FEATURES) == 3
 
-    def test_block_is_held_pending_not_silently_activated(self):
-        assert ALL_BLOCKS[TRADE_LOCATION_NAME].status == PENDING
+    def test_block_is_rejected_by_operator_ruling(self):
+        """Held PENDING while two frozen rules disagreed, then ruled REJECTED."""
+        assert ALL_BLOCKS[TRADE_LOCATION_NAME].status == REJECTED
+        assert "Operator ruling" in ALL_BLOCKS[TRADE_LOCATION_NAME].verdict
         assert "anti-duplication" in ALL_BLOCKS[TRADE_LOCATION_NAME].verdict
 
-    def test_a_pending_block_cannot_enter_an_active_schema(self):
+    def test_pending_remains_a_usable_state_for_future_conflicts(self):
+        assert PENDING != REJECTED and PENDING != ACTIVE
+
+    def test_a_rejected_block_cannot_enter_an_active_schema(self):
         with pytest.raises(RejectedBlock, match=TRADE_LOCATION_NAME):
             require_active((BASE_BLOCK_NAME, TRADE_LOCATION_NAME))
 
     def test_only_the_base_block_is_active(self):
         assert active_blocks() == (BASE_BLOCK_NAME,)
+
+
+class _Snap:
+    def __init__(self, rows):
+        self.rows = rows
+
+
+def _mk(sma20, ret1d, ret21d, complete=True):
+    values = [0.0] * len(FEATURE_NAMES)
+    values[FEATURE_NAMES.index("sma20_ratio")] = sma20
+    values[FEATURE_NAMES.index("return_1d")] = ret1d
+    values[FEATURE_NAMES.index("return_21d")] = ret21d
+    return _Row("S", tuple(values), complete)
+
+
+class TestMarketContext:
+    def test_breadth_counts_the_universe_not_the_symbol(self):
+        rows = [_mk(0.01, 0.01, 0.02) for _ in range(8)] + \
+               [_mk(-0.01, -0.01, -0.02) for _ in range(2)]
+        above, advancing, _ = market_context(_Snap(rows))
+        assert above == pytest.approx(0.8)
+        assert advancing == pytest.approx(0.8)
+
+    def test_breadth_is_bounded(self):
+        rows = [_mk(0.01, 0.01, 0.02) for _ in range(12)]
+        above, advancing, _ = market_context(_Snap(rows))
+        assert 0.0 <= above <= 1.0 and 0.0 <= advancing <= 1.0
+
+    def test_dispersion_is_zero_when_the_universe_moves_together(self):
+        rows = [_mk(0.01, 0.01, 0.05) for _ in range(15)]
+        assert market_context(_Snap(rows))[2] == pytest.approx(0.0)
+
+    def test_dispersion_grows_when_returns_scatter(self):
+        tight = [_mk(0.01, 0.01, 0.05 + i * 0.001) for i in range(15)]
+        wide = [_mk(0.01, 0.01, 0.05 + i * 0.05) for i in range(15)]
+        assert market_context(_Snap(wide))[2] > market_context(_Snap(tight))[2]
+
+    def test_a_tiny_universe_yields_no_context(self):
+        assert market_context(_Snap([_mk(0.01, 0.01, 0.02)] * 3)) == (None, None, None)
+
+    def test_incomplete_rows_do_not_count_toward_breadth(self):
+        rows = [_mk(0.01, 0.01, 0.02) for _ in range(10)] + \
+               [_mk(-1.0, -1.0, -1.0, complete=False) for _ in range(10)]
+        assert market_context(_Snap(rows))[0] == pytest.approx(1.0)
+
+    def test_block_is_rejected_on_evidence_not_duplication(self):
+        assert ALL_BLOCKS[MARKET_CONTEXT_NAME].status == REJECTED
+        assert "anti-duplication gate cleanly" in ALL_BLOCKS[MARKET_CONTEXT_NAME].verdict
+
+    def test_only_the_base_block_remains_active(self):
+        assert active_blocks() == (BASE_BLOCK_NAME,)
+
+
+class TestClusteredInference:
+    def test_clustering_recovers_the_effective_sample_size(self):
+        """With the improvement identical inside each session, the unclustered."""
+        import numpy as np
+        from zentrade.learning.ablation import paired_log_loss_test
+
+        rng = np.random.default_rng(2)
+        days, per_day = 200, 50
+        cluster = np.repeat(np.arange(days), per_day)
+        y = np.repeat((rng.random(days) < 0.4).astype(int), per_day)
+        base = np.where(y == 1, 0.45, 0.35)
+        shifted = np.clip(base + np.repeat(rng.normal(0.0005, 0.004, days), per_day),
+                          0.02, 0.98)
+        result = paired_log_loss_test(y, base, shifted, cluster_by=cluster)
+        inflation = abs(result["t_unclustered"] / result["t_stat"])
+        assert result["clusters"] == days
+        assert inflation == pytest.approx(np.sqrt(per_day), rel=0.05)
+
+    def test_unclustered_call_reports_no_clusters(self):
+        import numpy as np
+        from zentrade.learning.ablation import paired_log_loss_test
+        y = np.array([1, 0, 1, 0])
+        result = paired_log_loss_test(y, np.full(4, 0.5), np.full(4, 0.6))
+        assert result["clusters"] is None
+        assert result["t_stat"] == result["t_unclustered"]
+
+
+class TestFutureVariants:
+    def test_five_trade_location_variants_are_recorded_untested(self):
+        assert len(TRADE_LOCATION_FUTURE) == 5
+        names = {v.name for v in TRADE_LOCATION_FUTURE}
+        assert names == {"distance_from_trigger", "time_since_trigger",
+                         "distance_from_vwap", "time_since_catalyst", "session_phase"}
+
+    def test_every_future_variant_names_what_blocks_it(self):
+        assert all(v.blocked_on for v in TRADE_LOCATION_FUTURE)
+
+    def test_no_future_variant_leaked_into_a_block(self):
+        recorded = {v.name for v in TRADE_LOCATION_FUTURE}
+        for block in ALL_BLOCKS.values():
+            assert not (recorded & set(block.features))

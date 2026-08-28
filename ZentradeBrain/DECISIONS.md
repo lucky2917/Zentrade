@@ -475,3 +475,55 @@ bps. Ranking beats chance; net economics stay negative because the round-trip
 hurdle is 73.55 bps against a window whose mean gross return was negative.
 The one positive selection this round, top 5 percent at +33.56 bps, carries
 t=1.47 and is not significant.
+
+## Block 3 ruling and future variants
+
+Operator ruling 2026-08-28: trade location REJECTED on four grounds. The three
+features breach the anti-duplication ceiling at 0.920, 0.917 and 0.855; the
+benefit concentrates in the poorly calibrated identity configuration; it
+shrinks materially under proper calibration; and the remaining calibrated
+effect is too small to justify permanent schema complexity.
+
+The ruling rejects what was tested, not trade-location intelligence. Five
+variants are recorded as FUTURE/UNTESTED with the change each is blocked on,
+and none has been built or measured:
+
+    distance_from_trigger   setup typing, which defines a trigger at all
+    time_since_trigger      setup typing plus intraday timestamps
+    distance_from_vwap      a turnover column in the bar schema. The bhavcopy
+                            carries traded value and quantity and their ratio
+                            is exactly daily VWAP, so this is a spine_v2
+                            change rather than a data gap
+    time_since_catalyst     the Event Store, not built
+    session_phase           intraday timestamps
+
+## Feature block 4: market context — REJECTED, and the reason matters
+
+Three features: breadth above the 20-day average, breadth advancing, and
+cross-sectional dispersion of 21-day returns. All computed from the same
+session's universe.
+
+**This block passed the anti-duplication gate cleanly**, max correlation 0.446
+against a 0.80 ceiling, so unlike block 3 it fails on evidence rather than
+redundancy.
+
+**The result worth keeping is the inflation, not the verdict.** A market
+feature takes one value per session, shared by every row that session carries.
+Treating 14,350 rows as independent observations of something that varies 161
+times overstates the evidence by roughly the square root of rows per session.
+
+    configuration                     raw t    clustered t
+    logistic_unpenalised / identity    4.46           0.98
+    logistic_elasticnet  / identity    4.41           0.97
+    logistic_elasticnet  / platt       1.71           0.76
+
+The raw figures clear the 3.06 threshold comfortably. The clustered ones are
+nowhere near it. Without day-clustered inference this block would have been
+promoted on noise, which is precisely the failure v4 0.1 and 4 predicted.
+
+The clustering was verified before use on a synthetic case with perfect
+intra-cluster correlation: it recovered a 7.09x inflation against a
+theoretical 7.07x, collapsing a spurious t=8.65 to t=1.22.
+
+**Every block from here that varies at the market or sector level must use
+clustered inference.** Symbol-level blocks may continue with the per-row test.
