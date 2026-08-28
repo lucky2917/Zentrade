@@ -21,13 +21,34 @@ const LOW_BUDGET_THRESHOLD = 5000;
 const BLOCK_THRESHOLD = 1000;
 const EMERGENCY_THRESHOLD = 500;
 
+const RESERVOIR_REFRESH_MS = 60 * 1000;
+
 const limiter = new Bottleneck({
     reservoir: PER_MINUTE_CAP,
     reservoirRefreshAmount: PER_MINUTE_CAP,
-    reservoirRefreshInterval: 60 * 1000,
+    reservoirRefreshInterval: RESERVOIR_REFRESH_MS,
     maxConcurrent: MODE_RATES.IDLE,
     minTime: Math.ceil(1000 / MODE_RATES.IDLE),
 });
+
+// Bottleneck cancels the reservoir refresh timer the first time updateSettings
+// runs, and applyLimiterSettings runs on the first call of every process. The
+// reservoir then drains to PER_MINUTE_CAP and never refills, so REST stops
+// permanently after 180 calls. Refilling on our own timer restores the
+// intended ceiling; it does not raise it.
+const refillReservoir = async () => {
+    const current = await limiter.currentReservoir();
+    if (current !== null && current < PER_MINUTE_CAP) {
+        await limiter.incrementReservoir(PER_MINUTE_CAP - current);
+    }
+};
+
+const reservoirTimer = setInterval(() => {
+    refillReservoir().catch((err) =>
+        logger.error("RateLimiter", "Reservoir refill failed", { error: err.message })
+    );
+}, RESERVOIR_REFRESH_MS);
+reservoirTimer.unref();
 
 let appliedMode = null;
 let budgetAlertHandler = null;
@@ -153,6 +174,7 @@ const getRateLimiter = () => limiter;
 
 export {
     getRateLimiter,
+    refillReservoir,
     getCurrentMode,
     getRemainingBudget,
     trackCall,

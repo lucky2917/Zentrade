@@ -24,12 +24,21 @@ config({ path: path.join(scriptDir, "..", ".env") });
 const { getHistoricalData, formatDate, CHUNK_LIMIT_DAYS } =
     await import("../src/services/fyers/fyersREST.js");
 const { getAccessToken } = await import("../src/services/fyers/fyersAuth.js");
-const { getRateLimiter, getRemainingBudget, PER_MINUTE_CAP } =
+const { getRateLimiter, getRemainingBudget, isRestAllowed, PER_MINUTE_CAP } =
     await import("../src/services/fyers/rateLimiter.js");
 const { default: redis } = await import("../src/config/redis.js");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETRY_DELAY_MS = 2000;
+const ABORT_AFTER_CONSECUTIVE = 10;
+
+const AUTH_CODES = new Set([-16, -15, -17]);
+const isAuthFailure = (response) =>
+    Boolean(response) && (AUTH_CODES.has(response.code) ||
+        /authenticate|invalid token|token expired|unauthor/i.test(String(response.message ?? "")));
+const isRateLimited = (response) =>
+    Boolean(response) && (response.code === 429 ||
+        /rate limit|too many request/i.test(String(response.message ?? "")));
 
 const chunkRanges = (from, to, limitDays) => {
     const ranges = [];
@@ -85,6 +94,9 @@ const main = async () => {
     // PER_MINUTE_CAP is the provider limit, and a one-off bulk backfill should
     // run at it: at 1 req/s the full archive takes long enough that the access
     // token expires mid-run. The reservoir still caps the true rate.
+    // applyLimiterSettings runs on the first REST call and would clobber an
+    // override set before it, so spend one call first and then raise the rate.
+    await isRestAllowed();
     const perSecond = Math.max(1, Math.floor(PER_MINUTE_CAP / 60));
     await getRateLimiter().updateSettings({
         maxConcurrent: perSecond,
@@ -104,9 +116,12 @@ const main = async () => {
 
     const counts = { data: 0, empty: 0, error: 0, blocked: 0, malformed: 0 };
     const failures = [];
-    let requests = 0, cached = 0, candles = 0, done = 0;
+    const failureLog = path.join(outDir, `_failures_${resolution}.json`);
+    let requests = 0, cached = 0, candles = 0, done = 0, empty = 0;
+    let consecutiveFailures = 0, rateLimited = 0, aborted = null;
     const started = Date.now();
 
+    outer:
     for (const symbol of symbols) {
         for (const [from, to] of ranges) {
             done++;
@@ -122,28 +137,58 @@ const main = async () => {
             let response = await getHistoricalData(symbol, resolution, from, to);
             requests++;
             let outcome = classify(response);
+            let retry = "not retried";
 
             if (outcome === "blocked" || outcome === "error") {
                 await sleep(RETRY_DELAY_MS);
                 response = await getHistoricalData(symbol, resolution, from, to);
                 requests++;
-                outcome = classify(response);
+                const retried = classify(response);
+                retry = `${outcome} -> ${retried}`;
+                outcome = retried;
             }
 
             counts[outcome]++;
 
             if (outcome === "data" || outcome === "empty") {
+                consecutiveFailures = 0;
                 const rows = outcome === "data" ? response.candles : [];
                 await writeFile(target, JSON.stringify({
                     symbol, resolution, from, to,
                     fetchedAtUtc: new Date().toISOString(), candles: rows,
                 }));
                 candles += rows.length;
+                if (outcome === "empty") empty++;
             } else {
+                consecutiveFailures++;
                 failures.push({
-                    symbol, resolution, from, to, outcome,
+                    symbol, resolution, from, to, outcome, retry,
+                    code: response?.code ?? null,
                     message: String(response?.message ?? response?.s ?? "no response").slice(0, 200),
+                    at: new Date().toISOString(),
                 });
+                await writeFile(failureLog, JSON.stringify(failures, null, 2));
+
+                if (isAuthFailure(response)) {
+                    console.error(`\nABORT: authentication failed at ${symbol} ${from}..${to}. ` +
+                                  `Token likely expired; rerun after refreshing it.`);
+                    aborted = "authentication failure";
+                    break outer;
+                }
+                if (isRateLimited(response)) {
+                    rateLimited++;
+                    if (rateLimited >= 3) {
+                        console.error(`\nABORT: provider rate limit hit ${rateLimited} times. ` +
+                                      `Not raising throughput; rerun later.`);
+                        aborted = "provider rate limit";
+                        break outer;
+                    }
+                }
+                if (consecutiveFailures >= ABORT_AFTER_CONSECUTIVE) {
+                    console.error(`\nABORT: ${consecutiveFailures} consecutive failures.`);
+                    aborted = "consecutive failures";
+                    break outer;
+                }
             }
 
             if (done % 200 === 0) {
@@ -157,19 +202,23 @@ const main = async () => {
     }
 
     if (failures.length) {
-        const logPath = path.join(outDir, `_failures_${resolution}.json`);
-        await writeFile(logPath, JSON.stringify(failures, null, 2));
-        console.log(`\n${failures.length} failures written to ${path.basename(logPath)}`);
+        console.log(`\n${failures.length} failures in ${path.basename(failureLog)}`);
         for (const f of failures.slice(0, 15)) {
-            console.log(`  ${f.symbol} ${f.resolution} ${f.from}..${f.to}  ${f.outcome}: ${f.message}`);
+            console.log(`  ${f.symbol} ${f.resolution} ${f.from}..${f.to}  ` +
+                        `${f.outcome} (retry: ${f.retry}): ${f.message}`);
         }
     }
 
-    console.log(`\nresolution ${resolution} done: requests ${requests.toLocaleString()}, ` +
-                `from cache ${cached.toLocaleString()}, candles ${candles.toLocaleString()}`);
-    console.log(`  outcomes ${JSON.stringify(counts)}`);
-    console.log(`  budget remaining ${(await getRemainingBudget()).toLocaleString()}`);
-    if (failures.length) process.exitCode = 1;
+    console.log(`\nresolution ${resolution} ${aborted ? `ABORTED (${aborted})` : "done"}`);
+    console.log(`  requests made      ${requests.toLocaleString()}`);
+    console.log(`  cached reused      ${cached.toLocaleString()}`);
+    console.log(`  successful chunks  ${counts.data.toLocaleString()}`);
+    console.log(`  empty chunks       ${empty.toLocaleString()}`);
+    console.log(`  failed chunks      ${failures.length.toLocaleString()}`);
+    console.log(`  candles            ${candles.toLocaleString()}`);
+    console.log(`  outcomes           ${JSON.stringify(counts)}`);
+    console.log(`  budget remaining   ${(await getRemainingBudget()).toLocaleString()}`);
+    if (failures.length || aborted) process.exitCode = 1;
 };
 
 try {
