@@ -8,7 +8,7 @@ from pathlib import Path
 
 import polars as pl
 
-from ..spine.reader import read_bars
+from ..adapters.data.pit import PitDataSource
 
 DEFAULT_LOOKBACK_DAYS = 180
 DEFAULT_SIZE = 100
@@ -31,16 +31,15 @@ class ScreenResult:
 
 
 def liquidity_screen(
-    base: Path,
+    source: PitDataSource,
     as_of: date,
-    venue: str = "NSE",
     size: int = DEFAULT_SIZE,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     min_sessions: int = MIN_SESSIONS,
 ) -> ScreenResult:
-    """Top `size` symbols by median daily turnover over the lookback window."""
-    start = as_of - timedelta(days=lookback_days)
-    table = read_bars(base, venue, "1d", start_ts=_ts(start), end_ts=_ts(as_of))
+    """Top `size` symbols by median daily turnover over the window before as_of."""
+    sessions_back = int(lookback_days * 5 / 7) + 5
+    table = source.bars_before(as_of=_ts(as_of), lookback_sessions=sessions_back)
     if table.num_rows == 0:
         return ScreenResult(as_of, (), 0, 0)
 

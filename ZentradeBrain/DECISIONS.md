@@ -100,3 +100,31 @@ block-buffered, so a 45-minute job showed nothing until it finished.
 **Rewriting a partition per session is O(days).** The spine writer rewrites a
 whole partition per call, so the backfill batches by partition and writes once
 per year.
+
+## P2: canonical engine and replay
+
+**Features must be computed on adjusted prices.** The engine originally read
+raw bars and produced a `dist_from_252d_high` of -0.6362 for HDFCBANK, which
+is implausible. HDFCBANK issued a Bonus 1:1 on 2025-08-26 and the raw close
+halved from 1964.10 to 973.40, so every feature spanning that date compared
+pre-bonus to post-bonus prices. Adjusted, the figure is -0.2779.
+
+Adjustment now happens in the PIT source, bounded by as_of, using exact
+rational arithmetic rather than exp/ln so repeated runs agree bit for bit.
+Applying only actions effective at or before as_of is point-in-time correct:
+the look-ahead risk is applying a FUTURE split, which the bound prevents.
+
+**Turnover is invariant under adjustment.** Price scales by the factor and
+volume by its inverse, so their product is unchanged. Confirmed on real data:
+the liquidity screen returns an identical ranking adjusted or raw. This is why
+the P1 screen was not corrupted by the same bug.
+
+**The liquidity screen bypassed the PIT layer.** Written in P1, it called the
+raw spine reader directly with its own as_of bound. Not leaking, but the
+guarantee rested on one call site staying correct rather than on the boundary.
+Now takes a PitDataSource like everything else.
+
+**A shuffle test needs a positive control.** A shuffle test that always passes
+proves nothing. The suite pairs it with an injected-leakage case that must
+push AUC above 0.95, so a broken harness fails loudly rather than reporting
+clean.

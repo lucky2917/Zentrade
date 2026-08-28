@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from zentrade.adapters.data.nse_bhavcopy import BhavcopyUnavailable, load_day, to_spine_rows
 from zentrade.adapters.data.symbology import Observation, build as build_symbology
+from zentrade.adapters.data.pit import SpinePitSource
 from zentrade.features.universe import liquidity_screen
 from zentrade.spine.reader import adjustment_factors, read_bars, universe_on
 from zentrade.spine.writer import write_bars
@@ -183,7 +184,7 @@ def main() -> int:
     print("\n[8] Point-in-time liquidity screen")
     screens = {}
     for as_of in (date(2022, 1, 3), date(2024, 1, 2), date(2026, 8, 24)):
-        r = liquidity_screen(SPINE, as_of, size=100)
+        r = liquidity_screen(SpinePitSource(SPINE), as_of, size=100)
         screens[as_of] = r
         print(f"      {as_of}: considered {r.considered:,}, sessions {r.sessions_used}, selected {len(r)}")
         print(f"        top 8: {list(r.symbols[:8])}")
@@ -192,7 +193,7 @@ def main() -> int:
     churn = len(set(a) ^ set(b)) / 2
     check("universe composition changes over time", churn > 10,
           f"{churn:.0f} names differ between 2022 and 2026")
-    repeat = liquidity_screen(SPINE, date(2024, 1, 2), size=100)
+    repeat = liquidity_screen(SpinePitSource(SPINE), date(2024, 1, 2), size=100)
     check("screen is deterministic", list(repeat.symbols) == list(screens[date(2024, 1, 2)].symbols))
 
     print("\n" + "=" * 74)

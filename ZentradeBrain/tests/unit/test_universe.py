@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from zentrade.adapters.data.pit import SpinePitSource
 from zentrade.features.universe import liquidity_screen
 from zentrade.spine.writer import write_bars
 
@@ -26,17 +27,17 @@ def seed(base, symbol_turnovers, days=90, start=date(2024, 1, 1)):
 class TestRanking:
     def test_orders_by_median_turnover(self, tmp_path):
         after = seed(tmp_path, {"BIG": (100, 1000), "MID": (100, 500), "SMALL": (100, 10)})
-        result = liquidity_screen(tmp_path, after, size=3, min_sessions=10)
+        result = liquidity_screen(SpinePitSource(tmp_path, adjust=False), after, size=3, min_sessions=10)
         assert list(result.symbols) == ["BIG", "MID", "SMALL"]
 
     def test_size_caps_the_result(self, tmp_path):
         after = seed(tmp_path, {f"S{i:02d}": (100, 1000 - i) for i in range(20)})
-        assert len(liquidity_screen(tmp_path, after, size=5, min_sessions=10)) == 5
+        assert len(liquidity_screen(SpinePitSource(tmp_path, adjust=False), after, size=5, min_sessions=10)) == 5
 
     def test_ties_break_on_symbol_so_the_screen_is_reproducible(self, tmp_path):
         after = seed(tmp_path, {"BBB": (100, 500), "AAA": (100, 500), "CCC": (100, 500)})
-        first = liquidity_screen(tmp_path, after, size=2, min_sessions=10)
-        second = liquidity_screen(tmp_path, after, size=2, min_sessions=10)
+        first = liquidity_screen(SpinePitSource(tmp_path, adjust=False), after, size=2, min_sessions=10)
+        second = liquidity_screen(SpinePitSource(tmp_path, adjust=False), after, size=2, min_sessions=10)
         assert list(first.symbols) == ["AAA", "BBB"] == list(second.symbols)
 
 
@@ -50,7 +51,7 @@ class TestPointInTime:
             "symbol": "FUTURE", "ts_utc": ts(as_of), "open": 100, "high": 100,
             "low": 100, "close": 100, "volume": 999_999,
         }])
-        result = liquidity_screen(tmp_path, as_of, size=10, min_sessions=1)
+        result = liquidity_screen(SpinePitSource(tmp_path, adjust=False), as_of, size=10, min_sessions=1)
         assert "FUTURE" not in result.symbols, "screen leaked the as_of session"
         assert "OLD" in result.symbols
 
@@ -59,14 +60,14 @@ class TestPointInTime:
         seed(tmp_path, {"STALE": (100, 999_999)}, days=10, start=start)
         seed(tmp_path, {"FRESH": (100, 100)}, days=10, start=start + timedelta(days=200))
         as_of = start + timedelta(days=215)
-        result = liquidity_screen(tmp_path, as_of, size=10, lookback_days=30, min_sessions=1)
+        result = liquidity_screen(SpinePitSource(tmp_path, adjust=False), as_of, size=10, lookback_days=30, min_sessions=1)
         assert "FRESH" in result.symbols
         assert "STALE" not in result.symbols, "lookback window not applied"
 
 
 class TestDegenerate:
     def test_empty_spine_returns_empty_not_error(self, tmp_path):
-        result = liquidity_screen(tmp_path, date(2024, 6, 1))
+        result = liquidity_screen(SpinePitSource(tmp_path, adjust=False), date(2024, 6, 1))
         assert len(result) == 0 and result.considered == 0
 
     def test_min_sessions_excludes_thinly_traded_names(self, tmp_path):
@@ -76,6 +77,6 @@ class TestDegenerate:
             "symbol": "ONEDAY", "ts_utc": ts(start + timedelta(days=5)), "open": 100,
             "high": 100, "low": 100, "close": 100, "volume": 10_000_000,
         }])
-        result = liquidity_screen(tmp_path, start + timedelta(days=90), size=10, min_sessions=60)
+        result = liquidity_screen(SpinePitSource(tmp_path, adjust=False), start + timedelta(days=90), size=10, min_sessions=60)
         assert "ONEDAY" not in result.symbols
         assert "LIQUID" in result.symbols
