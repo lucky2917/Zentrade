@@ -171,6 +171,80 @@ def main() -> int:
     check("identical inputs give identical core state",
           _replay(11).state_snapshot() == _replay(11).state_snapshot())
 
+    print("\n[9] Persisted core state and recovery")
+    import shutil
+    import sqlite3
+    import tempfile
+    from zentrade.core.store import CoreStore, ReadOnlyViolation
+
+    workdir = Path(tempfile.mkdtemp())
+    try:
+        path = workdir / "core.db"
+        store = CoreStore(path, starting_cash=10_000_000_00)
+        check("authoritative store runs in WAL mode",
+              store._db.execute("PRAGMA journal_mode").fetchone()[0] == "wal")
+
+        limits = RiskLimits()
+        core = TradingCore(PaperBroker(10_000_000_00, ExecutionConfig()),
+                           RiskCore(limits, SECTORS), limits, store=store)
+        core.observe_prices({s_: SessionBar(s_, NOW, 100_00, 101_00, 99_00, 100_00, 5_000_000)
+                             for s_ in SYMBOLS})
+        _, working = core.submit_proposal(
+            Proposal("live", "AAA", Side.BUY, 200, 100_00, NOW), core.risk_inputs(), NOW)
+        core.advance({"AAA": SessionBar("AAA", NOW + 1, 100_00, 101_00, 99_00, 100_00, 5_000_000)})
+        _, in_flight = core.submit_proposal(
+            Proposal("inflight", "AAA", Side.BUY, 200, 100_00, NOW + 1),
+            core.risk_inputs(), NOW + 1)
+        before = (core._broker.account.cash, dict(core._broker.account.positions))
+        check("decisions persisted to the store", len(store.decisions()) == 2,
+              f"{len(store.decisions())} decisions")
+        check("journal replay agrees with materialised state",
+              store.journal_agrees_with_state())
+        store.close()
+
+        recovered, ambiguous = TradingCore.recover(CoreStore(path))
+        check("cash and positions survive restart",
+              (recovered._broker.account.cash,
+               recovered._broker.account.positions) == before,
+              f"cash {recovered._broker.account.cash}")
+        check("in-flight orders recover as AMBIGUOUS",
+              ambiguous == (in_flight.order_id,), f"{ambiguous}")
+        check("ambiguous recovery halts rather than guessing",
+              recovered.kill_switch.engaged
+              and recovered.kill_switch.reason is KillReason.EXECUTION_DIVERGENCE)
+        check("a restart cannot clear a kill",
+              recovered.submit_proposal(
+                  Proposal("post", "AAA", Side.BUY, 200, 100_00, NOW + 2),
+                  recovered.risk_inputs(), NOW + 2)[0].veto is Veto.KILL_SWITCH)
+        check("recovery is deterministic",
+              TradingCore.recover(CoreStore(path))[0].state_snapshot()
+              == TradingCore.recover(CoreStore(path))[0].state_snapshot())
+
+        divergence_path = workdir / "diverge.db"
+        dstore = CoreStore(divergence_path, starting_cash=10_000_000_00)
+        dcore = TradingCore(PaperBroker(10_000_000_00, ExecutionConfig()),
+                            RiskCore(limits, SECTORS), limits, store=dstore)
+        dcore.reconcile_against({"AAA": 999}, dcore._broker.account.cash, set(), NOW)
+        dstore.close()
+        reopened = CoreStore(divergence_path)
+        check("reconciliation divergence persists into kill state",
+              reopened.load().kill["reason"] == KillReason.RECONCILIATION_DIVERGENCE.value,
+              reopened.load().kill["reason"])
+        check("reconciliation is journalled",
+              any(e["kind"] == "RECONCILE" for e in reopened.events()))
+        reopened.close()
+
+        ro = CoreStore.read_only_at(path)
+        check("read-only store refuses writes at the wrapper",
+              _raises(lambda: ro.record_event(1, "x", "y")))
+        check("read-only store refuses writes at sqlite itself",
+              _raises(lambda: ro._db.execute(
+                  "INSERT INTO positions(symbol, quantity) VALUES ('X', 1)")))
+        check("read-only store can still read", ro.load().cash > 0)
+        ro.close()
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
     print("\n" + "=" * 74)
     failed = [n for n, ok, _ in results if not ok]
     print(f"P5 CRITERIA: {len(results) - len(failed)}/{len(results)} passed")

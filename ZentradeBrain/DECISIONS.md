@@ -259,3 +259,37 @@ binds.
     proposal age          5 minutes
     viability floor       Rs 10,000
     drawdown ladder       5% -> 0.8, 10% -> 0.6, 15% -> 0.3
+
+## P5 persistence: SQLite WAL core
+
+**Sole-writer is enforced by the database, not by discipline.** The Core opens
+core.db read-write; everything else opens it with mode=ro, where SQLite itself
+refuses the write. A second writer taking BEGIN IMMEDIATE is refused by the
+file lock. The invariant is physical.
+
+**Constraints live in the schema, not only in Python.** positions.quantity has
+a CHECK for strictly positive, orders has CHECK(filled_quantity <= quantity),
+and client_order_id is UNIQUE. Duplicate orders and negative positions are
+impossible at the storage layer even if a caller is wrong.
+
+**One transaction per checkpoint.** A partial write is not a state the Core
+can be in, so the whole snapshot commits together or not at all.
+
+**The journal is the record; materialised state is a checkpoint.**
+replay_positions rebuilds cash and positions from the fill log alone, and
+journal_agrees_with_state asserts the two match. If they ever disagree the
+checkpoint is wrong and the journal wins.
+
+**Restart is not a reset.** Kill state, reason, trip count and system state all
+persist. A process that comes back up with an engaged switch stays halted
+until a named operator resets it.
+
+**In-flight orders recover as AMBIGUOUS and halt.** A process that died with
+orders working cannot know whether they filled. Marking them either way
+diverges from the venue, so recovery marks them AMBIGUOUS, engages the switch
+with EXECUTION_DIVERGENCE and waits for reconciliation. This is the frozen
+spec's rule that ambiguous order state halts rather than guesses.
+
+**Exits under HALTED still obey correctness.** Being allowed to exit is not
+being allowed to exit incorrectly: an oversized sell is still refused for
+insufficient position, and cash and quantity conservation still hold.
