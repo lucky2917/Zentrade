@@ -14,8 +14,9 @@ import polars as pl
 
 from ..adapters.data.pit import PitDataSource
 from ..features.blocks import (
-    BASE_BLOCK_NAME, RELATIVE_STRENGTH_FEATURES, RELATIVE_STRENGTH_NAME,
-    block_feature_names, relative_strength, schema_hash_for,
+    BASE_BLOCK_NAME, MTF_ALIGNMENT_NAME, RELATIVE_STRENGTH_FEATURES,
+    RELATIVE_STRENGTH_NAME, block_feature_names, multi_timeframe_alignment,
+    relative_strength, schema_hash_for,
 )
 from ..features.engine import compute_features
 from ..features.schema import FEATURE_NAMES, schema_hash
@@ -103,6 +104,11 @@ def build(source: PitDataSource, symbols: list[str], as_of: date,
             if RELATIVE_STRENGTH_NAME in blocks:
                 addition = extra.get(row.symbol)
                 if addition is None or any(v is None for v in addition):
+                    continue
+                values = values + tuple(addition)
+            if MTF_ALIGNMENT_NAME in blocks:
+                addition = multi_timeframe_alignment(row.values)
+                if any(v is None for v in addition):
                     continue
                 values = values + tuple(addition)
             rows_X.append(values)

@@ -370,3 +370,58 @@ become part of what the system runs on.
 -16.90 bps net against random entry at -108.31 bps. The models rank better
 than chance while still losing money, because the whole window had a negative
 mean gross return. Ranking is not the binding problem; the cost hurdle is.
+
+## Feature block 2: multi-timeframe alignment — REJECTED
+
+Three sign-agreement encodings over the horizons already in the base block:
+weighted alignment across five horizons, short-versus-long conflict, and
+adjacent-pair dispersion. The block adds no new data, only an encoding a
+linear model cannot reach: agreement is a sign interaction rather than a
+weighted sum, so a logistic regression on the levels cannot express it.
+
+Measured correlation against the horizons the features derive from:
+conflict 0.124, dispersion 0.122, alignment 0.742. The first two are
+near-orthogonal, which is what v4 6.1 predicted. Alignment passes the 0.8
+anti-duplication rule but is the weakest of the three.
+
+**Verdict: 0 of 12 configurations improved significantly at t>2.86.** Best was
+logistic_unpenalised with isotonic at t=1.77.
+
+**The failure mode differs from block 1 and the difference matters.** Relative
+strength made several configurations significantly worse, at t=-4.40, which is
+extra parameters buying variance. Multi-timeframe alignment made nothing
+significantly worse, worst case t=-0.12, and four of twelve improved without
+reaching significance. It is harmless rather than harmful, which is what an
+encoding with a real but small effect looks like when the sample cannot
+resolve it.
+
+**Two v4 features were deliberately not built.** `compression_state`
+duplicates `vol_compression` already in the base block, and
+`htf_level_distance` would correlate with the existing 252-day extreme
+distances. Adding either would have violated the anti-duplication rule to
+inflate the block.
+
+**Data limitation: daily horizons only.** The spine holds daily bars and the
+Fyers 1-minute probe is still blocked on a token, so 1m to 1h alignment could
+not be built or tested. This result rejects daily horizon alignment and says
+nothing about intraday alignment, which is where v4 6.2 expected the effect to
+live.
+
+## Economic observation, recorded separately
+
+On the development validation window the ranked top decile returned -16.90 bps
+net against random entry at -108.31 bps. Ranking is meaningfully better than
+chance while still losing money, because that window's mean gross return was
+negative and the round-trip hurdle is 73.55 bps.
+
+Recorded as an observation only. It was not used to select, tune or judge
+either feature block, and it should not be: it points at horizon, turnover and
+cost structure rather than at features, and acting on it inside a feature
+experiment would be exactly the contamination the protocol exists to prevent.
+
+## Search inflation is being charged
+
+The deflated threshold has risen from 2.23 at 12 trials to 2.86 at 60. Each
+block tested raises the bar for the next one, which is the intended behaviour:
+testing more hypotheses raises the evidence required rather than the evidence
+available.

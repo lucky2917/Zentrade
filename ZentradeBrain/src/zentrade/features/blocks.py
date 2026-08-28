@@ -14,6 +14,12 @@ RELATIVE_STRENGTH_NAME = "relative_strength"
 
 RELATIVE_STRENGTH_FEATURES = ("rs_excess_5d", "rs_excess_21d", "rs_rank_21d")
 
+MTF_ALIGNMENT_NAME = "mtf_alignment"
+MTF_ALIGNMENT_FEATURES = ("mtf_alignment", "mtf_conflict", "mtf_dispersion")
+
+MTF_HORIZONS = ("return_1d", "return_5d", "return_21d", "sma20_ratio", "sma50_ratio")
+MTF_WEIGHTS = (1.0, 2.0, 3.0, 4.0, 5.0)
+
 
 ACTIVE = "active"
 REJECTED = "rejected"
@@ -40,7 +46,18 @@ RELATIVE_STRENGTH_BLOCK = FeatureBlock(
 class RejectedBlock(RuntimeError):
     """Raised when a block that failed its ablation is put into a live schema."""
 
-ALL_BLOCKS = {BASE_BLOCK_NAME: BASE_BLOCK, RELATIVE_STRENGTH_NAME: RELATIVE_STRENGTH_BLOCK}
+MTF_ALIGNMENT_BLOCK = FeatureBlock(
+    MTF_ALIGNMENT_NAME, "v1", MTF_ALIGNMENT_FEATURES, status=REJECTED,
+    verdict=("0 of 12 configurations improved significantly at t>2.86 on the "
+             "development validation window; best reached t=1.77. Unlike "
+             "relative strength nothing was significantly worse, so the block "
+             "is harmless rather than harmful. Daily horizons only: intraday "
+             "timeframes were untestable, so this rejects daily alignment and "
+             "says nothing about 1m to 1h."))
+
+ALL_BLOCKS = {BASE_BLOCK_NAME: BASE_BLOCK,
+              RELATIVE_STRENGTH_NAME: RELATIVE_STRENGTH_BLOCK,
+              MTF_ALIGNMENT_NAME: MTF_ALIGNMENT_BLOCK}
 
 
 def active_blocks() -> tuple[str, ...]:
@@ -108,3 +125,26 @@ def relative_strength(snapshot) -> dict[str, tuple[float | None, ...]]:
             _percentile_rank(row.values[IDX_RETURN_21D], twenty_one),
         )
     return out
+
+
+MTF_INDICES = tuple(FEATURE_NAMES.index(name) for name in MTF_HORIZONS)
+
+
+def _sign(value: float) -> float:
+    if value > 0:
+        return 1.0
+    if value < 0:
+        return -1.0
+    return 0.0
+
+
+def multi_timeframe_alignment(values: tuple) -> tuple[float | None, ...]:
+    """Sign agreement across horizons, which the levels themselves cannot express."""
+    signs = [_sign(values[i]) for i in MTF_INDICES]
+
+    weighted = sum(w * s for w, s in zip(MTF_WEIGHTS, signs)) / sum(MTF_WEIGHTS)
+    conflict = 1.0 if signs[0] != 0 and signs[-1] != 0 and signs[0] != signs[-1] else 0.0
+    pairs = list(zip(signs, signs[1:]))
+    dispersion = sum(1 for a, b in pairs if a != b) / len(pairs)
+
+    return (weighted, conflict, dispersion)

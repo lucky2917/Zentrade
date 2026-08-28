@@ -1,4 +1,4 @@
-"""Feature block 1: relative strength. Development window only."""
+"""Single feature-block ablation. Development window only, never the holdout."""
 from __future__ import annotations
 
 import sys
@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import zentrade
-from zentrade.features.blocks import RELATIVE_STRENGTH_FEATURES, RELATIVE_STRENGTH_NAME
+from zentrade.features.blocks import ALL_BLOCKS
 from zentrade.learning import dataset as ds
 from zentrade.learning.ablation import ablate
 from zentrade.learning.models import ladder
@@ -20,8 +20,10 @@ day = lambda t: datetime.fromtimestamp(t / 1e6, tz=timezone.utc).date()
 
 
 def main() -> int:
+    block = sys.argv[1] if len(sys.argv) > 1 else "relative_strength"
+    dataset_name = sys.argv[2] if len(sys.argv) > 2 else "with_rs.parquet"
     print("=" * 78)
-    print("FEATURE BLOCK 1: RELATIVE STRENGTH")
+    print(f"FEATURE BLOCK ABLATION: {block.upper()}")
     print("=" * 78)
     spec = describe()
     print(f"\n  protocol {spec['protocol']}")
@@ -29,13 +31,13 @@ def main() -> int:
     print(f"  FROZEN holdout {spec['frozen_holdout']['start']} .. "
           f"{spec['frozen_holdout']['end']}  (not touched by this experiment)")
 
-    data = ds.load(ROOT / "data/datasets/with_rs.parquet")
+    data = ds.load(ROOT / "data/datasets" / dataset_name)
     registry = TrialRegistry(ROOT / "data/registry/trials.db")
     ledger = HoldoutLedger(ROOT / "data/registry/holdout_looks.jsonl")
     before = registry.trial_count()
 
-    print(f"\n  block features: {list(RELATIVE_STRENGTH_FEATURES)}")
-    out = ablate(data, RELATIVE_STRENGTH_NAME, registry)
+    print(f"\n  block features: {list(ALL_BLOCKS[block].features)}")
+    out = ablate(data, block, registry)
     dev, split, cost = out["development"], out["split"], out["cost_bps"]
     validation = out["validation"]
 
@@ -48,7 +50,7 @@ def main() -> int:
     print(f"  round-trip cost {cost:.2f} bps")
 
     print("\n  ABLATION on dev-validation")
-    print(f"  {'model':22} {'calib':10} {'without RS':>11} {'with RS':>10} {'delta':>10}")
+    print(f"  {'model':22} {'calib':10} {'without':>11} {'with':>10} {'delta':>10}")
     rung_names = [m.name for m in ladder()]
     without = {(r["model"], r["calibrator"]): r for r in out["without"].rows}
     withrs = {(r["model"], r["calibrator"]): r for r in out["with_block"].rows}
@@ -66,11 +68,12 @@ def main() -> int:
             print(f"  {name:22} {calibrator:10} {a:11.5f} {b:10.5f} {b - a:+10.5f}")
 
     best_a, best_b = out["without"].best(), out["with_block"].best()
-    print(f"\n  best without RS : {best_a['model']}/{best_a['calibrator']} "
+    print(f"\n  best without    : {best_a['model']}/{best_a['calibrator']} "
           f"log loss {best_a['log_loss']:.5f}  ECE {best_a['ece']:.4f}  AUC {best_a['auc']:.4f}")
-    print(f"  best with RS    : {best_b['model']}/{best_b['calibrator']} "
+    print(f"  best with block : {best_b['model']}/{best_b['calibrator']} "
           f"log loss {best_b['log_loss']:.5f}  ECE {best_b['ece']:.4f}  AUC {best_b['auc']:.4f}")
-    print(f"  configurations improved by RS: {improved}/{total}")
+    print(f"  configurations improved by the block: {improved}/{total}"
+          f"   (best-arm comparison, NOT the acceptance rule)")
 
     print(f"\n  cost-adjusted selection on dev-validation (threshold {deflated_threshold(registry.trial_count()):.2f})")
     print(f"  {'arm':10} {'model':22} {'select':>9} {'net':>10} {'t':>7}  note")
@@ -113,8 +116,8 @@ def main() -> int:
     else:
         print(f"BLOCK VERDICT: REMOVE   0/{len(out['paired'])} configurations improve "
               f"significantly at t>{threshold:.2f}")
-        print("  relative strength does not add incremental information over the")
-        print("  baseline on the development validation window")
+        print(f"  {block} does not add incremental information over the baseline")
+        print("  on the development validation window")
     print("=" * 78)
     return 0
 

@@ -3,8 +3,9 @@ import numpy as np
 import pytest
 
 from zentrade.features.blocks import (
-    ACTIVE, ALL_BLOCKS, BASE_BLOCK_NAME, REJECTED, RELATIVE_STRENGTH_NAME,
-    RejectedBlock, active_blocks, block_feature_names, relative_strength,
+    ACTIVE, ALL_BLOCKS, BASE_BLOCK_NAME, MTF_ALIGNMENT_FEATURES, MTF_ALIGNMENT_NAME,
+    MTF_HORIZONS, REJECTED, RELATIVE_STRENGTH_NAME, RejectedBlock, active_blocks,
+    block_feature_names, multi_timeframe_alignment, relative_strength,
     require_active, schema_hash_for,
 )
 from zentrade.features.schema import FEATURE_NAMES, schema_hash
@@ -178,3 +179,69 @@ class TestPairedTest:
     def test_sample_count_is_reported(self):
         y = np.array([1, 0, 1])
         assert paired_log_loss_test(y, np.full(3, 0.5), np.full(3, 0.5))["n"] == 3
+
+
+def _horizons(**kwargs):
+    values = [0.0] * len(FEATURE_NAMES)
+    for name, value in kwargs.items():
+        values[FEATURE_NAMES.index(name)] = value
+    return tuple(values)
+
+
+class TestMultiTimeframeAlignment:
+    def test_all_horizons_up_is_full_positive_alignment(self):
+        values = _horizons(**{h: 0.01 for h in MTF_HORIZONS})
+        alignment, conflict, dispersion = multi_timeframe_alignment(values)
+        assert alignment == pytest.approx(1.0)
+        assert conflict == 0.0 and dispersion == 0.0
+
+    def test_all_horizons_down_is_full_negative_alignment(self):
+        values = _horizons(**{h: -0.01 for h in MTF_HORIZONS})
+        assert multi_timeframe_alignment(values)[0] == pytest.approx(-1.0)
+
+    def test_alignment_is_bounded(self):
+        import itertools
+        for signs in itertools.product((-0.01, 0.0, 0.01), repeat=len(MTF_HORIZONS)):
+            values = _horizons(**dict(zip(MTF_HORIZONS, signs)))
+            alignment, _, dispersion = multi_timeframe_alignment(values)
+            assert -1.0 <= alignment <= 1.0
+            assert 0.0 <= dispersion <= 1.0
+
+    def test_conflict_fires_when_shortest_disagrees_with_longest(self):
+        values = _horizons(return_1d=0.01, return_5d=0.01, return_21d=0.01,
+                           sma20_ratio=0.01, sma50_ratio=-0.01)
+        assert multi_timeframe_alignment(values)[1] == 1.0
+
+    def test_conflict_does_not_fire_when_they_agree(self):
+        values = _horizons(**{h: 0.01 for h in MTF_HORIZONS})
+        assert multi_timeframe_alignment(values)[1] == 0.0
+
+    def test_a_zero_horizon_cannot_create_a_conflict(self):
+        """Zero is not a direction, so it must not be read as disagreement."""
+        values = _horizons(return_1d=0.0, sma50_ratio=0.01)
+        assert multi_timeframe_alignment(values)[1] == 0.0
+
+    def test_dispersion_counts_adjacent_disagreements(self):
+        values = _horizons(return_1d=0.01, return_5d=-0.01, return_21d=0.01,
+                           sma20_ratio=-0.01, sma50_ratio=0.01)
+        assert multi_timeframe_alignment(values)[2] == pytest.approx(1.0)
+
+    def test_block_declares_three_features(self):
+        assert len(MTF_ALIGNMENT_FEATURES) == 3
+        assert multi_timeframe_alignment(_horizons()) is not None
+
+    def test_block_is_marked_rejected(self):
+        assert ALL_BLOCKS[MTF_ALIGNMENT_NAME].status == REJECTED
+        assert "intraday" in ALL_BLOCKS[MTF_ALIGNMENT_NAME].verdict
+
+    def test_rejected_block_two_cannot_enter_an_active_schema(self):
+        with pytest.raises(RejectedBlock, match=MTF_ALIGNMENT_NAME):
+            require_active((BASE_BLOCK_NAME, MTF_ALIGNMENT_NAME))
+
+    def test_no_block_is_active_beyond_the_base(self):
+        assert active_blocks() == (BASE_BLOCK_NAME,)
+
+    def test_compression_is_not_duplicated_from_the_base_block(self):
+        """v4 6.2 lists compression_state; the base block already carries."""
+        assert "vol_compression" in FEATURE_NAMES
+        assert not any("compression" in f for f in MTF_ALIGNMENT_FEATURES)
