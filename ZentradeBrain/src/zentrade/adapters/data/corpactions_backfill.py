@@ -6,6 +6,8 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
+import zentrade
+
 from ...spine.writer import write_adjustments
 from .nse_corpactions import fetch_range, parse, polite_sleep, to_adjustment_rows
 
@@ -67,7 +69,7 @@ def backfill(start: date, end: date, spine_base: Path, log=_flushing_print) -> d
 
 
 def main(argv: list[str]) -> int:
-    root = Path(__file__).resolve().parents[4]
+    root = Path(zentrade.__file__).resolve().parents[2]
     start = date.fromisoformat(argv[1]) if len(argv) > 1 else date(2021, 6, 1)
     end = date.fromisoformat(argv[2]) if len(argv) > 2 else date(2026, 8, 27)
     print(f"NSE corporate-action backfill  {start} .. {end}", flush=True)

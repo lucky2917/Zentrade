@@ -1,10 +1,4 @@
-"""Historical replay over the canonical engine.
-
-The digest covers decision content only: as_of, schema, symbol and feature
-values. sessions_available is diagnostic metadata that reflects how much
-history a source happened to return, so including it would make two adapters
-that agree on every feature look divergent.
-"""
+"""Historical replay over the canonical engine."""
 
 from __future__ import annotations
 

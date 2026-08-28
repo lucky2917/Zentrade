@@ -8,6 +8,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from ...kernel.clock import SystemClock
+import zentrade
+
 from ...spine.writer import write_bars
 from .nse_bhavcopy import (
     BhavcopyUnavailable, load_day, polite_sleep, to_spine_rows, trading_days,
@@ -109,7 +111,7 @@ def backfill_daily(
 
 
 def main(argv: list[str]) -> int:
-    root = Path(__file__).resolve().parents[4]
+    root = Path(zentrade.__file__).resolve().parents[2]
     start = date.fromisoformat(argv[1]) if len(argv) > 1 else date(2021, 6, 1)
     today = SystemClock().now().date()
     end = date.fromisoformat(argv[2]) if len(argv) > 2 else today - timedelta(days=1)

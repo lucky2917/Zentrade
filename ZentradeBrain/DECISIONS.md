@@ -128,3 +128,36 @@ Now takes a PitDataSource like everything else.
 proves nothing. The suite pairs it with an injected-leakage case that must
 push AUC above 0.95, so a broken harness fails loudly rather than reporting
 clean.
+
+## P3: universal shadow labeling
+
+**Labels use adjusted prices.** The M11 v1 note recorded corporate-action
+adjustment as explicitly excluded and flagged the omission as a risk. P2 built
+adjustment into the PIT layer, so labeling inherits it and the risk does not
+carry over. A split no longer manufactures a fake stop-out.
+
+**The decision session sets the levels but never resolves them.** Its close is
+the entry and its bar feeds the ATR that derives target and stop, both
+legitimate because the session has closed. The forward scan starts at the next
+session. A test spiking the decision bar's high initially looked like leakage;
+it was not. It widened the ATR and moved the levels, which is correct. The
+real invariant is that resolution never happens at or before the decision
+timestamp.
+
+**Truncation invariance is what makes historical study possible.** Labels that
+were final at one data horizon are byte-identical at a later one; only PENDING
+ones move. Verified on real data across a three month gap: 44,771 final labels
+compared, zero changed, and all 292 pending ones resolved.
+
+**Most labels resolve early.** Median four sessions to resolution against a
+21-session horizon, because a 1x ATR stop is close. That is why only a few
+hundred labels sit PENDING at any as_of rather than a full horizon's worth.
+
+**Ambiguity resolves to STOP.** A daily bar touching both levels cannot order
+the intrabar events. Assuming the favourable ordering would flatter exactly
+the results that matter most.
+
+**Project root is derived from the package, not directory depth.** A driver
+using parents[4] worked for modules two levels deep and silently pointed at
+the wrong directory for one at three, producing an empty universe rather than
+an error.
