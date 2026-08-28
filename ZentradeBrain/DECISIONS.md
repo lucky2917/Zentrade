@@ -527,3 +527,51 @@ theoretical 7.07x, collapsing a spurious t=8.65 to t=1.22.
 
 **Every block from here that varies at the market or sector level must use
 clustered inference.** Symbol-level blocks may continue with the per-row test.
+
+## Feature block 5: setup typing — pre-registered rule returns KEEP, held PENDING
+
+Seven mutually exclusive types resolved by a fixed priority order, encoded as
+seven binary indicators with `none` as the reference level. `event_driven`,
+the eighth type in v4 8.1, was not built because it needs the Event Store.
+
+**First block to satisfy its pre-registered rule with no competing rule
+objecting.** 5 of 12 configurations improve significantly at t>3.12, none is
+worse, and anti-duplication passes cleanly at 0.448 against the 0.80 ceiling.
+
+**The improvement survives calibration, which is what separates it from trade
+location.** Block 3's benefit collapsed from 0.00098 at identity to 0.00014 at
+isotonic, which said it was substituting for calibration. Here it holds:
+identity 0.00092, platt 0.00046, isotonic 0.00069, and both platt and isotonic
+arms clear the threshold at 4.56, 4.49 and 3.21.
+
+**Four caveats that belong beside the verdict.**
+
+Only 1 of 7 types is individually distinguishable from the pooled hit rate,
+volatility_expansion at z=-2.43, and with seven tests a Bonferroni threshold
+of 2.69 means even that one does not survive multiplicity. The types do not
+have different payoffs.
+
+The fitted weight concentrates in that same type: coefficient -0.0406 against
+a mean of 0.0151 across the seven, and 0.0363 across the base features. Seven
+features were added and roughly one carries the effect.
+
+The mechanism is therefore not what the block's name suggests. A linear model
+cannot represent conjunctions, so the dummies act as regional intercept
+corrections for a misspecified model rather than as evidence that setups
+differentiate payoff. That is real value, but it is a statement about the
+model's shape rather than about the market's.
+
+Net economics remain negative at every selection depth. Ranking improves,
+top decile from -24.72 to -9.81 bps, and the 73.55 bps hurdle still dominates.
+
+Effect size is roughly 0.1 percent relative on log loss.
+
+Held PENDING rather than activated: changing the live schema is an operator
+decision, and the same discipline applied to block 3.
+
+## Standing rule confirmed
+
+Market and sector-varying features require clustered inference, permanently.
+Symbol-level blocks may continue with the per-row paired test. Setup typing is
+symbol-level, so the per-row test was correct here and clustering was neither
+required nor used.

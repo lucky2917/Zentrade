@@ -15,9 +15,10 @@ import polars as pl
 from ..adapters.data.pit import PitDataSource
 from ..features.blocks import (
     BASE_BLOCK_NAME, MTF_ALIGNMENT_NAME, RELATIVE_STRENGTH_FEATURES,
-    MARKET_CONTEXT_NAME, RELATIVE_STRENGTH_NAME, TRADE_LOCATION_NAME,
-    block_feature_names, market_context, multi_timeframe_alignment,
-    relative_strength, schema_hash_for, trade_location,
+    MARKET_CONTEXT_NAME, RELATIVE_STRENGTH_NAME, SETUP_TYPING_NAME,
+    TRADE_LOCATION_NAME, block_feature_names, market_context,
+    multi_timeframe_alignment, relative_strength, schema_hash_for, setup_typing,
+    trade_location,
 )
 from ..features.engine import compute_features
 from ..features.schema import FEATURE_NAMES, schema_hash
@@ -119,6 +120,8 @@ def build(source: PitDataSource, symbols: list[str], as_of: date,
                 if any(v is None for v in addition):
                     continue
                 values = values + tuple(addition)
+            if SETUP_TYPING_NAME in blocks:
+                values = values + tuple(setup_typing(row.values))
             if MARKET_CONTEXT_NAME in blocks:
                 if context is None or any(v is None for v in context):
                     continue

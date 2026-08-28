@@ -5,6 +5,8 @@ import pytest
 from zentrade.features.blocks import (
     ACTIVE, ALL_BLOCKS, BASE_BLOCK_NAME, MTF_ALIGNMENT_FEATURES, MTF_ALIGNMENT_NAME,
     MARKET_CONTEXT_FEATURES, MARKET_CONTEXT_NAME, MTF_HORIZONS, PENDING, REJECTED,
+    SETUP_MIN_SAMPLES, SETUP_NONE, SETUP_TYPES, SETUP_TYPING_FEATURES, SETUP_TYPING_NAME,
+    classify_setup, setup_typing,
     RELATIVE_STRENGTH_NAME, TRADE_LOCATION_FEATURES, TRADE_LOCATION_NAME,
     TRADE_LOCATION_FUTURE, RejectedBlock, active_blocks, block_feature_names,
     market_context, multi_timeframe_alignment, relative_strength, require_active,
@@ -378,3 +380,69 @@ class TestFutureVariants:
         recorded = {v.name for v in TRADE_LOCATION_FUTURE}
         for block in ALL_BLOCKS.values():
             assert not (recorded & set(block.features))
+
+
+def _setup_row(**kwargs):
+    values = [0.0] * len(FEATURE_NAMES)
+    for name, value in kwargs.items():
+        values[FEATURE_NAMES.index(name)] = value
+    return tuple(values)
+
+
+class TestSetupTyping:
+    def test_seven_types_declared_under_the_v4_ceiling_of_eight(self):
+        assert len(SETUP_TYPES) == 7
+        assert len(SETUP_TYPING_FEATURES) == 7
+
+    def test_event_driven_is_absent_because_it_needs_the_event_store(self):
+        assert not any("event" in name for name in SETUP_TYPES)
+
+    @pytest.mark.parametrize("kwargs,expected", [
+        ({"dist_from_252d_high": -0.05, "return_5d": -0.06}, "failed_breakout"),
+        ({"dist_from_252d_high": -0.01, "volume_ratio_20d": 1.5}, "breakout"),
+        ({"dist_from_252d_low": 0.01, "volume_ratio_20d": 1.5,
+          "dist_from_252d_high": -0.5}, "breakdown"),
+        ({"return_21d": 0.15, "volume_ratio_20d": 0.5,
+          "dist_from_252d_high": -0.3}, "momentum_exhaustion"),
+        ({"sma50_ratio": 0.05, "sma20_ratio": -0.02, "return_5d": -0.01,
+          "dist_from_252d_high": -0.3}, "pullback_in_trend"),
+        ({"sma20_ratio": -0.12, "return_1d": 0.01,
+          "dist_from_252d_high": -0.3}, "mean_reversion"),
+        ({"vol_compression": 1.5, "dist_from_252d_high": -0.3}, "volatility_expansion"),
+        ({"dist_from_252d_high": -0.3}, SETUP_NONE),
+    ])
+    def test_classification(self, kwargs, expected):
+        assert classify_setup(_setup_row(**kwargs)) == expected
+
+    def test_types_are_mutually_exclusive(self):
+        """Priority resolves overlap, so the per-type counts mean what they say."""
+        overlapping = _setup_row(dist_from_252d_high=-0.01, return_5d=-0.06,
+                                 volume_ratio_20d=1.5)
+        encoded = setup_typing(overlapping)
+        assert sum(encoded) == 1
+
+    def test_none_is_the_reference_level_and_gets_no_column(self):
+        assert sum(setup_typing(_setup_row(dist_from_252d_high=-0.3))) == 0
+        assert SETUP_NONE not in SETUP_TYPES
+
+    def test_encoding_width_matches_the_type_count(self):
+        assert len(setup_typing(_setup_row())) == len(SETUP_TYPES)
+
+    def test_encoding_is_binary(self):
+        encoded = setup_typing(_setup_row(vol_compression=1.5,
+                                          dist_from_252d_high=-0.3))
+        assert set(encoded) <= {0.0, 1.0}
+
+    def test_sparse_floor_is_declared(self):
+        assert SETUP_MIN_SAMPLES == 200
+
+    def test_block_is_held_pending_an_operator_ruling(self):
+        assert ALL_BLOCKS[SETUP_TYPING_NAME].status == PENDING
+        assert "KEEP" in ALL_BLOCKS[SETUP_TYPING_NAME].verdict
+
+    def test_a_pending_block_cannot_enter_an_active_schema(self):
+        with pytest.raises(RejectedBlock, match=SETUP_TYPING_NAME):
+            require_active((BASE_BLOCK_NAME, SETUP_TYPING_NAME))
+
+    def test_active_schema_is_still_base_only(self):
+        assert active_blocks() == (BASE_BLOCK_NAME,)

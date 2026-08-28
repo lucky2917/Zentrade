@@ -20,6 +20,13 @@ MTF_ALIGNMENT_FEATURES = ("mtf_alignment", "mtf_conflict", "mtf_dispersion")
 MTF_HORIZONS = ("return_1d", "return_5d", "return_21d", "sma20_ratio", "sma50_ratio")
 MTF_WEIGHTS = (1.0, 2.0, 3.0, 4.0, 5.0)
 
+SETUP_TYPING_NAME = "setup_typing"
+SETUP_TYPES = ("failed_breakout", "breakout", "breakdown", "momentum_exhaustion",
+               "pullback_in_trend", "mean_reversion", "volatility_expansion")
+SETUP_TYPING_FEATURES = tuple(f"setup_{name}" for name in SETUP_TYPES)
+SETUP_NONE = "none"
+SETUP_MIN_SAMPLES = 200
+
 MARKET_CONTEXT_NAME = "market_context"
 MARKET_CONTEXT_FEATURES = ("breadth_above_ma20", "breadth_advancing",
                            "cross_sectional_disp")
@@ -121,7 +128,22 @@ MARKET_CONTEXT_BLOCK = FeatureBlock(
              "rows as independent observations of a feature that varies 161 "
              "times would have promoted noise."))
 
+SETUP_TYPING_BLOCK = FeatureBlock(
+    SETUP_TYPING_NAME, "v1", SETUP_TYPING_FEATURES, status=PENDING,
+    verdict=("The pre-registered rule returns KEEP: 5 of 12 configurations "
+             "improve significantly at t>3.12, including the well-calibrated "
+             "platt and isotonic arms, and none is worse. Anti-duplication "
+             "passes cleanly at 0.448. Unlike trade location the improvement "
+             "does not shrink under calibration. Held PENDING because "
+             "activating it changes the live schema, which is an operator "
+             "decision rather than mine. Caveats: only 1 of 7 types is "
+             "individually distinguishable from the pooled rate and it fails "
+             "multiplicity correction; the fitted weight concentrates in "
+             "volatility_expansion; the effect is 0.1 percent relative; and "
+             "net economics stay negative at every selection depth."))
+
 ALL_BLOCKS = {BASE_BLOCK_NAME: BASE_BLOCK,
+              SETUP_TYPING_NAME: SETUP_TYPING_BLOCK,
               RELATIVE_STRENGTH_NAME: RELATIVE_STRENGTH_BLOCK,
               MTF_ALIGNMENT_NAME: MTF_ALIGNMENT_BLOCK,
               TRADE_LOCATION_NAME: TRADE_LOCATION_BLOCK,
@@ -250,3 +272,43 @@ def market_context(snapshot) -> tuple[float | None, ...]:
     mean = fmean(twenty_one)
     variance = sum((value - mean) ** 2 for value in twenty_one) / (len(twenty_one) - 1)
     return (above, advancing, variance ** 0.5)
+
+
+IDX_VOLUME_RATIO = FEATURE_NAMES.index("volume_ratio_20d")
+IDX_LOW_252 = FEATURE_NAMES.index("dist_from_252d_low")
+IDX_VOL_COMPRESSION = FEATURE_NAMES.index("vol_compression")
+IDX_RETURN_5D_S = FEATURE_NAMES.index("return_5d")
+
+
+def classify_setup(values: tuple) -> str:
+    """Which kind of situation this is, resolved by a fixed priority order."""
+    near_high = values[IDX_HIGH_252]
+    near_low = values[IDX_LOW_252]
+    volume = values[IDX_VOLUME_RATIO]
+    five_day = values[IDX_RETURN_5D_S]
+    twenty_one = values[IDX_RETURN_21D]
+    sma20 = values[IDX_SMA20]
+    sma50 = values[IDX_SMA50]
+    compression = values[IDX_VOL_COMPRESSION]
+
+    if near_high > -0.10 and five_day < -0.03:
+        return "failed_breakout"
+    if near_high > -0.02 and volume > 1.2:
+        return "breakout"
+    if near_low < 0.02 and volume > 1.2:
+        return "breakdown"
+    if twenty_one > 0.10 and volume < 0.8:
+        return "momentum_exhaustion"
+    if sma50 > 0 and sma20 < 0 and five_day < 0:
+        return "pullback_in_trend"
+    if sma20 < -0.08 and values[IDX_RETURN_1D] > 0:
+        return "mean_reversion"
+    if compression > 1.3:
+        return "volatility_expansion"
+    return SETUP_NONE
+
+
+def setup_typing(values: tuple) -> tuple[float, ...]:
+    """One-hot over the named types. `none` is the reference level and gets no."""
+    kind = classify_setup(values)
+    return tuple(1.0 if kind == name else 0.0 for name in SETUP_TYPES)
