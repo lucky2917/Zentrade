@@ -5,8 +5,9 @@ import pytest
 from zentrade.features.blocks import (
     ACTIVE, ALL_BLOCKS, BASE_BLOCK_NAME, MTF_ALIGNMENT_FEATURES, MTF_ALIGNMENT_NAME,
     MARKET_CONTEXT_FEATURES, MARKET_CONTEXT_NAME, MTF_HORIZONS, PENDING, REJECTED,
-    SETUP_MIN_SAMPLES, SETUP_NONE, SETUP_TYPES, SETUP_TYPING_FEATURES, SETUP_TYPING_NAME,
-    classify_setup, setup_typing,
+    CONTRADICTION_FEATURES, CONTRADICTION_NAME, SETUP_MIN_SAMPLES, SETUP_NONE,
+    SETUP_THIN_SUPPORT, SETUP_TYPES, SETUP_TYPING_FEATURES, SETUP_TYPING_NAME,
+    classify_setup, contradiction, setup_typing,
     RELATIVE_STRENGTH_NAME, TRADE_LOCATION_FEATURES, TRADE_LOCATION_NAME,
     TRADE_LOCATION_FUTURE, RejectedBlock, active_blocks, block_feature_names,
     market_context, multi_timeframe_alignment, relative_strength, require_active,
@@ -243,7 +244,8 @@ class TestMultiTimeframeAlignment:
             require_active((BASE_BLOCK_NAME, MTF_ALIGNMENT_NAME))
 
     def test_no_block_is_active_beyond_the_base(self):
-        assert active_blocks() == (BASE_BLOCK_NAME,)
+        """This block is not in the active schema. setup_typing is, by operator."""
+        assert active_blocks() == (BASE_BLOCK_NAME, SETUP_TYPING_NAME)
 
     def test_compression_is_not_duplicated_from_the_base_block(self):
         """v4 6.2 lists compression_state; the base block already carries."""
@@ -285,7 +287,8 @@ class TestTradeLocation:
             require_active((BASE_BLOCK_NAME, TRADE_LOCATION_NAME))
 
     def test_only_the_base_block_is_active(self):
-        assert active_blocks() == (BASE_BLOCK_NAME,)
+        """This block is not in the active schema. setup_typing is, by operator."""
+        assert active_blocks() == (BASE_BLOCK_NAME, SETUP_TYPING_NAME)
 
 
 class _Snap:
@@ -336,7 +339,8 @@ class TestMarketContext:
         assert "anti-duplication gate cleanly" in ALL_BLOCKS[MARKET_CONTEXT_NAME].verdict
 
     def test_only_the_base_block_remains_active(self):
-        assert active_blocks() == (BASE_BLOCK_NAME,)
+        """This block is not in the active schema. setup_typing is, by operator."""
+        assert active_blocks() == (BASE_BLOCK_NAME, SETUP_TYPING_NAME)
 
 
 class TestClusteredInference:
@@ -436,13 +440,68 @@ class TestSetupTyping:
     def test_sparse_floor_is_declared(self):
         assert SETUP_MIN_SAMPLES == 200
 
-    def test_block_is_held_pending_an_operator_ruling(self):
-        assert ALL_BLOCKS[SETUP_TYPING_NAME].status == PENDING
-        assert "KEEP" in ALL_BLOCKS[SETUP_TYPING_NAME].verdict
+    def test_block_was_activated_by_operator_ruling(self):
+        assert ALL_BLOCKS[SETUP_TYPING_NAME].status == ACTIVE
+        assert "Operator ruling" in ALL_BLOCKS[SETUP_TYPING_NAME].verdict
 
-    def test_a_pending_block_cannot_enter_an_active_schema(self):
-        with pytest.raises(RejectedBlock, match=SETUP_TYPING_NAME):
-            require_active((BASE_BLOCK_NAME, SETUP_TYPING_NAME))
+    def test_ruling_constraints_are_recorded_with_the_block(self):
+        """The ruling attached conditions; they live with the block, not only."""
+        verdict = ALL_BLOCKS[SETUP_TYPING_NAME].verdict
+        assert "NOT evidence of positive net trading edge" in verdict
+        assert "misspecification" in verdict
+        assert "pre-registered" in verdict
 
-    def test_active_schema_is_still_base_only(self):
-        assert active_blocks() == (BASE_BLOCK_NAME,)
+    def test_thin_support_categories_are_marked(self):
+        assert set(SETUP_THIN_SUPPORT) == {"mean_reversion", "breakdown"}
+        assert all(name in SETUP_TYPES for name in SETUP_THIN_SUPPORT)
+
+    def test_active_schema_now_includes_setup_typing(self):
+        assert active_blocks() == (BASE_BLOCK_NAME, SETUP_TYPING_NAME)
+
+    def test_activation_changed_the_schema_hash(self):
+        """Artifacts fitted against features_v1 must now fail to load."""
+        assert schema_hash_for(active_blocks()) != schema_hash()
+
+    def test_the_block_stays_independently_ablatable(self):
+        assert schema_hash_for((BASE_BLOCK_NAME,)) != schema_hash_for(active_blocks())
+        assert len(block_feature_names(active_blocks())) == len(FEATURE_NAMES) + 7
+
+
+class TestContradiction:
+    def test_three_features_declared(self):
+        assert len(CONTRADICTION_FEATURES) == 3
+
+    def test_highs_on_fading_volume(self):
+        row = _setup_row(dist_from_252d_high=-0.02, volume_ratio_20d=0.5)
+        assert contradiction(row) == (1.0, 0.0, 0.0)
+
+    def test_price_holding_while_momentum_negative(self):
+        row = _setup_row(dist_from_252d_high=-0.02, return_21d=-0.05,
+                         volume_ratio_20d=1.0)
+        assert contradiction(row) == (0.0, 1.0, 0.0)
+
+    def test_heavy_volume_with_no_progress(self):
+        row = _setup_row(volume_ratio_20d=2.0, return_5d=0.005,
+                         dist_from_252d_high=-0.4)
+        assert contradiction(row) == (0.0, 0.0, 1.0)
+
+    def test_no_contradiction_yields_zeros(self):
+        row = _setup_row(dist_from_252d_high=-0.4, volume_ratio_20d=1.0)
+        assert contradiction(row) == (0.0, 0.0, 0.0)
+
+    def test_encoding_is_binary(self):
+        row = _setup_row(dist_from_252d_high=-0.02, volume_ratio_20d=0.5)
+        assert set(contradiction(row)) <= {0.0, 1.0}
+
+    def test_block_is_rejected(self):
+        assert ALL_BLOCKS[CONTRADICTION_NAME].status == REJECTED
+
+    def test_rejection_records_the_ordering_effect(self):
+        """At block 1's threshold this would have passed; it does not at 156."""
+        assert "order blocks are tested in" in ALL_BLOCKS[CONTRADICTION_NAME].verdict
+
+    def test_it_was_tested_against_the_active_schema_not_base(self):
+        assert "setup_typing" in ALL_BLOCKS[CONTRADICTION_NAME].verdict
+
+    def test_active_schema_unchanged_by_the_rejection(self):
+        assert active_blocks() == (BASE_BLOCK_NAME, SETUP_TYPING_NAME)

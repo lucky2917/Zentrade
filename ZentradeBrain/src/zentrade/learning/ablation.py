@@ -6,7 +6,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..features.blocks import BASE_BLOCK_NAME, block_feature_names, schema_hash_for
+from ..features.blocks import (
+    BASE_BLOCK_NAME, active_blocks, block_feature_names, schema_hash_for,
+)
 from . import metrics as mx
 from .calibration import calibrators
 from .dataset import Dataset
@@ -140,9 +142,11 @@ def ablate(data: Dataset, block: str, registry: TrialRegistry,
     development, split = development_split(data, protocol, spec)
     cost_bps = round_trip_cost_bps()
 
-    without = run_arm("without_" + block, (BASE_BLOCK_NAME,), development, split,
+    control = active_blocks()
+    treatment = control + (block,)
+    without = run_arm("without_" + block, control, development, split,
                       registry, spec, cost_bps)
-    with_block = run_arm("with_" + block, (BASE_BLOCK_NAME, block), development, split,
+    with_block = run_arm("with_" + block, treatment, development, split,
                          registry, spec, cost_bps)
     validation = development.take(split.evaluation)
 
@@ -155,6 +159,7 @@ def ablate(data: Dataset, block: str, registry: TrialRegistry,
                                                cluster_by=clusters)
 
     return {"development": development, "split": split, "validation": validation,
+            "control_blocks": control, "treatment_blocks": treatment,
             "without": without, "with_block": with_block, "cost_bps": cost_bps,
             "paired": paired,
             "controls": {rate: random_entry(validation, rate, cost_bps)

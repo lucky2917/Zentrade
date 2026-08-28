@@ -575,3 +575,54 @@ Market and sector-varying features require clustered inference, permanently.
 Symbol-level blocks may continue with the per-row paired test. Setup typing is
 symbol-level, so the per-row test was correct here and clustering was neither
 required nor used.
+
+## Block 5 ruling: setup_typing v1 ACTIVATED
+
+Operator ruling 2026-08-28. Active schema becomes
+(symbol_technical, setup_typing), 19 features.
+
+    previous  6b1d5f9218e2c08d35ea6510fdc71f1942726fba386104dc613163234256566a
+    ACTIVE    f1a55535a4c02540b34b2947b6a9b000e980f72279d261ba9d8b7cd23e5cb392
+
+The hash change means every artifact fitted against features_v1 now fails to
+load. That is the schema gate working, not a regression.
+
+Constraints recorded with the ruling and stored on the block itself rather
+than only in a changelog:
+
+1. NOT evidence of positive net trading edge. Net economics remain negative
+   while the cost hurdle dominates.
+2. The gain is an incremental correction to model misspecification, not proof
+   that setup labels are alpha.
+3. The seven definitions and thresholds are pre-registered and must not be
+   tuned on these results.
+4. mean_reversion and breakdown are thin-support categories, recorded in
+   SETUP_THIN_SUPPORT.
+5. setup_typing stays independently versioned and ablatable.
+
+## The ablation control is now the live schema
+
+Every subsequent block is tested against whatever is active, not against
+base-only. Comparing a new block to a stale baseline would credit it with
+gains an already-accepted block is delivering.
+
+## Feature block 6: contradiction — REJECTED
+
+Three conjunctions of opposing signals: unconfirmed_strength, momentum
+divergence, and volume without progress. Tested against base plus
+setup_typing, not base alone.
+
+0 of 12 configurations improved significantly at t>3.178; best reached 2.55.
+Nothing was significantly worse, so this is the harmless-not-helpful pattern
+rather than added variance. Anti-duplication passed at 0.392.
+
+htf_conflict was deliberately not re-tested. It was part of block 2, which was
+rejected, and re-running a rejected feature inside a new block would launder
+it past its own result.
+
+**An ordering effect worth stating.** At block 1's threshold of 2.23 this
+block would have passed. It does not now because 156 trials have accumulated.
+The penalty is correct, since testing more hypotheses should raise the
+evidence required rather than the evidence available, but it does mean the
+order blocks are tested in affects which of them clear. A block tested early
+faces a lower bar than the same block tested late.

@@ -23,9 +23,15 @@ MTF_WEIGHTS = (1.0, 2.0, 3.0, 4.0, 5.0)
 SETUP_TYPING_NAME = "setup_typing"
 SETUP_TYPES = ("failed_breakout", "breakout", "breakdown", "momentum_exhaustion",
                "pullback_in_trend", "mean_reversion", "volatility_expansion")
+
+SETUP_THIN_SUPPORT = ("mean_reversion", "breakdown")
 SETUP_TYPING_FEATURES = tuple(f"setup_{name}" for name in SETUP_TYPES)
 SETUP_NONE = "none"
 SETUP_MIN_SAMPLES = 200
+
+CONTRADICTION_NAME = "contradiction"
+CONTRADICTION_FEATURES = ("unconfirmed_strength", "momentum_divergence",
+                          "volume_without_progress")
 
 MARKET_CONTEXT_NAME = "market_context"
 MARKET_CONTEXT_FEATURES = ("breadth_above_ma20", "breadth_advancing",
@@ -129,21 +135,35 @@ MARKET_CONTEXT_BLOCK = FeatureBlock(
              "times would have promoted noise."))
 
 SETUP_TYPING_BLOCK = FeatureBlock(
-    SETUP_TYPING_NAME, "v1", SETUP_TYPING_FEATURES, status=PENDING,
-    verdict=("The pre-registered rule returns KEEP: 5 of 12 configurations "
-             "improve significantly at t>3.12, including the well-calibrated "
-             "platt and isotonic arms, and none is worse. Anti-duplication "
-             "passes cleanly at 0.448. Unlike trade location the improvement "
-             "does not shrink under calibration. Held PENDING because "
-             "activating it changes the live schema, which is an operator "
-             "decision rather than mine. Caveats: only 1 of 7 types is "
-             "individually distinguishable from the pooled rate and it fails "
-             "multiplicity correction; the fitted weight concentrates in "
-             "volatility_expansion; the effect is 0.1 percent relative; and "
-             "net economics stay negative at every selection depth."))
+    SETUP_TYPING_NAME, "v1", SETUP_TYPING_FEATURES, status=ACTIVE,
+    verdict=("Operator ruling 2026-08-28: KEEP and activate. 5 of 12 "
+             "configurations improve significantly, best t=5.36 against a "
+             "threshold of 3.125; the gain survives Platt and isotonic; "
+             "nothing is worse; anti-duplication passes at 0.448.\n"
+             "Constraints recorded with the ruling: this is NOT evidence of "
+             "positive net trading edge, since net economics stay negative "
+             "while the cost hurdle dominates. The gain is an incremental "
+             "correction to model misspecification, not proof that setup "
+             "labels are alpha. The seven definitions and thresholds are "
+             "pre-registered and must not be tuned on these results. "
+             "mean_reversion and breakdown are thin-support categories. The "
+             "block stays independently versioned and ablatable."))
+
+CONTRADICTION_BLOCK = FeatureBlock(
+    CONTRADICTION_NAME, "v1", CONTRADICTION_FEATURES, status=REJECTED,
+    verdict=("0 of 12 configurations improve significantly at t>3.178; best "
+             "reached 2.55. Nothing is significantly worse, so this is the "
+             "harmless-not-helpful pattern rather than added variance. "
+             "Anti-duplication passed at 0.392 against the active schema. "
+             "Tested against base plus setup_typing, not base alone. Worth "
+             "recording: at block 1's threshold of 2.23 this would have "
+             "passed. It does not now because 156 trials have accumulated, "
+             "which is the search penalty working as designed and also means "
+             "the order blocks are tested in affects which of them clear."))
 
 ALL_BLOCKS = {BASE_BLOCK_NAME: BASE_BLOCK,
               SETUP_TYPING_NAME: SETUP_TYPING_BLOCK,
+              CONTRADICTION_NAME: CONTRADICTION_BLOCK,
               RELATIVE_STRENGTH_NAME: RELATIVE_STRENGTH_BLOCK,
               MTF_ALIGNMENT_NAME: MTF_ALIGNMENT_BLOCK,
               TRADE_LOCATION_NAME: TRADE_LOCATION_BLOCK,
@@ -312,3 +332,16 @@ def setup_typing(values: tuple) -> tuple[float, ...]:
     """One-hot over the named types. `none` is the reference level and gets no."""
     kind = classify_setup(values)
     return tuple(1.0 if kind == name else 0.0 for name in SETUP_TYPES)
+
+
+def contradiction(values: tuple) -> tuple[float, ...]:
+    """Internal disagreement within a situation, as conjunctions."""
+    near_high = values[IDX_HIGH_252]
+    volume = values[IDX_VOLUME_RATIO]
+    twenty_one = values[IDX_RETURN_21D]
+    five_day = values[IDX_RETURN_5D_S]
+
+    unconfirmed = 1.0 if near_high > -0.05 and volume < 0.8 else 0.0
+    divergence = 1.0 if near_high > -0.05 and twenty_one < 0 else 0.0
+    stalled = 1.0 if volume > 1.5 and abs(five_day) < 0.01 else 0.0
+    return (unconfirmed, divergence, stalled)

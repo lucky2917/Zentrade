@@ -36,7 +36,10 @@ def main() -> int:
     ledger = HoldoutLedger(ROOT / "data/registry/holdout_looks.jsonl")
     before = registry.trial_count()
 
-    print(f"\n  block features: {list(ALL_BLOCKS[block].features)}")
+    from zentrade.features.blocks import active_blocks, block_feature_names
+    print(f"\n  control arm (active schema): {active_blocks()} "
+          f"-> {len(block_feature_names(active_blocks()))} features")
+    print(f"  treatment adds: {list(ALL_BLOCKS[block].features)}")
     cluster = block == "market_context"
     if cluster:
         print("  INFERENCE: day-clustered. This block takes one value per session,")
