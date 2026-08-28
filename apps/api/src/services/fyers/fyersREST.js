@@ -72,11 +72,17 @@ const CHUNK_LIMIT_DAYS = {
     "D": 366, "1W": 366, "1M": 366,
 };
 
-const formatDate = (date) => date.toISOString().slice(0, 10);
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+// Fyers interprets range_from/range_to as IST trading dates. toISOString() is
+// UTC, so any instant between 00:00 and 05:30 IST formatted to the PREVIOUS
+// day and silently shifted every requested window by one session. The 03:31
+// IST budget reset sits inside that band.
+const formatDate = (date) => new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
 
 const daysAgo = (n) => {
     const d = new Date();
-    d.setDate(d.getDate() - n);
+    d.setTime(d.getTime() - n * 24 * 60 * 60 * 1000);
     return d;
 };
 
@@ -85,6 +91,11 @@ const parseCandles = (response) => {
     return response.candles.map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }));
 };
 
+/**
+ * Chunked history. Returns candles only, so a caller cannot tell an empty
+ * range from a failed request; getCandlesDetailed exists for callers that
+ * need to. A failing chunk is logged rather than silently dropped.
+ */
 const getCandles = async (symbol, resolution, fromDate, toDate) => {
     const limitDays = CHUNK_LIMIT_DAYS[String(resolution)] ?? 366;
 
@@ -103,7 +114,49 @@ const getCandles = async (symbol, resolution, fromDate, toDate) => {
     if (chunks.length === 0) chunks.push([formatDate(from), formatDate(to)]);
 
     const results = await Promise.all(chunks.map(([f, t]) => getHistoricalData(symbol, resolution, f, t)));
+    const failed = results.filter((r) => !r || r.s !== "ok").length;
+    if (failed > 0) {
+        logger.error("FyersREST", "history chunks failed, result is incomplete", {
+            symbol, resolution, failed, total: chunks.length,
+        });
+    }
     return results.flatMap(parseCandles);
+};
+
+/**
+ * Same fetch, but the outcome of every chunk is visible. A depth probe cannot
+ * use getCandles: an errored chunk there is indistinguishable from the edge of
+ * the archive, which would understate history rather than report a failure.
+ */
+const getCandlesDetailed = async (symbol, resolution, fromDate, toDate) => {
+    const limitDays = CHUNK_LIMIT_DAYS[String(resolution)] ?? 366;
+    const from = new Date(fromDate);
+    const to = new Date(toDate);
+    const chunks = [];
+    let chunkStart = new Date(from);
+    while (chunkStart < to) {
+        const chunkEnd = new Date(chunkStart);
+        chunkEnd.setTime(chunkEnd.getTime() + (limitDays - 1) * 24 * 60 * 60 * 1000);
+        if (chunkEnd > to) chunkEnd.setTime(to.getTime());
+        chunks.push([formatDate(chunkStart), formatDate(chunkEnd)]);
+        chunkStart = new Date(chunkEnd.getTime() + 24 * 60 * 60 * 1000);
+    }
+    if (chunks.length === 0) chunks.push([formatDate(from), formatDate(to)]);
+
+    const responses = await Promise.all(
+        chunks.map(([f, t]) => getHistoricalData(symbol, resolution, f, t))
+    );
+    return chunks.map(([f, t], index) => {
+        const response = responses[index];
+        if (response === null) return { from: f, to: t, outcome: "blocked", candles: [] };
+        if (typeof response !== "object") return { from: f, to: t, outcome: "malformed", candles: [] };
+        if (response.s !== "ok") {
+            return { from: f, to: t, outcome: "error", code: response.code ?? null,
+                     message: String(response.message ?? "").slice(0, 120), candles: [] };
+        }
+        const candles = parseCandles(response);
+        return { from: f, to: t, outcome: candles.length ? "data" : "empty", candles };
+    });
 };
 
 const RANGE_TO_FYERS = {
@@ -124,4 +177,4 @@ const getCandlesForRange = async (symbol, rangeKey) => {
     return getCandles(symbol, config.resolution, fromDate, toDate);
 };
 
-export { getQuotes, getMarketDepth, getHistoricalData, getCandles, getCandlesForRange, RANGE_TO_FYERS };
+export { getQuotes, getMarketDepth, getHistoricalData, getCandles, getCandlesDetailed, getCandlesForRange, formatDate, CHUNK_LIMIT_DAYS, RANGE_TO_FYERS };
