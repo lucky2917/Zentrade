@@ -208,3 +208,54 @@ verification run exercised only FILLED and passed 25 of 26 checks. The
 scenario was too easy, not the code. It now deliberately submits oversized,
 unaffordable and cancelled orders so partial fills, expiry, rejection and
 ambiguity all run.
+
+## P5: trading core and risk core
+
+**Bounded composition, implemented as specified.** Regime confidence, strategy
+health and novelty are three instruments pointed at one question, so they
+compose by min. Drawdown is about the account rather than the model, so it is
+a separate axis and multiplies. Exactly two factors, never four. Measured:
+0.075 where the four-factor product would give 0.063.
+
+**Fail closed means an unevaluable check is a rejection.** An unpriced symbol
+or a missing timestamp means the state is unknown, and trading on unknown
+state is the failure this component exists to prevent. There is no default-
+allow path.
+
+**Halted blocks entries but never exits.** Risk-reducing sells stay permitted
+and are exempt from the turnover and trade-count budgets, because a budget
+that prevents you closing a position is a budget that traps you in one.
+Kill-switch engagement cancels working orders and stops new entries; it does
+not flatten, per the paper-trading risk policy.
+
+**The kill switch cannot reset itself.** Engaging is automatic and cheap.
+Disengaging requires a named operator. A switch that resets itself is not a
+kill switch.
+
+**Snapshots hand out copies.** Research receives fresh containers every call,
+so mutating what it receives cannot reach authoritative state. Sole-writer is
+enforced structurally rather than by convention.
+
+**A limit that never binds is a limit that was never tested.** The first
+hostile sweep asserted no exposure breach and passed trivially: with five
+symbols the per-symbol limit binds first every time, so gross and sector were
+never approached. A long-only book also has gross equal to net, so whichever
+is lower dominates the other entirely. Each value limit now gets a
+configuration in which it is genuinely the tightest, and is driven until it
+binds.
+
+**Default limits**
+
+    position value        Rs 5,00,000 per symbol
+    gross exposure        Rs 50,00,000
+    net exposure          Rs 40,00,000
+    sector exposure       Rs 15,00,000
+    symbols held          25
+    trades per session    20
+    turnover per session  Rs 1,00,00,000
+    daily loss            Rs 2,50,000      -> kill switch
+    max drawdown          20%              -> kill switch
+    price drift           100 bps
+    proposal age          5 minutes
+    viability floor       Rs 10,000
+    drawdown ladder       5% -> 0.8, 10% -> 0.6, 15% -> 0.3
