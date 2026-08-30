@@ -32,7 +32,11 @@ const readField = (tick, ...names) => {
 
 let loggedRawSampleOnce = false;
 
-const sanitiseTick = (rawTick) => {
+// `source` distinguishes a streamed tick from a REST quote. Both are written to
+// the same `stock:SYMBOL` key by different writers on different cadences, and a
+// consumer that treats them alike will read a five-minute-old REST quote as if
+// it were a live tick.
+const sanitiseTick = (rawTick, source = "websocket") => {
     if (!loggedRawSampleOnce) {
         logger.info("SmartWall", "Raw Fyers tick sample (verify field names against this)", rawTick);
         loggedRawSampleOnce = true;
@@ -66,6 +70,7 @@ const sanitiseTick = (rawTick) => {
             volume: readField(rawTick, "vol_traded_today", "volume") || 0,
             marketState: readField(rawTick, "market_status", "marketState") || "CLOSED",
             timestamp,
+            source,
         };
     }
 
@@ -78,6 +83,7 @@ const sanitiseTick = (rawTick) => {
             change,
             changePercent,
             timestamp,
+            source,
         };
     }
 

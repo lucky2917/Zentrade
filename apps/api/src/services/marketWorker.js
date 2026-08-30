@@ -18,7 +18,7 @@ const cacheQuoteEntries = async (entries, keyPrefix) => {
 
     for (const entry of entries) {
         if (entry.s !== "ok" || !entry.v) continue;
-        const sanitised = sanitiseTick(flattenQuoteEntry(entry));
+        const sanitised = sanitiseTick(flattenQuoteEntry(entry), "rest");
         if (sanitised) {
             const payload = JSON.stringify(sanitised);
             pipeline.set(`${keyPrefix}:${sanitised.symbol}`, payload);
@@ -81,13 +81,26 @@ const fetchAndCacheIndices = async () => {
     }
 };
 
+let priceTimer = null;
+let indexTimer = null;
+
+const stopMarketWorker = () => {
+    if (priceTimer) clearInterval(priceTimer);
+    if (indexTimer) clearInterval(indexTimer);
+    priceTimer = null;
+    indexTimer = null;
+};
+
 const startMarketWorker = () => {
+    if (priceTimer) return false;   // duplicate start is a no-op
     logger.info("MarketWorker", "Starting market data worker (fyers REST slow-lane backstop)");
     fetchAndCacheStockPrices();
     fetchAndCacheIndices();
-    setInterval(fetchAndCacheStockPrices, SLOW_LANE_INTERVAL_MS);
-    setInterval(fetchAndCacheIndices, SLOW_LANE_INTERVAL_MS);
+    priceTimer = setInterval(fetchAndCacheStockPrices, SLOW_LANE_INTERVAL_MS);
+    indexTimer = setInterval(fetchAndCacheIndices, SLOW_LANE_INTERVAL_MS);
+    return true;
 };
 
 export { INDICES };
+export { startMarketWorker, stopMarketWorker };
 export default startMarketWorker;
