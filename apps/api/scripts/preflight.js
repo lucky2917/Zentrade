@@ -126,7 +126,14 @@ const checkRedis = async (redis) => {
 const checkFyers = async (redis) => {
     const { ensureFyersToken, acquired, STATUS } =
         await import("../src/services/fyers/tokenSource.js");
-    const { status, message } = await ensureFyersToken({ redis, logger: null });
+    // The existing SDK instance, not a second client.
+    const { fyers } = await import("../src/services/fyers/fyersAuth.js");
+
+    // verify: true asks FYERS whether it accepts the token. Checking only that
+    // a string exists in Redis is what let this report READY while the backend
+    // could not authenticate with the very same string.
+    const { status, message } = await ensureFyersToken({
+        redis, logger: null, verify: true, fyers });
 
     record("FYERS", "access token", BLOCKING, acquired(status), message);
     if (status === STATUS.SYNCED) {

@@ -82,12 +82,16 @@ const checkServices = async () => {
     // so authenticating once is the whole of the operator's morning.
     const { ensureFyersToken, acquired } =
         await import("../src/services/fyers/tokenSource.js");
-    const { status, message } = await ensureFyersToken({ redis });
-    say(acquired(status) ? `  FYERS TOKEN: ${message}` : `  FYERS TOKEN: ${message}`);
+    const { fyers } = await import("../src/services/fyers/fyersAuth.js");
+    // Verified against Fyers, not merely present in Redis. Reporting a token
+    // "valid" on presence alone is how this process and the backend ended up
+    // disagreeing about the same string.
+    const { status, message } = await ensureFyersToken({ redis, verify: true, fyers });
+    say(`  FYERS TOKEN: ${message}`);
     if (!acquired(status)) {
         say("");
-        say("  Starting anyway: the trader will run and observe nothing until a");
-        say("  token exists. Nothing can be executed without market data.");
+        say("  Starting anyway: the trader runs and observes nothing until the");
+        say("  feed authenticates. Nothing can execute without market data.");
     }
 
     await pool.end().catch(() => {});

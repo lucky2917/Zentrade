@@ -36,6 +36,14 @@ const sourceFactory = (client, { failConnect = false } = {}) =>
         };
     };
 
+const jwt = (claims) => {
+    const seg = (o) => Buffer.from(JSON.stringify(o)).toString("base64")
+        .replace(/=+$/, "");
+    return `${seg({ alg: "HS256" })}.${seg(claims)}.sig`;
+};
+
+const GOOD = jwt({ hsm_key: "abc123", exp: Math.floor(Date.now() / 1000) + 3600 });
+
 const env = (over = {}) => ({
     REDIS_URL: "redis://localhost:6379",
     FYERS_REDIRECT_URI: "https://hosted.example.com/fyers/callback",
@@ -45,7 +53,7 @@ const env = (over = {}) => ({
 
 describe("a token already here is left alone", () => {
     it("does not reach for a source when one is live", async () => {
-        const local = fakeRedis({ "fyers:access_token": "t", "fyers:access_token:ttl": 7200 });
+        const local = fakeRedis({ "fyers:access_token": GOOD, "fyers:access_token:ttl": 7200 });
         const RedisClient = sourceFactory(fakeRedis());
         const result = await ensureFyersToken({
             redis: local, env: env({ FYERS_TOKEN_SOURCE_REDIS_URL: "redis://source:6379" }),
@@ -57,7 +65,7 @@ describe("a token already here is left alone", () => {
     });
 
     it("treats an expired token as absent", async () => {
-        const local = fakeRedis({ "fyers:access_token": "t", "fyers:access_token:ttl": 0 });
+        const local = fakeRedis({ "fyers:access_token": GOOD, "fyers:access_token:ttl": 0 });
         const result = await ensureFyersToken({ redis: local, env: env() });
         expect(result.status).toBe(STATUS.NO_SOURCE);
     });
@@ -67,7 +75,7 @@ describe("fetching from the deployment that owns the callback", () => {
     it("copies the token and preserves the real remaining life", async () => {
         const local = fakeRedis();
         const source = fakeRedis({
-            "fyers:access_token": "the-token", "fyers:access_token:ttl": 5400,
+            "fyers:access_token": GOOD, "fyers:access_token:ttl": 5400,
             "fyers:token_expiry": "1788000000000",
         });
         const result = await ensureFyersToken({
@@ -75,7 +83,7 @@ describe("fetching from the deployment that owns the callback", () => {
             env: env({ FYERS_TOKEN_SOURCE_REDIS_URL: "redis://source:6379" }) });
 
         expect(result.status).toBe(STATUS.SYNCED);
-        expect(local.store["fyers:access_token"]).toBe("the-token");
+        expect(local.store["fyers:access_token"]).toBe(GOOD);
         // A borrowed token must expire when the original does, not outlive it.
         expect(local.store["fyers:access_token:ttl"]).toBe(5400);
         expect(local.store["fyers:token_expiry"]).toBe("1788000000000");
@@ -87,7 +95,7 @@ describe("fetching from the deployment that owns the callback", () => {
     it("moves the two auth keys and nothing else", async () => {
         const local = fakeRedis();
         const source = fakeRedis({
-            "fyers:access_token": "t", "fyers:access_token:ttl": 600,
+            "fyers:access_token": GOOD, "fyers:access_token:ttl": 600,
             "fyers:token_expiry": "1", "fyers:calls_used_today": "5000",
             "stock:RELIANCE": "{}", "zentrade:marketdata:owner": "someone-else",
         });
@@ -176,7 +184,9 @@ describe("no secret ever leaves this module", () => {
                 env: env({ FYERS_TOKEN_SOURCE_REDIS_URL: SECRET_URL }) }),
             ensureFyersToken({ redis: fakeRedis(),
                 RedisClient: sourceFactory(fakeRedis({
-                    "fyers:access_token": TOKEN, "fyers:access_token:ttl": 600 })),
+                    "fyers:access_token": jwt({ hsm_key: TOKEN,
+                        exp: Math.floor(Date.now() / 1000) + 600 }),
+                    "fyers:access_token:ttl": 600 })),
                 env: env({ FYERS_TOKEN_SOURCE_REDIS_URL: SECRET_URL }) }),
         ]);
         for (const { message } of cases) {
@@ -191,7 +201,9 @@ describe("no secret ever leaves this module", () => {
         await ensureFyersToken({
             redis: fakeRedis(), logger,
             RedisClient: sourceFactory(fakeRedis({
-                "fyers:access_token": "secret-token", "fyers:access_token:ttl": 600 })),
+                "fyers:access_token": jwt({ hsm_key: "secret-token",
+                    exp: Math.floor(Date.now() / 1000) + 600 }),
+                "fyers:access_token:ttl": 600 })),
             env: env({ FYERS_TOKEN_SOURCE_REDIS_URL: "redis://source:6379" }) });
 
         const logged = JSON.stringify(logger.info.mock.calls);
@@ -219,6 +231,139 @@ describe("one implementation, not two", () => {
             const source = readFileSync(join(process.cwd(), file), "utf8");
             expect({ file, acquires: /ensureFyersToken/.test(source) })
                 .toEqual({ file, acquires: true });
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Presence is not validity.
+//
+// The failure this section exists to prevent: preflight and the agent reported
+// "access token valid" from a string in Redis with a healthy TTL, while the
+// backend could not authenticate with the very same string and the market-data
+// socket died on
+//   Invalid JWT: "hsm_key" missing or token is invalid
+// Two processes did not disagree — only one of them was actually checking.
+
+import { inspectToken, verifyWithFyers } from "../services/fyers/tokenSource.js";
+
+describe("a stored value is checked for being a usable token", () => {
+    it("accepts a well-formed Fyers token", () => {
+        expect(inspectToken(GOOD)).toMatchObject({ ok: true });
+    });
+
+    // The exact value that passed the old presence check.
+    it("rejects a string that is not a JWT at all", () => {
+        const result = inspectToken("SIMULATED-SOURCE-TOKEN-NOT-REAL");
+        expect(result.ok).toBe(false);
+        expect(result.reason).toMatch(/not a JWT \(1 segment/);
+    });
+
+    // The exact claim the socket named in its error.
+    it("rejects a JWT with no hsm_key, which is what the socket decodes", () => {
+        const result = inspectToken(jwt({ exp: Math.floor(Date.now() / 1000) + 3600 }));
+        expect(result.ok).toBe(false);
+        expect(result.reason).toMatch(/hsm_key/);
+        expect(result.reason).toMatch(/market-data socket cannot use it/);
+    });
+
+    it("rejects an expired token even while Redis still holds it", () => {
+        const result = inspectToken(jwt({ hsm_key: "k", exp: Math.floor(Date.now() / 1000) - 60 }));
+        expect(result.ok).toBe(false);
+        expect(result.reason).toMatch(/expired/);
+    });
+
+    it("rejects an undecodable payload and an empty value", () => {
+        expect(inspectToken("a.!!!!.c").ok).toBe(false);
+        expect(inspectToken("").ok).toBe(false);
+        expect(inspectToken(null).ok).toBe(false);
+    });
+});
+
+describe("and for whether Fyers actually accepts it", () => {
+    const sdk = (response) => ({
+        setAppId: vi.fn(), setAccessToken: vi.fn(),
+        get_profile: vi.fn(async () => response),
+    });
+
+    it("passes when Fyers says ok", async () => {
+        const result = await verifyWithFyers({ fyers: sdk({ s: "ok" }), token: GOOD });
+        expect(result.ok).toBe(true);
+    });
+
+    // A token minted for a different Fyers app is well formed and refused.
+    it("reports Fyers' own wording when it refuses", async () => {
+        const result = await verifyWithFyers({
+            fyers: sdk({ s: "error", message: "Could not authenticate the user" }),
+            token: GOOD });
+        expect(result.ok).toBe(false);
+        expect(result.reason).toMatch(/Could not authenticate the user/);
+    });
+
+    it("reports an unreachable Fyers rather than claiming validity", async () => {
+        const broken = { setAppId: vi.fn(), setAccessToken: vi.fn(),
+                         get_profile: async () => { throw new Error("ETIMEDOUT"); } };
+        const result = await verifyWithFyers({ fyers: broken, token: GOOD });
+        expect(result.ok).toBe(false);
+        expect(result.reason).toMatch(/ETIMEDOUT/);
+    });
+
+    it("uses the client id it was given, not a second SDK instance", async () => {
+        const client = sdk({ s: "ok" });
+        await verifyWithFyers({ fyers: client, token: GOOD, clientId: "APPID-100" });
+        expect(client.setAppId).toHaveBeenCalledWith("APPID-100");
+        expect(client.setAccessToken).toHaveBeenCalledWith(GOOD);
+    });
+});
+
+describe("startup reports the truth about the token", () => {
+    const localWith = (token, ttl = 3600) => fakeRedis({
+        "fyers:access_token": token, "fyers:access_token:ttl": ttl });
+
+    it("a present but unusable token is NOT reported as valid", async () => {
+        const result = await ensureFyersToken({
+            redis: localWith("SIMULATED-SOURCE-TOKEN-NOT-REAL"), env: env() });
+        expect(result.status).toBe(STATUS.MALFORMED);
+        expect(acquired(result.status)).toBe(false);
+        expect(result.message).toMatch(/not a Fyers access token/);
+    });
+
+    it("a well-formed token Fyers refuses is NOT reported as valid", async () => {
+        const result = await ensureFyersToken({
+            redis: localWith(GOOD), env: env(), verify: true,
+            fyers: { setAppId: vi.fn(), setAccessToken: vi.fn(),
+                     get_profile: async () => ({ s: "error",
+                         message: "Could not authenticate the user" }) } });
+        expect(result.status).toBe(STATUS.REJECTED);
+        expect(acquired(result.status)).toBe(false);
+        expect(result.message).toMatch(/Could not authenticate the user/);
+    });
+
+    it("a token Fyers accepts is reported as accepted, not merely present", async () => {
+        const result = await ensureFyersToken({
+            redis: localWith(GOOD), env: env(), verify: true,
+            fyers: { setAppId: vi.fn(), setAccessToken: vi.fn(),
+                     get_profile: async () => ({ s: "ok" }) } });
+        expect(result.status).toBe(STATUS.PRESENT);
+        expect(result.message).toMatch(/accepted by Fyers/);
+    });
+
+    it("checks the shape of a freshly fetched token too", async () => {
+        const source = fakeRedis({
+            "fyers:access_token": "not-a-jwt", "fyers:access_token:ttl": 600 });
+        const result = await ensureFyersToken({
+            redis: fakeRedis(), RedisClient: sourceFactory(source),
+            env: env({ FYERS_TOKEN_SOURCE_REDIS_URL: "redis://source:6379" }) });
+        expect(result.status).toBe(STATUS.MALFORMED);
+    });
+
+    it("every entry point verifies rather than only checking presence", async () => {
+        const { readFileSync } = await import("node:fs");
+        const { join } = await import("node:path");
+        for (const file of ["scripts/preflight.js", "scripts/agent.mjs", "src/index.js"]) {
+            const source = readFileSync(join(process.cwd(), file), "utf8");
+            expect({ file, verifies: /verify:\s*true/.test(source) })
+                .toEqual({ file, verifies: true });
         }
     });
 });

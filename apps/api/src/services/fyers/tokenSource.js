@@ -42,6 +42,62 @@ export const STATUS = {
     SAME_REDIS: "SAME_REDIS",     // source is this Redis; nothing to do
     FAILED: "FAILED",             // the source could not be reached
     LOCAL_MINT: "LOCAL_MINT",     // this backend owns the callback; just log in
+    MALFORMED: "MALFORMED",       // present, but not a token Fyers can use
+    REJECTED: "REJECTED",         // well-formed, and Fyers refuses it
+};
+
+// A Fyers access token is a JWT, and the market-data socket decodes it to read
+// `hsm_key`. Checking that here is not belt-and-braces: a value that is present
+// with a healthy TTL but is not a usable token is exactly the case that let
+// startup report a confident READY while the feed could not connect at all.
+//
+// The socket's own error for this is
+//   Invalid JWT: "hsm_key" missing or token is invalid
+// which arrives at connect time, several stages after anything could act on it.
+export const inspectToken = (token) => {
+    if (typeof token !== "string" || !token) {
+        return { ok: false, reason: "no token" };
+    }
+    const segments = token.split(".");
+    if (segments.length !== 3) {
+        return { ok: false,
+                 reason: `not a JWT (${segments.length} segment(s)); the stored value `
+                     + "is not a Fyers access token" };
+    }
+    let claims;
+    try {
+        claims = JSON.parse(Buffer.from(segments[1], "base64").toString("utf8"));
+    } catch {
+        return { ok: false, reason: "the JWT payload could not be decoded" };
+    }
+    if (!("hsm_key" in claims)) {
+        return { ok: false,
+                 reason: 'the token has no "hsm_key" claim, so the market-data '
+                     + "socket cannot use it" };
+    }
+    if (Number.isFinite(claims.exp) && claims.exp * 1000 <= Date.now()) {
+        return { ok: false, reason: "the token has expired" };
+    }
+    return { ok: true, reason: "well formed", claims: { exp: claims.exp ?? null } };
+};
+
+// Does FYERS accept it? Presence and shape are necessary and not sufficient: a
+// token minted for a different app, or revoked, is well formed and refused.
+//
+// Uses the existing SDK instance rather than constructing a second client.
+export const verifyWithFyers = async ({ fyers, token, clientId }) => {
+    if (!fyers || !token) return { ok: false, reason: "no client or token to verify with" };
+    try {
+        if (clientId) fyers.setAppId(clientId);
+        fyers.setAccessToken(token);
+        const response = await fyers.get_profile();
+        if (response?.s === "ok") return { ok: true, reason: "Fyers accepts it" };
+        // Fyers' own wording is more useful than anything paraphrased.
+        return { ok: false,
+                 reason: `Fyers refused it: ${response?.message ?? response?.s ?? "unknown"}` };
+    } catch (err) {
+        return { ok: false, reason: `could not reach Fyers to verify: ${err.message}` };
+    }
 };
 
 export const tokenSourceUrl = (env = process.env) => {
@@ -78,13 +134,34 @@ const liveToken = async (client) => {
 // that is fatal.
 export const ensureFyersToken = async ({
     redis, env = process.env, logger = null, RedisClient = Redis,
+    verify = false, fyers = null,
 } = {}) => {
+    // Presence, then shape, then — when asked — whether Fyers accepts it.
+    // Reporting only the first of those is what let one process say "valid" and
+    // another fail to authenticate with the same string.
+    const settle = async (status, token, ttl) => {
+        const shape = inspectToken(token);
+        if (!shape.ok) return { status: STATUS.MALFORMED, message: shape.reason };
+
+        const minutes = Math.round(ttl / 60);
+        const life = `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+        if (!verify) {
+            return { status,
+                     message: status === STATUS.SYNCED
+                         ? `fetched from the token source, valid for ${life}`
+                         : `valid for ${life}` };
+        }
+        const live = await verifyWithFyers({
+            fyers, token, clientId: env.FYERS_CLIENT_ID });
+        if (!live.ok) return { status: STATUS.REJECTED, message: live.reason };
+        return { status,
+                 message: status === STATUS.SYNCED
+                     ? `fetched and accepted by Fyers, valid for ${life}`
+                     : `accepted by Fyers, valid for ${life}` };
+    };
+
     const existing = await liveToken(redis).catch(() => null);
-    if (existing) {
-        const minutes = Math.round(existing.ttl / 60);
-        return { status: STATUS.PRESENT,
-                 message: `valid for ${Math.floor(minutes / 60)}h ${minutes % 60}m` };
-    }
+    if (existing) return settle(STATUS.PRESENT, existing.token, existing.ttl);
 
     if (mintsItsOwnToken(env.FYERS_REDIRECT_URI)) {
         return { status: STATUS.LOCAL_MINT,
@@ -126,11 +203,9 @@ export const ensureFyersToken = async ({
         await redis.set(ACCESS_TOKEN_KEY, live.token, "EX", live.ttl);
         if (expiry) await redis.set(TOKEN_EXPIRY_KEY, expiry);
 
-        const minutes = Math.round(live.ttl / 60);
         logger?.info?.("FyersToken", "token acquired from the configured source",
-                       { validForMinutes: minutes });
-        return { status: STATUS.SYNCED,
-                 message: `fetched from the token source, valid for ${Math.floor(minutes / 60)}h ${minutes % 60}m` };
+                       { validForMinutes: Math.round(live.ttl / 60) });
+        return settle(STATUS.SYNCED, live.token, live.ttl);
     } catch (err) {
         // The message may name a host but never a credential: ioredis errors
         // carry the address, not the password.

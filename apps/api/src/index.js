@@ -483,7 +483,12 @@ const start = async () => {
                 // command to remember.
                 const { ensureFyersToken, acquired } =
                     await import("./services/fyers/tokenSource.js");
-                const { status, message } = await ensureFyersToken({ redis, logger });
+                const { fyers } = await import("./services/fyers/fyersAuth.js");
+                // Verified with Fyers here, so a token that will be refused at
+                // socket connect fails THIS stage, which names it, rather than
+                // surfacing three stages later as an opaque JWT decode error.
+                const { status, message } = await ensureFyersToken({
+                    redis, logger, verify: true, fyers });
                 logger.info("Server", `Fyers token: ${message}`, { status });
 
                 await initFyersAuth();
@@ -533,7 +538,7 @@ const start = async () => {
         logger.error("Server", `boot failed at ${boot.stage}: ${boot.error}`);
     }
     logger.info("Server", `health: ${health().status}`);
-    printBanner();
+    await printBanner();
 };
 
 // The cockpit is served by the API when a web build exists, so watching the
@@ -558,11 +563,42 @@ const mountCockpitUI = () => {
     logger.info("Server", "cockpit UI mounted", { route: "/trader" });
 };
 
+// The feed is only "trusted" once ticks have actually arrived, so outside
+// market hours it is correctly connected and correctly untrusted. Saying that
+// plainly stops a closed market from reading as a broken one.
+const marketClosed = (snapshot) =>
+    snapshot.session === "CLOSED" || snapshot.session === "PRE_MARKET";
+
+const feedLine = (snapshot) => {
+    const state = snapshot.connection?.state ?? "UNKNOWN";
+    if (snapshot.connection?.trusted) return `${state} (ticks flowing)`;
+    if (marketClosed(snapshot)) return `${state} (no ticks — market ${snapshot.session})`;
+    return `${state} (not trusted — no recent ticks)`;
+};
+
+// The autonomous runtime lives in the agent process and reports its own
+// heartbeat. This process can only say whether it has seen one.
+const traderLine = (snapshot) => (snapshot.traderRunning
+    ? `RUNNING (fast plane ${snapshot.traderPlane ?? "unknown"})`
+    : "not started — run `npm run agent` in another terminal");
+
+const healthLine = (snapshot) => {
+    const status = snapshot.status ?? "UNKNOWN";
+    if (status !== "READY" && marketClosed(snapshot)) {
+        return `${status} (expected — the market is ${snapshot.session})`;
+    }
+    return status;
+};
+
 // One place that answers "is it up, and where do I watch it" without reading
 // ten log lines. Everything printed is read from real state.
-const printBanner = () => {
-    const snapshot = health();
-    const running = Boolean(orchestrator);
+const printBanner = async () => {
+    const runtime = await readRuntimeHealth();
+    const snapshot = {
+        ...health(),
+        traderRunning: Boolean(runtime?.running),
+        traderPlane: runtime?.fastPlane?.mode ?? null,
+    };
     // Prefer the port this process is actually serving on: with the web build
     // mounted, that is where the cockpit lives.
     const dist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
@@ -577,13 +613,15 @@ const printBanner = () => {
         "  ZEN TRADE AI TRADER",
         "  -------------------",
         line("MODE", "PAPER"),
-        line("FAST PLANE", (process.env.ZENTRADE_FAST_PLANE || "off").toUpperCase()),
-        line("BRAIN", running ? "ACTIVE" : "DISABLED (set ZENTRADE_AUTONOMOUS=true)"),
-        line("RISK", snapshot.orchestrator?.halted ? "HALTED" : "ARMED"),
+        // The fast plane and the brain belong to the agent process. Reporting
+        // them here as OFF or DISABLED described this process's own state as
+        // though it were the system's, which reads as a broken stack when the
+        // agent simply has not been started yet.
+        line("ROLE", "API · Fyers edge · cockpit"),
+        line("TRADER", traderLine(snapshot)),
         line("MARKET", snapshot.session ?? "UNKNOWN"),
-        line("FEED", (snapshot.connection?.state ?? "UNKNOWN")
-            + (snapshot.connection?.trusted ? "" : " (not trusted)")),
-        line("HEALTH", snapshot.status ?? "UNKNOWN"),
+        line("FEED", feedLine(snapshot)),
+        line("HEALTH", healthLine(snapshot)),
         line("COCKPIT", cockpitUrl),
         line("HALT", `POST ${`http://localhost:${PORT}`}/internal/brain/halt`),
         "",

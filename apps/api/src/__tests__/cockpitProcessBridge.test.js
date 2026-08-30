@@ -166,3 +166,56 @@ describe("exactly one runtime can exist", () => {
         expect(source).toMatch(/barAggregator: null/);
     });
 });
+
+// Running the backend and the agent side by side must not double anything.
+// They share Redis and Postgres by design; what must not be shared is a
+// producer, a scheduler or a runtime.
+describe("backend and agent do not duplicate each other", () => {
+    const read = async (file) => {
+        const { readFileSync } = await import("node:fs");
+        const { join } = await import("node:path");
+        return readFileSync(join(process.cwd(), file), "utf8");
+    };
+
+    it("only the backend opens a Fyers market-data socket", async () => {
+        const agent = await read("src/agent.js");
+        for (const producer of ["connectFyersWebSocket", "startMarketWorker",
+                                "startAllLanes", "startWatchdog", "initFyersAuth",
+                                "setBarSink", "startPreMarketScanner"]) {
+            expect({ producer, inAgent: agent.includes(producer) })
+                .toEqual({ producer, inAgent: false });
+        }
+        expect(await read("src/index.js")).toMatch(/connectFyersWebSocket\(\)/);
+    });
+
+    it("only the backend runs the cron and event-backbone jobs", async () => {
+        const agent = await read("src/agent.js");
+        for (const job of ["startSquareOffJob", "startEventBackbone",
+                           "startRegimeLabeler", "startOutcomeLabeler",
+                           "startCalibrationEngine", "startMemoryIndexer",
+                           "startReflectionEngine", "startOpsAlarms"]) {
+            expect({ job, inAgent: agent.includes(job) }).toEqual({ job, inAgent: false });
+        }
+    });
+
+    it("the agent builds no bar aggregator of its own", async () => {
+        // The backend owns the socket, so it owns bar assembly. A second
+        // aggregator would write the same keys from a second tick subscription.
+        expect(await read("src/agent.js")).toMatch(/barAggregator: null/);
+    });
+
+    it("the agent serves no HTTP and the backend runs no orchestrator", async () => {
+        const agent = await read("src/agent.js");
+        expect(agent).not.toMatch(/express|server\.listen/);
+        expect(await read("src/index.js")).not.toMatch(/new AutonomousRuntime/);
+    });
+
+    // Both subscribe to price:update. That is fan-out, not duplication: the
+    // agent feeds its local reflex, the Go plane maintains world state, and
+    // neither produces ticks.
+    it("subscribes to the tick stream without republishing it", async () => {
+        const agent = await read("src/agent.js");
+        expect(agent).toMatch(/subscribe\("?price:update"?\)|subscribe\(PRICE_CHANNEL\)/);
+        expect(agent).not.toMatch(/\.publish\(PRICE_CHANNEL|publish\("price:update"/);
+    });
+});
