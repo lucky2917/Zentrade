@@ -66,7 +66,8 @@ const enqueueTradeExecuted = async (client, { orderId, symbol, side, quantity, e
     );
 };
 
-const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY", decisionId = null) => {
+const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY", decisionId = null,
+                          { clientOrderId = null, correlationId = null } = {}) => {
     if (!STOCK_MAP.has(symbol)) {
         throw new Error("Invalid stock symbol");
     }
@@ -139,8 +140,8 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY", decisionI
 
         // H3 fix: total_value_paise = gross stock cost (price * qty); brokerage is separate
         const { rows: [order] } = await client.query(
-            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, decision_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
-            [userId, symbol, "BUY", quantity, executionPricePaise, stockCostPaise, BROKERAGE_PAISE, mode, decisionId]
+            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, decision_id, client_order_id, correlation_id, state, filled_quantity, reserved_paise, completed_at, last_update_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'FILLED', $4, 0, NOW(), NOW()) RETURNING id",
+            [userId, symbol, "BUY", quantity, executionPricePaise, stockCostPaise, BROKERAGE_PAISE, mode, decisionId, clientOrderId, correlationId]
         );
 
         await enqueueTradeExecuted(client, { orderId: order.id, symbol, side: "BUY", quantity, executionPricePaise, mode, decisionId });
@@ -181,7 +182,8 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY", decisionI
     }
 };
 
-const executeSell = async (userId, symbol, quantity, mode = "INTRADAY", decisionId = null) => {
+const executeSell = async (userId, symbol, quantity, mode = "INTRADAY", decisionId = null,
+                           { clientOrderId = null, correlationId = null } = {}) => {
     if (!STOCK_MAP.has(symbol)) {
         throw new Error("Invalid stock symbol");
     }
@@ -270,8 +272,8 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY", decision
 
         // H3 fix: total_value_paise = gross proceeds (price * qty); pnl_paise = realized PnL
         const { rows: [order] } = await client.query(
-            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, pnl_paise, decision_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
-            [userId, symbol, "SELL", quantity, executionPricePaise, grossProceedsPaise, BROKERAGE_PAISE, mode, pnlPaise, decisionId]
+            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, pnl_paise, decision_id, client_order_id, correlation_id, state, filled_quantity, reserved_paise, completed_at, last_update_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'FILLED', $4, 0, NOW(), NOW()) RETURNING id",
+            [userId, symbol, "SELL", quantity, executionPricePaise, grossProceedsPaise, BROKERAGE_PAISE, mode, pnlPaise, decisionId, clientOrderId, correlationId]
         );
 
         await enqueueTradeExecuted(client, { orderId: order.id, symbol, side: "SELL", quantity, executionPricePaise, mode, decisionId, pnlPaise });
