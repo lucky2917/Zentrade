@@ -155,7 +155,10 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("tick-level protection", () => {
         const runtime = makeRuntime();
         await runtime.start();
         runtime.ingestTick({ symbol: SYMBOL, price: 1085, timestamp: at(12, 0) });
-        await vi.waitFor(() => expect(runtime.metrics.protectiveActions).toBe(1), { timeout: 5000 });
+        // Counted as a material signal, not a protective action: only a stop or
+        // a named invalidation authorises moving the position.
+        await vi.waitFor(() => expect(runtime.metrics.materialSignals).toBe(1), { timeout: 5000 });
+        expect(runtime.metrics.protectiveActions).toBe(0);
         // Still held: reaching a target is a judgement, not a pre-commitment.
         expect(await holding()).toBe(200);
         const { rows } = await pool.query(

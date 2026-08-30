@@ -358,7 +358,8 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous paper runtime", () => {
             const names = runtime.orchestrator.scheduler.health().jobs.map((j) => j.name).sort();
             expect(names).toEqual([
                 "candidate-scan", "health", "news-ingest", "order-expiry",
-                "position-monitor", "reasoning", "reconciliation", "venue-tick",
+                "position-monitor", "reasoning", "reconciliation", "stale-sweep",
+                "venue-tick",
             ]);
         });
 
@@ -395,7 +396,7 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous paper runtime", () => {
             expect(h.mode).toBe("PAPER");
             expect(h.liveExecutionEnabled).toBe(false);
             expect(h.venue).toHaveProperty("resting");
-            expect(h.orchestrator.scheduler.jobCount).toBe(8);
+            expect(h.orchestrator.scheduler.jobCount).toBe(9);
             expect(h.orchestrator).toHaveProperty("queue");
             expect(h.runtime).toHaveProperty("candidatesScanned");
             await runtime.stop();

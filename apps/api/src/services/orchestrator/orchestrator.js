@@ -8,6 +8,8 @@ import { observeUniverse } from "../intelligence/observe.js";
 import { buildMarketState, UNKNOWN_MARKET } from "../intelligence/marketState.js";
 import { revalidate, VERDICT } from "../execution/revalidate.js";
 import { positionIntentKey } from "../autonomous/symbolGate.js";
+import { KIND } from "../cockpit/narrator.js";
+import { narrateDecision, decisionCard } from "../cockpit/reasoningNarration.js";
 
 // The autonomous orchestrator.
 //
@@ -31,10 +33,27 @@ export const DEFAULT_INTERVALS = {
     expiryMs: 60_000,
 };
 
+// How much reasoning may be in flight at once.
+//
+// Sequential reasoning made the cycle, not the batch, the bottleneck: three
+// events at roughly two model calls each took longer than the interval, so the
+// job spent the open skipping itself while the queue expired work at sixty
+// seconds and re-offered it forever.
+//
+// Concurrency is deliberately small. Each chain issues two sequential model
+// calls, so this is also the ceiling on simultaneous requests to the model
+// provider, and exceeding its rate limit turns a burst into a retry storm.
+export const DEFAULT_REASONING = { batch: 6, concurrency: 2 };
+
 export class Orchestrator {
-    constructor({ ports, intervals = {}, clock = () => new Date(), logger = null } = {}) {
+    constructor({ ports, intervals = {}, reasoning = {},
+                  clock = () => new Date(), logger = null, narrator = null } = {}) {
         this.ports = ports;
+        // Optional by design: the loop runs identically without a cockpit
+        // attached, and narration can never change a decision.
+        this.narrator = narrator;
         this.intervals = { ...DEFAULT_INTERVALS, ...intervals };
+        this.reasoning = { ...DEFAULT_REASONING, ...reasoning };
         this.clock = clock;
         this.logger = logger;
         this.phase = PHASE.STOPPED;
@@ -48,7 +67,8 @@ export class Orchestrator {
         this.marketState = UNKNOWN_MARKET;
         this.metrics = {
             cycles: 0, eventsEmitted: 0, eventsQueued: 0,
-            reasoningInvocations: 0, reasoningAvoided: 0,
+            reasoningInvocations: 0, reasoningAvoided: 0, reasoningBatches: 0,
+            maxReasoningConcurrency: 0,
             riskRejections: 0, executions: 0, errors: 0,
             anomaliesDetected: 0, marketWideAnomalies: 0,
             newsEventsReceived: 0, newsEventsDeduplicated: 0, eventsReleased: 0,
@@ -120,8 +140,9 @@ export class Orchestrator {
     // Postgres, and event keys are deterministic. Recovery reads that state
     // rather than replaying actions.
     async recover() {
+        const at = this.clock();
         const openOrders = (await this.ports.openOrders?.()) ?? [];
-        const positions = (await this.ports.loadPositions?.()) ?? [];
+        const positions = (await this.ports.loadPositions?.(at)) ?? [];
         const ambiguous = openOrders.filter((o) => o.state === "AMBIGUOUS");
         this.previousBySymbol = new Map();
 
@@ -149,9 +170,12 @@ export class Orchestrator {
     // ---- cycles ---------------------------------------------------------
 
     async monitorCycle() {
+        // G4. One instant for the whole cycle. Every read below is bound to it,
+        // so the positions, the portfolio and the observed universe describe the
+        // same moment rather than three moments a few hundred milliseconds apart.
         const now = this.clock();
-        const positions = (await this.ports.loadPositions?.()) ?? [];
-        const portfolio = await this.ports.loadPortfolio?.();
+        const positions = (await this.ports.loadPositions?.(now)) ?? [];
+        const portfolio = await this.ports.loadPortfolio?.(now);
         this.metrics.lastMarketUpdateAt = now.toISOString();
 
         const events = runMonitorCycle({
@@ -163,7 +187,7 @@ export class Orchestrator {
         // something unusual happening", which is a different question and
         // covers symbols we do not yet hold.
         if (this.ports.loadObservations) {
-            const raw = await this.ports.loadObservations();
+            const raw = await this.ports.loadObservations(now);
             // Attach the thesis for symbols we hold, so an anomaly on a held
             // position routes to reassessment while the same anomaly on an
             // unheld symbol routes to candidate analysis.
@@ -178,6 +202,9 @@ export class Orchestrator {
             if (universe.marketWide) this.metrics.marketWideAnomalies += 1;
             this.lastContexts = universe.contexts;
             this.marketState = buildMarketState({ moves: universe.moves, asOf: now });
+            // Hand the bar-scale baselines to the tick path so deviation and
+            // volume are judged continuously rather than once per sweep.
+            this.ports.syncBaselines?.(universe.contexts);
             events.push(...universe.events);
         }
 
@@ -194,7 +221,25 @@ export class Orchestrator {
             const candidateWorthy = routeOf(event) === ROUTE.CANDIDATE
                 && this.ports.analyseCandidate
                 && (event.severity === "WARNING" || event.severity === "CRITICAL");
-            if (!requiresReasoning(event) && !candidateWorthy) {
+            const material = requiresReasoning(event) || candidateWorthy;
+
+            this.narrate(event.type === "NEWS_EVENT" ? KIND.NEWS_EVENT : KIND.MARKET_EVENT, {
+                symbol: event.symbol, type: event.type, severity: event.severity,
+                reason: event.reason, route: routeOf(event),
+                observed: event.observed ?? null, thesisId: event.thesisId ?? null,
+            });
+            // Why it matters, or why it does not. An operator should never have
+            // to guess why the brain stayed asleep.
+            this.narrate(KIND.MATERIALITY, {
+                symbol: event.symbol, type: event.type, severity: event.severity,
+                material,
+                verdict: material ? "reasoning required" : "recorded, no reasoning",
+                because: material
+                    ? `${event.severity} on a ${routeOf(event).toLowerCase()} route`
+                    : `${event.severity} ${routeOf(event).toLowerCase()} event does not meet the threshold`,
+            });
+
+            if (!material) {
                 this.metrics.reasoningAvoided += 1;
                 await this.ports.recordEvent?.(event);
                 continue;
@@ -212,29 +257,54 @@ export class Orchestrator {
 
         for (const p of positions) this.previousBySymbol.set(p.symbol, p);
         this.metrics.cycles += 1;
+
+        // One line per observation pass, carrying real measured state. This is
+        // the "quiet market" heartbeat: it says the system looked and found
+        // nothing, which is different from the system not looking.
+        this.narrate(KIND.MARKET_OBSERVATION, {
+            session: this.session(),
+            positions: positions.length,
+            observed: Object.keys(this.lastContexts ?? {}).length,
+            eventsRaised: events.length,
+            queueDepth: this.queue.size,
+            market: this.marketState,
+        });
+
         return { events: events.length, queued: this.queue.size };
     }
 
     // Tier 3. Only runs against queued events, so a quiet market produces no
     // LLM calls at all.
-    async reasoningCycle({ limit = 3 } = {}) {
+    //
+    // Events for different symbols are reasoned about concurrently; events for
+    // the SAME symbol stay strictly sequential, because two workers holding the
+    // same position would each form a view of it and each propose an exit.
+    async reasoningCycle({ limit = this.reasoning.batch,
+                           concurrency = this.reasoning.concurrency } = {}) {
         const session = this.session();
         const events = this.queue.drain(limit);
         const handled = [];
 
-        for (const event of events) {
-            const correlationId = event.correlationId ?? `auto-${randomUUID()}`;
-            try {
-                handled.push(await this.handleEvent(event, correlationId, session));
-                // Only now is the condition genuinely dealt with. Marking it
-                // earlier is what allowed a crash mid-reasoning to lose it.
-                await this.ports.markEventHandled?.(event.storedId);
-            } catch (err) {
-                this.metrics.errors += 1;
-                this.logger?.error?.("Orchestrator", "event handling failed",
-                                     { error: err.message, event: event.type });
-                await this.ports.markEventFailed?.(event.storedId, err.message);
-            }
+        if (events.length) {
+            this.metrics.reasoningBatches += 1;
+            const chains = this.chainBySymbol(events);
+            const results = new Array(chains.length);
+            const workers = Math.max(1, Math.min(concurrency, chains.length));
+            this.metrics.maxReasoningConcurrency =
+                Math.max(this.metrics.maxReasoningConcurrency, workers);
+
+            let next = 0;
+            const worker = async () => {
+                while (next < chains.length) {
+                    const index = next;
+                    next += 1;
+                    results[index] = await this.runChain(chains[index], session);
+                }
+            };
+            await Promise.all(Array.from({ length: workers }, worker));
+            // Flattened in chain order so the outcome does not depend on which
+            // worker happened to finish first.
+            for (const chain of results) handled.push(...chain);
         }
 
         // Anything the queue could not hold goes back to the durable store as
@@ -247,8 +317,49 @@ export class Orchestrator {
         return handled;
     }
 
+    // One chain per symbol, preserving the order the queue handed them out.
+    chainBySymbol(events) {
+        const bySymbol = new Map();
+        for (const event of events) {
+            const key = event.symbol ?? "PORTFOLIO";
+            const chain = bySymbol.get(key);
+            if (chain) chain.push(event); else bySymbol.set(key, [event]);
+        }
+        return [...bySymbol.values()];
+    }
+
+    async runChain(events, session) {
+        const handled = [];
+        for (const event of events) handled.push(await this.handleOne(event, session));
+        return handled;
+    }
+
+    // A failing event must not abandon the rest of its chain, and must leave
+    // the durable row PENDING so the condition comes back rather than vanishing.
+    async handleOne(event, session) {
+        const correlationId = event.correlationId ?? `auto-${randomUUID()}`;
+        try {
+            const outcome = await this.handleEvent(event, correlationId, session);
+            // Only now is the condition genuinely dealt with. Marking it
+            // earlier is what allowed a crash mid-reasoning to lose it.
+            await this.ports.markEventHandled?.(event.storedId);
+            return outcome;
+        } catch (err) {
+            this.metrics.errors += 1;
+            this.logger?.error?.("Orchestrator", "event handling failed",
+                                 { error: err.message, event: event.type });
+            await this.ports.markEventFailed?.(event.storedId, err.message);
+            return { error: err.message, type: event.type, symbol: event.symbol };
+        }
+    }
+
     async handleEvent(event, correlationId, session) {
         const route = routeOf(event);
+        // The decision's instant. Every read that forms this decision uses it;
+        // only the Tier 4 revalidation below deliberately takes a fresh one,
+        // because revalidating against the decision's own timestamp would
+        // revalidate nothing.
+        const asOf = this.clock();
 
         // A candidate is a different question from a position: "is this worth
         // entering" rather than "is the thesis still valid". It gets its own
@@ -267,9 +378,19 @@ export class Orchestrator {
             }
 
             this.metrics.reasoningInvocations += 1;
+            this.narrate(KIND.REASONING_STARTED, {
+                symbol: event.symbol, route: ROUTE.CANDIDATE, trigger: event.type,
+                correlationId, severity: event.severity, because: event.reason,
+            });
             const analysis = await this.ports.analyseCandidate({
-                symbol: event.symbol, event, context, market: this.marketState,
+                symbol: event.symbol, event, context, market: this.marketState, asOf,
                 reasons: [`${event.type} (${event.severity}): ${event.reason}`],
+            });
+            this.narrate(KIND.REASONING_FINISHED, {
+                symbol: event.symbol, route: ROUTE.CANDIDATE, correlationId,
+                action: analysis?.action ?? null,
+                executed: Boolean(analysis?.executed),
+                holdingPositions: this.previousBySymbol.size > 0,
             });
             // The executing path journals its own decision, risk verdict and
             // outcome; recording it again here logged one decision twice. A
@@ -285,18 +406,25 @@ export class Orchestrator {
 
         if (route !== ROUTE.POSITION) return { skipped: "not a position event" };
 
-        const position = (await this.ports.positionFor?.(event.symbol)) ?? null;
+        const position = (await this.ports.positionFor?.(event.symbol, asOf)) ?? null;
         if (!position) return { skipped: "position gone" };
         const thesis = (await this.ports.loadThesis?.(position)) ?? null;
         if (!thesis) return { skipped: "no thesis" };
 
         this.metrics.reasoningInvocations += 1;
+        this.narrate(KIND.REASONING_STARTED, {
+            symbol: event.symbol, route: ROUTE.POSITION, trigger: event.type,
+            correlationId, severity: event.severity, because: event.reason,
+            thesisId: thesis?.id ?? null,
+        });
         const decision = await this.ports.reassess({
-            position, thesis, event,
+            position, thesis, event, asOf,
             marketState: this.lastContexts?.[event.symbol] ?? null,
             market: this.marketState,
         });
         this.metrics.lastDecisionAt = this.clock().toISOString();
+
+        this.narrateReasoned({ event, correlationId, decision, route: ROUTE.POSITION });
 
         const built = this.ports.intentFrom(decision, position);
         // One thesis gets one exit, however many events argue for it.
@@ -304,12 +432,17 @@ export class Orchestrator {
             ...built,
             clientOrderId: positionIntentKey({
                 thesisId: thesis?.id ?? null, action: built.action,
-                symbol: event.symbol, at: this.clock() }),
+                symbol: event.symbol, at: asOf }),
         } : null;
         if (!intent) {
             await this.persistReassessment({ position, thesis, event, decision, risk: null,
                                              correlationId, executed: false });
             await this.ports.journal?.({ correlationId, event, decision, risk: null, executed: false });
+            this.narrateReassessment({ event, correlationId, decision, position, executed: false });
+            this.narrate(KIND.REASONING_FINISHED, {
+                symbol: event.symbol, route: ROUTE.POSITION, correlationId,
+                action: decision.action, executed: false, holdingPositions: true,
+            });
             return { action: decision.action, executed: false };
         }
 
@@ -322,6 +455,13 @@ export class Orchestrator {
                 correlationId, event, decision, risk: null, executed: false,
                 blocked: `session ${session} does not permit ${capability}`,
             });
+            this.narrate(KIND.RISK_DECISION, {
+                symbol: event.symbol, correlationId, decision: "REJECT",
+                code: "SESSION", reason: `session ${session} does not permit ${capability}`,
+            });
+            this.narrate(KIND.REASONING_FINISHED, {
+                symbol: event.symbol, route: ROUTE.POSITION, correlationId,
+                action: decision.action, executed: false, holdingPositions: true });
             return { action: decision.action, executed: false, blocked: capability };
         }
 
@@ -329,9 +469,11 @@ export class Orchestrator {
         // it is re-priced to the market and sized to what is actually held.
         const observation = {
             pricePaise: position.currentPricePaise,
-            atMs: this.clock().getTime() - (position.dataAgeMs ?? 0),
+            atMs: asOf.getTime() - (position.dataAgeMs ?? 0),
             tickSeq: null,
         };
+        // Deliberately a FRESH read: the world may have moved while the model
+        // was thinking, and that is the whole point of Tier 4.
         const world = (await this.ports.currentWorld?.(event.symbol)) ?? {
             nowMs: this.clock().getTime(),
             pricePaise: position.currentPricePaise,
@@ -339,32 +481,107 @@ export class Orchestrator {
             position: { quantity: position.quantity },
         };
         const check = revalidate({ intent, observation, world });
+        this.narrate(KIND.REVALIDATION, {
+            symbol: event.symbol, correlationId, verdict: check.verdict,
+            code: check.code ?? null, reason: check.reason ?? null,
+            decisionPricePaise: observation.pricePaise,
+            worldPricePaise: world.pricePaise ?? null,
+            priceAgeMs: world.priceAgeMs ?? null,
+        });
         if (check.verdict === VERDICT.REJECT) {
             await this.persistReassessment({ position, thesis, event, decision, risk: null,
                                              correlationId, executed: false });
             await this.ports.journal?.({
                 correlationId, event, decision, risk: null, executed: false,
                 blocked: `revalidation ${check.code}: ${check.reason}` });
+            this.narrateReassessment({ event, correlationId, decision, position, executed: false });
+            this.narrate(KIND.REASONING_FINISHED, {
+                symbol: event.symbol, route: ROUTE.POSITION, correlationId,
+                action: decision.action, executed: false, holdingPositions: true });
             return { action: decision.action, executed: false, blocked: check.code };
         }
         const revalidated = check.intent;
 
-        const risk = await this.ports.evaluateRisk({ ...revalidated, correlationId }, position);
+        const risk = await this.ports.evaluateRisk({ ...revalidated, correlationId },
+                                                   position, asOf);
+        this.narrate(KIND.RISK_DECISION, {
+            symbol: event.symbol, correlationId, decision: risk.decision,
+            code: risk.code ?? null, reason: risk.reason ?? null,
+            action: decision.action, quantity: revalidated.quantity,
+        });
         if (risk.decision !== "ALLOW") {
             this.metrics.riskRejections += 1;
             await this.persistReassessment({ position, thesis, event, decision, risk,
                                              correlationId, executed: false });
             await this.ports.journal?.({ correlationId, event, decision, risk, executed: false });
+            this.narrateReassessment({ event, correlationId, decision, position, executed: false });
+            this.narrate(KIND.REASONING_FINISHED, {
+                symbol: event.symbol, route: ROUTE.POSITION, correlationId,
+                action: decision.action, executed: false, holdingPositions: true });
             return { action: decision.action, executed: false, risk: risk.code };
         }
 
-        await this.ports.execute({ ...revalidated, correlationId });
+        const result = await this.ports.execute({ ...revalidated, correlationId });
         this.metrics.executions += 1;
         this.metrics.lastExecutionAt = this.clock().toISOString();
         await this.persistReassessment({ position, thesis, event, decision, risk,
                                          correlationId, executed: true });
         await this.ports.journal?.({ correlationId, event, decision, risk, executed: true });
+        this.narrateReassessment({ event, correlationId, decision, position, executed: true });
+        this.narrate(KIND.REASONING_FINISHED, {
+            symbol: event.symbol, route: ROUTE.POSITION, correlationId,
+            action: decision.action, executed: true, holdingPositions: true,
+            card: this.safeCard({ symbol: event.symbol, action: decision.action,
+                                  decision, risk, intent: revalidated, order: result }),
+        });
         return { action: decision.action, executed: true };
+    }
+
+    // ---- narration -------------------------------------------------------
+    //
+    // Never on the decision path: a cockpit that could throw into reasoning
+    // would be a display bug that stopped the system trading.
+    narrate(kind, payload) {
+        if (!this.narrator) return null;
+        try { return this.narrator.emit(kind, payload); } catch (err) {
+            this.logger?.warn?.("Orchestrator", "narration failed",
+                                { error: err.message, kind });
+            return null;
+        }
+    }
+
+    narrateReasoned({ event, correlationId, decision, route }) {
+        if (!this.narrator) return;
+        // Guarded like every other narration call. A display failure must not
+        // be able to abort a decision that has already been made.
+        try {
+            narrateDecision({ narrator: this.narrator, symbol: event.symbol,
+                              trigger: event.type, route, correlationId, decision });
+        } catch (err) {
+            this.logger?.warn?.("Orchestrator", "decision narration failed",
+                                { error: err.message });
+        }
+    }
+
+    safeCard(input) {
+        try { return decisionCard(input); } catch (err) {
+            this.logger?.warn?.("Orchestrator", "decision card not built",
+                                { error: err.message });
+            return null;
+        }
+    }
+
+    narrateReassessment({ event, correlationId, decision, position, executed }) {
+        this.narrate(KIND.REASSESSMENT, {
+            symbol: event.symbol, correlationId, trigger: event.type,
+            action: decision.action,
+            thesisStillValid: decision.thesisStillValid ?? null,
+            whatChanged: decision.whatChanged ?? null,
+            material: Boolean(decision.material),
+            unrealisedPnlPaise: position?.unrealisedPnlPaise ?? null,
+            holdingSeconds: position?.holdingSeconds ?? null,
+            executed,
+        });
     }
 
     // Every reassessment is persisted against its thesis, executed or not.

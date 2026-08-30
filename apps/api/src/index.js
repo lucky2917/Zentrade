@@ -25,7 +25,13 @@ import marketRoutes from "./routes/market.js";
 import watchlistRoutes from "./routes/watchlist.js";
 import aiRoutes from "./routes/ai.js";
 import startMarketWorker, { stopMarketWorker } from "./services/marketWorker.js";
+import { existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import startWebSocketBroadcaster from "./services/websocket.js";
+import { narrator } from "./services/cockpit/narrator.js";
+import { attachCockpit } from "./services/cockpit/transport.js";
+import { buildCockpitRouter } from "./routes/cockpit.js";
 import { startSquareOffJob, stopSquareOffJob, reconcileSquareOff } from "./services/squareOff.js";
 import { initFyersAuth, isConfigured as isFyersConfigured } from "./services/fyers/fyersAuth.js";
 import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket, stop as stopFyersWebSocket, setBarSink, setConnectionSink, setReflexSink } from "./services/fyers/fyersWebSocket.js";
@@ -298,6 +304,20 @@ app.get("/internal/brain/text", auth, async (req, res) => {
 
 app.get("/internal/brain/health", auth, (req, res) => res.json(health()));
 
+// The trader cockpit. Read only: this router defines no mutating verb, and
+// nothing under it can reach execution, risk or thesis state.
+// Both accessors are lazy. Passing `health` by value here evaluates it during
+// module initialisation, before its own declaration, and the process dies on a
+// temporal dead zone error before it ever listens.
+// Every accessor here is lazy. Passing `health` or the account id by value
+// evaluates them during module initialisation, before their own declarations,
+// and the process dies on a temporal dead zone error before it ever listens.
+app.use("/internal/cockpit", buildCockpitRouter({
+    runtime: () => orchestrator,
+    health: () => health(),
+    userId: () => DEFAULT_USER_ID,
+}));
+
 // Emergency stop. HALTED keeps monitoring and reconciliation running while
 // refusing every action that adds or changes exposure, which is safer than
 // killing the process and losing in-flight reconciliation.
@@ -392,6 +412,8 @@ const start = async () => {
 
     startMarketWorker();
     startWebSocketBroadcaster(io);
+    // Narration rides the socket that already exists rather than a second one.
+    attachCockpit(io, narrator);
     startSquareOffJob();
     startEventBackbone();
     startRegimeLabeler();
@@ -480,9 +502,20 @@ const start = async () => {
                 // is not a research membership map.
                 const universe = STOCKS.map((s) => s.symbol);
 
+                const { makeMemoryRetriever } =
+                    await import("./services/memory/repository.js");
+                const { FastPlaneBridge, modeFromEnv } =
+                    await import("./services/tick/fastPlane.js");
+
+                // The Go fast plane. OFF unless explicitly enabled, and SHADOW
+                // is the only setting a session should use until one has run
+                // with zero divergence.
+                const fastPlane = new FastPlaneBridge({
+                    mode: modeFromEnv(process.env.ZENTRADE_FAST_PLANE), logger });
+
                 orchestrator = new AutonomousRuntime({
                     engine, reconciler, mode: MODE.PAPER, userId: DEFAULT_USER_ID, logger,
-                    barAggregator,
+                    barAggregator, fastPlane, narrator,
                     ports: buildLivePorts({
                         userId: DEFAULT_USER_ID, newsStore, connectionTracker,
                         ingestNews: pollAnnouncements, logger,
@@ -490,8 +523,11 @@ const start = async () => {
                         // The two adapters that were null. Both reuse the
                         // existing aiEngine plumbing rather than adding a
                         // second AI engine.
-                        callModel: makeReassessmentModel({ logger }),
-                        analyseCandidate: makeCandidateAnalyser({ logger }),
+                        callModel: makeReassessmentModel({ logger, narrator }),
+                        analyseCandidate: makeCandidateAnalyser({ logger, narrator }),
+                        // M11-M17 built the whole memory chain and nothing read
+                        // it. Retrieval now reaches the decision path.
+                        retrieveMemories: makeMemoryRetriever({ logger }),
                     }),
                 });
 
@@ -502,17 +538,74 @@ const start = async () => {
                 setReflexSink(orchestrator);
                 logger.info("Server", "autonomous runtime STARTED (paper mode)", {
                     reflex: orchestrator.reflex.health(),
+                    fastPlane: fastPlane.mode,
                 });
-                return { autonomous: true, mode: MODE.PAPER };
+                return { autonomous: true, mode: MODE.PAPER, fastPlane: fastPlane.mode };
             },
         },
     });
+
+    mountCockpitUI();
 
     const boot = await bootstrap.run();
     if (!boot.ok) {
         logger.error("Server", `boot failed at ${boot.stage}: ${boot.error}`);
     }
     logger.info("Server", `health: ${health().status}`);
+    printBanner();
+};
+
+// The cockpit is served by the API when a web build exists, so watching the
+// autonomous trader is one command and one port rather than two processes and
+// a proxy. Mounted last, so it can never shadow an API route, and it serves
+// static assets only — there is no server-rendered path from here to anything
+// that acts.
+const mountCockpitUI = () => {
+    const dist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
+    if (!existsSync(join(dist, "index.html"))) {
+        logger.info("Server",
+            "web build not found; the cockpit is served by the dev server instead",
+            { expected: "apps/web/dist" });
+        return;
+    }
+    app.use(express.static(dist, { index: false, maxAge: "1h" }));
+    // The cockpit is a single-page route; a refresh on it must return the app
+    // shell rather than a 404.
+    for (const route of ["/trader", "/architecture-progress"]) {
+        app.get(route, (req, res) => res.sendFile(join(dist, "index.html")));
+    }
+    logger.info("Server", "cockpit UI mounted", { route: "/trader" });
+};
+
+// One place that answers "is it up, and where do I watch it" without reading
+// ten log lines. Everything printed is read from real state.
+const printBanner = () => {
+    const snapshot = health();
+    const running = Boolean(orchestrator);
+    // Prefer the port this process is actually serving on: with the web build
+    // mounted, that is where the cockpit lives.
+    const dist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
+    const base = existsSync(join(dist, "index.html"))
+        ? `http://localhost:${PORT}`
+        : (process.env.FRONTEND_URL || `http://localhost:${PORT}`);
+    const cockpitUrl = `${base}/trader`;
+    const line = (label, value) => `  ${label.padEnd(16)}${value}`;
+    process.stdout.write([
+        "",
+        "  ZEN TRADE AI TRADER",
+        "  -------------------",
+        line("MODE", "PAPER"),
+        line("FAST PLANE", (process.env.ZENTRADE_FAST_PLANE || "off").toUpperCase()),
+        line("BRAIN", running ? "ACTIVE" : "DISABLED (set ZENTRADE_AUTONOMOUS=true)"),
+        line("RISK", snapshot.orchestrator?.halted ? "HALTED" : "ARMED"),
+        line("MARKET", snapshot.session ?? "UNKNOWN"),
+        line("FEED", (snapshot.connection?.state ?? "UNKNOWN")
+            + (snapshot.connection?.trusted ? "" : " (not trusted)")),
+        line("HEALTH", snapshot.status ?? "UNKNOWN"),
+        line("COCKPIT", cockpitUrl),
+        line("HALT", `POST ${`http://localhost:${PORT}`}/internal/brain/halt`),
+        "",
+    ].join("\n"));
 };
 
 start();

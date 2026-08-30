@@ -1,0 +1,68 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "stop_and_invalidation_same_tick",
+  "description": "Evaluation order is stop, then invalidation, then target, and it is stable.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": 98000,
+        "targetPaise": 108000,
+        "invalidationPaise": 98500,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 97000,
+        "receiveTs": 1000
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "STOP",
+        "symbol": "RELIANCE",
+        "severity": "CRITICAL",
+        "reason": "STOP crossed at 97000 against 98000",
+        "pricePaise": 97000,
+        "levelPaise": 98000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1000,
+        "sequence": 1
+      },
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "INVALIDATION",
+        "symbol": "RELIANCE",
+        "severity": "CRITICAL",
+        "reason": "INVALIDATION crossed at 97000 against 98500",
+        "pricePaise": 97000,
+        "levelPaise": 98500,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1000,
+        "sequence": 1
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 97000,
+        "highPaise": 97000,
+        "lowPaise": 97000,
+        "sequence": 1,
+        "updatedTs": 1000
+      }
+    ]
+  }
+}

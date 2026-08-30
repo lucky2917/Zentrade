@@ -7,6 +7,7 @@ import { evaluate as evaluateRisk } from "./riskGate.js";
 import { intentFrom } from "./loop.js";
 import { eventsForReasoning } from "../news/ingest.js";
 import { toPaise } from "../../utils/paise.js";
+import { MAX_RETRIEVAL } from "../memory/repository.js";
 
 // The live ports.
 //
@@ -53,27 +54,52 @@ export const observationStale = (tick, now, connectionTrusted) => {
     return age === null || age > maxAgeForTick(tick);
 };
 
+// G4. One decision, one instant.
+//
+// Every port used to read the wall clock at its own call time, so the price a
+// decision was formed on, the portfolio it was sized against and the world it
+// was revalidated in were three different moments. Nothing was wrong by much,
+// and nothing was reproducible either.
+//
+// The clock is injected once and every port takes an explicit `asOf`. A caller
+// that holds a decision's instant passes it to every read in that decision, and
+// the reads agree by construction. `now()` below is the only fallback, for
+// callers with no decision in hand, and this module reads no other clock —
+// there is a test that fails if one reappears.
 export const buildLivePorts = ({
     userId, newsStore, connectionTracker, ingestNews, universe = [], logger = null,
-    callModel = null, analyseCandidate = null,
+    callModel = null, analyseCandidate = null, retrieveMemories = null,
+    clock = () => new Date(),
 }) => {
+    const now = (asOf) => (asOf instanceof Date ? asOf : asOf ? new Date(asOf) : clock());
+
+    // News is point-in-time: what was disseminated at or before the decision's
+    // instant, never after it. Reading the wall clock here would let a headline
+    // that arrived while the model was thinking appear in the evidence for a
+    // decision formed before it.
+    const visibleNews = (symbol, asOf) => (newsStore
+        ? newsStore.visibleAt(now(asOf).toISOString())
+            .filter((n) => n.symbol === symbol).slice(-5)
+        : []);
+
     const ports = {
-        loadPositions: async () => openPositions(new Date(), userId),
+        loadPositions: async (asOf) => openPositions(now(asOf), userId),
 
-        loadPortfolio: async () => portfolioState(userId, new Date()),
+        loadPortfolio: async (asOf) => portfolioState(userId, now(asOf)),
 
-        positionFor: async (symbol) =>
-            (await openPositions(new Date(), userId)).find((p) => p.symbol === symbol) ?? null,
+        positionFor: async (symbol, asOf) =>
+            (await openPositions(now(asOf), userId)).find((p) => p.symbol === symbol) ?? null,
 
         loadThesis: async (position) => openThesisFor(position.userId ?? userId, position.symbol),
 
         // Observations for the intelligence layer. Symbols with no cached tick
         // are reported stale rather than omitted, so their staleness is visible
         // instead of looking like an absence of interest.
-        loadObservations: async () => {
-            const now = Date.now();
+        loadObservations: async (asOf) => {
+            const at = now(asOf);
+            const atMs = at.getTime();
             const trusted = Boolean(connectionTracker?.isTrusted?.());
-            const positions = await openPositions(new Date(), userId);
+            const positions = await openPositions(at, userId);
             // The operational universe plus everything held. A held symbol is
             // always observed even if it has left the scan universe.
             const symbols = new Set([...universe, ...positions.map((p) => p.symbol)]);
@@ -86,8 +112,8 @@ export const buildLivePorts = ({
                 observations.push({
                     symbol,
                     price: tick?.price ?? null,
-                    stale: observationStale(tick, now, trusted),
-                    dataAgeMs: tickAgeMs(tick, now),
+                    stale: observationStale(tick, atMs, trusted),
+                    dataAgeMs: tickAgeMs(tick, atMs),
                     bars1m, bars5m, bars15m,
                 });
             }
@@ -177,28 +203,33 @@ export const buildLivePorts = ({
             return rows[0] ?? null;
         },
 
-        pendingNewsEvents: async (now) => {
-            const positions = await openPositions(now, userId);
+        pendingNewsEvents: async (asOf) => {
+            const at = now(asOf);
+            const positions = await openPositions(at, userId);
             const thesisBySymbol = new Map(
                 positions.filter((p) => p.thesisId).map((p) => [p.symbol, p.thesisId]));
-            return eventsForReasoning(newsStore, now, { thesisBySymbol });
+            return eventsForReasoning(newsStore, at, { thesisBySymbol });
         },
 
         ingestNews,
 
-        reassess: async ({ position, thesis, event, marketState, market }) =>
+        reassess: async ({ position, thesis, event, marketState, market, asOf }) =>
             reassessPosition({
                 position, thesis, event, marketState, market, callModel,
-                news: newsStore ? newsStore.visibleAt(new Date().toISOString())
-                    .filter((n) => n.symbol === position.symbol).slice(-5) : [],
+                news: visibleNews(position.symbol, asOf),
+                memories: await ports.retrieveMemories({
+                    symbol: position.symbol, regime: marketState?.regime ?? null,
+                    action: "SELL", asOf }),
             }),
 
         analyseCandidate: analyseCandidate
             ? async (input) => analyseCandidate({
                 ...input,
-                news: newsStore ? newsStore.visibleAt(new Date().toISOString())
-                    .filter((n) => n.symbol === input.symbol).slice(-5) : [],
-                portfolio: await portfolioState(userId, new Date()),
+                news: visibleNews(input.symbol, input.asOf),
+                portfolio: await portfolioState(userId, now(input.asOf)),
+                memories: await ports.retrieveMemories({
+                    symbol: input.symbol, regime: input.market?.regime ?? null,
+                    action: "BUY", asOf: input.asOf }),
             })
             : null,
 
@@ -206,26 +237,34 @@ export const buildLivePorts = ({
 
         // Tier 4 input: what is true right now, read at execution time rather
         // than reused from the snapshot the decision was formed on.
-        currentWorld: async (symbol) => {
-            const now = Date.now();
+        // Tier 4 input: what is true right now, read at execution time rather
+        // than reused from the snapshot the decision was formed on. This one
+        // deliberately takes a FRESH instant by default — revalidation against
+        // the decision's own stale timestamp would revalidate nothing.
+        currentWorld: async (symbol, asOf) => {
+            const at = now(asOf);
+            const atMs = at.getTime();
             const tick = await readTick(symbol);
-            const position = (await openPositions(new Date(now), userId))
+            const position = (await openPositions(at, userId))
                 .find((p) => p.symbol === symbol) ?? null;
             return {
-                nowMs: now,
+                nowMs: atMs,
                 pricePaise: tick?.price ? toPaise(tick.price) : null,
-                priceAgeMs: tickAgeMs(tick, now),
+                priceAgeMs: tickAgeMs(tick, atMs),
                 position: position ? { quantity: position.quantity } : null,
             };
         },
 
-        evaluateRisk: async (intent) => evaluateRisk(intent, {
-            portfolio: await portfolioState(userId, new Date()),
-            nowMs: Date.now(),
-            stale: !connectionTracker?.isTrusted?.(),
-            session: await ports.sessionCounters(),
-            openClientOrderIds: await ports.openClientOrderIds(),
-        }),
+        evaluateRisk: async (intent, _position, asOf) => {
+            const at = now(asOf);
+            return evaluateRisk(intent, {
+                portfolio: await portfolioState(userId, at),
+                nowMs: at.getTime(),
+                stale: !connectionTracker?.isTrusted?.(),
+                session: await ports.sessionCounters(),
+                openClientOrderIds: await ports.openClientOrderIds(),
+            });
+        },
 
         // Session budgets from today's real orders.
         sessionCounters: async () => {
@@ -273,6 +312,27 @@ export const buildLivePorts = ({
                 logger?.error?.("LivePorts", "thesis rejected, entry aborted",
                                 { error: err.message, symbol });
                 throw err;
+            }
+        },
+
+        // What happened the last times a decision like this one was made.
+        //
+        // Memories are OBSERVATIONS, never advice: the brain is told what
+        // occurred and resolves any contradiction itself. Eligibility is
+        // strictly before the decision's instant, so a memory cannot contain
+        // its own outcome.
+        retrieveMemories: async ({ symbol, regime = null, action = null, asOf,
+                                   mode = "INTRADAY", limit = MAX_RETRIEVAL } = {}) => {
+            if (!retrieveMemories) return [];
+            try {
+                return await retrieveMemories({
+                    symbol, regime, action, mode, limit, asOf: now(asOf).toISOString() });
+            } catch (err) {
+                // Memory is context, not a dependency. Losing it degrades the
+                // decision; failing the decision because of it would be worse.
+                logger?.warn?.("LivePorts", "memory retrieval failed",
+                               { error: err.message, symbol });
+                return [];
             }
         },
 

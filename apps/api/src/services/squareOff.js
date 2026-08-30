@@ -4,6 +4,9 @@ import redis from "../config/redis.js";
 import logger from "../utils/logger.js";
 // Single source of truth — a square-off must cost exactly what a manual sell costs
 import { BROKERAGE_PAISE, SELL_SPREAD, sellCreditPaise, remainingMarginPaise } from "./execution/ledger.js";
+import {
+    applyCashDelta, closePositionById, insertCompletedOrder,
+} from "./execution/bookkeeper.js";
 
 // Allow prices up to 45 min old at square-off time (market data can lag at EOD)
 const MAX_SQUAREOFF_PRICE_AGE_MS = 45 * 60 * 1000;
@@ -54,24 +57,20 @@ const processHolding = async (holding, priceData) => {
 
         // H1 fix: allow negative credit — real losses reduce real balance.
         // Balance can go negative; new buys are already blocked when balance < marginRequired.
-        await client.query(
-            "UPDATE users SET balance_paise = balance_paise + $1 WHERE id = $2",
-            [creditPaise, fresh.user_id]
-        );
+        await applyCashDelta(client, fresh.user_id, creditPaise);
 
-        await client.query(
-            "DELETE FROM portfolio WHERE id = $1",
-            [fresh.id]
-        );
+        await closePositionById(client, fresh.id);
 
-        // H3 fix: total_value_paise = gross proceeds; pnl_paise = realized PnL
-        // Migration 026 made `state` NOT NULL with no default. A square-off row
-        // is a completed trade, so it is written FILLED with the fill already
-        // accounted for, exactly as the manual trade path does.
-        await client.query(
-            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, pnl_paise, state, filled_quantity, reserved_paise, completed_at, last_update_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'FILLED', $4, 0, NOW(), NOW())",
-            [fresh.user_id, fresh.symbol, "SELL", fresh.quantity, executionPricePaise, grossProceedsPaise, BROKERAGE_PAISE, "INTRADAY", pnlPaise]
-        );
+        // total_value_paise is gross proceeds; pnl_paise is realised P&L. The
+        // row carries every state-machine column because it goes through the
+        // one writer, which is what stops a migration from breaking exactly
+        // this path and nothing else.
+        await insertCompletedOrder(client, {
+            userId: fresh.user_id, symbol: fresh.symbol, side: "SELL",
+            quantity: fresh.quantity, pricePaise: executionPricePaise,
+            totalValuePaise: grossProceedsPaise, brokeragePaise: BROKERAGE_PAISE,
+            mode: "INTRADAY", pnlPaise,
+        });
 
         await client.query("COMMIT");
 

@@ -1,0 +1,108 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "approach_bands_fire_on_the_tick",
+  "description": "Entering the stop band and the target band each fire once, and neither is protective.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": 98000,
+        "targetPaise": 108000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [
+      {
+        "symbol": "RELIANCE",
+        "entryPaise": 100000,
+        "thesisId": "t-1",
+        "correlationId": "c-1"
+      }
+    ],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 99500,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 98400,
+        "receiveTs": 1001
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 98300,
+        "receiveTs": 1002
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 106500,
+        "receiveTs": 1003
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 106600,
+        "receiveTs": 1004
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "STOP_APPROACH",
+        "symbol": "RELIANCE",
+        "severity": "WARNING",
+        "reason": "within 20% of the level at 98000",
+        "pricePaise": 98400,
+        "levelPaise": 98000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1001,
+        "sequence": 2
+      },
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "TARGET_APPROACH",
+        "symbol": "RELIANCE",
+        "severity": "INFO",
+        "reason": "within 19% of the level at 108000",
+        "pricePaise": 106500,
+        "levelPaise": 108000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1003,
+        "sequence": 4
+      },
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "PRICE_JUMP",
+        "symbol": "RELIANCE",
+        "severity": "WARNING",
+        "reason": "moved 7.04% within 60s",
+        "pricePaise": 106500,
+        "levelPaise": 99500,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1003,
+        "sequence": 4
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 106600,
+        "highPaise": 106600,
+        "lowPaise": 98300,
+        "sequence": 5,
+        "updatedTs": 1004
+      }
+    ]
+  }
+}

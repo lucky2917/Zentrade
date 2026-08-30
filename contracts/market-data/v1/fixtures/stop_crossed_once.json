@@ -1,0 +1,70 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "stop_crossed_once",
+  "description": "The tick that breaches the stop fires once; later ticks below it do not.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": 98000,
+        "targetPaise": 108000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 98100,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 97990,
+        "receiveTs": 1001
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 97500,
+        "receiveTs": 1002
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 96000,
+        "receiveTs": 1003
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "STOP",
+        "symbol": "RELIANCE",
+        "severity": "CRITICAL",
+        "reason": "STOP crossed at 97990 against 98000",
+        "pricePaise": 97990,
+        "levelPaise": 98000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1001,
+        "sequence": 2
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 96000,
+        "highPaise": 98100,
+        "lowPaise": 96000,
+        "sequence": 4,
+        "updatedTs": 1003
+      }
+    ]
+  }
+}

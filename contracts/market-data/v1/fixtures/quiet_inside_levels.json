@@ -1,0 +1,56 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "quiet_inside_levels",
+  "description": "Price moves inside the levels. No crossing, but state advances.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": 98000,
+        "targetPaise": 108000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 100000,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 99500,
+        "receiveTs": 1001
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 98100,
+        "receiveTs": 1002
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 100200,
+        "receiveTs": 1003
+      }
+    ]
+  },
+  "expected": {
+    "events": [],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 100200,
+        "highPaise": 100200,
+        "lowPaise": 98100,
+        "sequence": 4,
+        "updatedTs": 1003
+      }
+    ]
+  }
+}

@@ -23,6 +23,53 @@ const EMERGENCY_THRESHOLD = 500;
 
 const RESERVOIR_REFRESH_MS = 60 * 1000;
 
+// The per-minute ceiling has to be shared, not per process.
+//
+// Bottleneck's reservoir lives in this process's memory while the daily budget
+// counter lives in Redis. Two instances therefore permitted 2 x PER_MINUTE_CAP
+// calls a minute against one shared daily budget, and the ceiling was violated
+// by exactly the number of instances running — silently, because each instance
+// was individually obeying it.
+//
+// One authoritative counter, incremented atomically, keyed by the minute it
+// governs. Bottleneck stays for local smoothing (concurrency and spacing);
+// this is what makes the ceiling real.
+const MINUTE_KEY_PREFIX = "fyers:minute:";
+const MINUTE_KEY_TTL_MS = 120 * 1000;
+
+const CLAIM_MINUTE_SLOT = `
+    local used = redis.call('incr', KEYS[1])
+    if used == 1 then
+        redis.call('pexpire', KEYS[1], ARGV[2])
+    end
+    if used > tonumber(ARGV[1]) then
+        return 0
+    end
+    return 1
+`;
+
+export const minuteKeyFor = (nowMs) =>
+    `${MINUTE_KEY_PREFIX}${Math.floor(nowMs / 60_000)}`;
+
+// Returns false when this minute's shared allowance is already spent. The
+// increment happens regardless, so a refused caller still counts against the
+// minute it tried to use — which is what stops a thundering herd from each
+// reading "under cap" and all proceeding.
+export const claimMinuteSlot = async (nowMs = Date.now(), cap = PER_MINUTE_CAP) => {
+    try {
+        const allowed = await redis.eval(
+            CLAIM_MINUTE_SLOT, 1, minuteKeyFor(nowMs), String(cap), String(MINUTE_KEY_TTL_MS));
+        return Number(allowed) === 1;
+    } catch (err) {
+        // Fail CLOSED. An unreachable budget is not a licence to spend one: the
+        // whole point of the shared counter is that no instance may proceed on
+        // its own private belief about the ceiling.
+        logger.error("RateLimiter", "shared minute budget unavailable, refusing REST",
+                     { error: err.message });
+        return false;
+    }
+};
+
 const limiter = new Bottleneck({
     reservoir: PER_MINUTE_CAP,
     reservoirRefreshAmount: PER_MINUTE_CAP,
@@ -163,6 +210,13 @@ const isRestAllowed = async () => {
     const mode = computeMode(remaining);
     await redis.set(CURRENT_MODE_KEY, mode);
     await applyLimiterSettings(mode);
+
+    // The shared ceiling is checked last, so a caller blocked by the daily
+    // budget does not also consume a slot in this minute's allowance.
+    if (!(await claimMinuteSlot())) {
+        logger.warn("RateLimiter", "per-minute ceiling reached across all instances");
+        return false;
+    }
     return true;
 };
 
@@ -174,6 +228,7 @@ const getRateLimiter = () => limiter;
 
 export {
     getRateLimiter,
+    MINUTE_KEY_TTL_MS,
     refillReservoir,
     getCurrentMode,
     getRemainingBudget,

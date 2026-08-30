@@ -95,13 +95,29 @@ const callWithTimeout = async (fn, timeoutMs, label) => Promise.race([
 export const reason = async ({
     symbol, context, event = null, position = null, thesis: entryThesis = null,
     portfolio = null, news = [], dailyRegimeTag = null, riskState = null,
-    previousAssessment = null, screenReasons = [], market = null, asOf,
+    previousAssessment = null, screenReasons = [], market = null, memories = [], asOf,
     formModel, challengeModel, limits = {}, timeoutMs = 20_000, logger = null,
+    // Called as each stage COMPLETES, so an operator watching the cockpit sees
+    // the reasoning arrive in the order it actually happened rather than all at
+    // once at the end. Pure by contract: the pipeline hands over a value and
+    // never waits on the result, so narration cannot slow or fail a decision.
+    onStage = null,
 }) => {
+    const stage = (name, payload) => {
+        if (!onStage) return;
+        try { onStage(name, payload); } catch (err) {
+            logger?.warn?.("Reasoning", "narration stage threw",
+                           { error: err.message, stage: name });
+        }
+    };
     const state = buildTraderState({
         symbol, context, event, position, thesis: entryThesis, portfolio, news,
-        dailyRegimeTag, riskState, previousAssessment, screenReasons, market, asOf,
+        dailyRegimeTag, riskState, previousAssessment, screenReasons, market,
+        memories, asOf,
     });
+
+    // The deterministic ground the reasoning stands on, before any model runs.
+    stage("state", { state });
 
     if (!formModel) return { ...safeDecision("no reasoning model configured", state), state };
 
@@ -116,6 +132,7 @@ export const reason = async ({
     }
     if (!formed) return { ...safeDecision("thesis formation returned no usable object", state), state };
     formed.isPosition = Boolean(position);
+    stage("formed", { formed });
 
     // --- 2. challenge ------------------------------------------------------
     let challenge;
@@ -129,6 +146,7 @@ export const reason = async ({
     }
 
     const challenged = applyChallenge(formed, challenge);
+    stage("challenged", { challenge, challenged });
 
     // --- 3. deterministic synthesis ---------------------------------------
     const synthesis = synthesise({
@@ -141,6 +159,8 @@ export const reason = async ({
         },
         traderState: state, limits,
     });
+
+    stage("synthesis", { synthesis });
 
     const legal = position ? LEGAL_POSITION_ACTIONS : LEGAL_CANDIDATE_ACTIONS;
     const action = legal.includes(synthesis.action) ? synthesis.action : "HOLD";

@@ -1,0 +1,60 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "a_spike_that_reverses_between_polls",
+  "description": "A 3.5% move that returns inside fourteen seconds is invisible to a poll and is caught here.",
+  "input": {
+    "commitments": [],
+    "watches": [
+      {
+        "symbol": "TCS",
+        "thesisId": "t-9",
+        "correlationId": "c-9"
+      }
+    ],
+    "ticks": [
+      {
+        "symbol": "TCS",
+        "pricePaise": 100000,
+        "receiveTs": 0
+      },
+      {
+        "symbol": "TCS",
+        "pricePaise": 103500,
+        "receiveTs": 7000
+      },
+      {
+        "symbol": "TCS",
+        "pricePaise": 100000,
+        "receiveTs": 14000
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "PRICE_JUMP",
+        "symbol": "TCS",
+        "severity": "WARNING",
+        "reason": "moved 3.50% within 60s",
+        "pricePaise": 103500,
+        "levelPaise": 100000,
+        "thesisId": "t-9",
+        "correlationId": "c-9",
+        "observedTs": 7000,
+        "sequence": 2
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "TCS",
+        "observed": true,
+        "lastPaise": 100000,
+        "highPaise": 103500,
+        "lowPaise": 100000,
+        "sequence": 3,
+        "updatedTs": 14000
+      }
+    ]
+  }
+}

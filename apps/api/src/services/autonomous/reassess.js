@@ -28,6 +28,7 @@ export const safeFallback = (reason) => ({
 
 export const buildReassessmentContext = ({
     position, thesis, event, marketState, portfolio, news = [], market = null,
+    memories = [],
 }) => ({
     symbol: position.symbol,
     side: thesis.side,
@@ -64,6 +65,7 @@ export const buildReassessmentContext = ({
     marketState: marketState ?? null,
     market,
     news,
+    memories,
 });
 
 // Deterministic guardrails on the model's answer, mirroring the discovery
@@ -105,10 +107,11 @@ export const applyReassessmentGuardrails = (raw, context) => {
 
 export const reassessPosition = async ({
     position, thesis, event, marketState, portfolio, callModel, news = [],
+    memories = [],
     market = null, timeoutMs = 15_000,
 }) => {
     const context = buildReassessmentContext({
-        position, thesis, event, marketState, portfolio, news, market });
+        position, thesis, event, marketState, portfolio, news, market, memories });
 
     if (!callModel) return { ...safeFallback("no model configured"), context };
 

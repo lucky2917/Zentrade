@@ -1,0 +1,69 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "volume_counter_going_backwards_re_anchors",
+  "description": "A reconnect restarts the cumulative counter; the delta must not go negative or fire falsely.",
+  "input": {
+    "commitments": [],
+    "watches": [
+      {
+        "symbol": "VEDL",
+        "volumeBaseline": 1000,
+        "volumeSpikeRatio": 3
+      }
+    ],
+    "ticks": [
+      {
+        "symbol": "VEDL",
+        "pricePaise": 50000,
+        "receiveTs": 60000,
+        "cumulativeVolume": 900000
+      },
+      {
+        "symbol": "VEDL",
+        "pricePaise": 50100,
+        "receiveTs": 61000,
+        "cumulativeVolume": 100
+      },
+      {
+        "symbol": "VEDL",
+        "pricePaise": 50200,
+        "receiveTs": 62000,
+        "cumulativeVolume": 200
+      },
+      {
+        "symbol": "VEDL",
+        "pricePaise": 50300,
+        "receiveTs": 63000,
+        "cumulativeVolume": 3100
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "VOLUME_SPIKE",
+        "symbol": "VEDL",
+        "severity": "WARNING",
+        "reason": "3.0x typical minute volume",
+        "pricePaise": 50300,
+        "levelPaise": 3000,
+        "thesisId": null,
+        "correlationId": null,
+        "observedTs": 63000,
+        "sequence": 4
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "VEDL",
+        "observed": true,
+        "lastPaise": 50300,
+        "highPaise": 50300,
+        "lowPaise": 50000,
+        "sequence": 4,
+        "updatedTs": 63000
+      }
+    ]
+  }
+}

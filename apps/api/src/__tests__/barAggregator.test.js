@@ -332,3 +332,148 @@ describe("bars close on a clock, not on the next tick", () => {
         expect((redis.lists.get("bars:5m:THIN") ?? []).length).toBeGreaterThan(0);
     });
 });
+
+// G1. Derived bars were rebuilt by full rewrite on every close. Across the
+// universe at the minute boundary that was 87.5 ms of synchronous work, and a
+// tick crossing a stop queued behind it. The bucket containing the closed bar
+// is the only one that can have changed.
+describe("derived bars update incrementally", () => {
+    const at = (h, m, s = 0) => Date.UTC(2026, 7, 31, 0, h * 60 + m - 330, s);
+
+    const countingRedis = () => {
+        const lists = new Map();
+        const ops = { lrange: 0, rpush: 0, del: 0, lset: 0, lindex: 0, ltrim: 0, scanned: 0 };
+        return {
+            lists, ops,
+            lindex: async (k, i) => {
+                ops.lindex += 1;
+                const l = lists.get(k) ?? [];
+                return i === -1 ? (l[l.length - 1] ?? null) : (l[i] ?? null);
+            },
+            rpush: async (k, v) => { ops.rpush += 1; lists.set(k, [...(lists.get(k) ?? []), v]); },
+            lset: async (k, i, v) => {
+                ops.lset += 1;
+                const l = lists.get(k) ?? [];
+                l[i === -1 ? l.length - 1 : i] = v;
+                lists.set(k, l);
+            },
+            ltrim: async (k, start) => {
+                ops.ltrim += 1;
+                const l = lists.get(k) ?? [];
+                if (start < 0) lists.set(k, l.slice(start));
+            },
+            lrange: async (k, start, end) => {
+                ops.lrange += 1;
+                const l = lists.get(k) ?? [];
+                const slice = end === -1 ? l.slice(start) : l.slice(start, end + 1);
+                ops.scanned += slice.length;
+                return slice;
+            },
+            pipeline: () => {
+                const queued = [];
+                const api = {
+                    del: (k) => { queued.push(() => { ops.del += 1; lists.delete(k); }); return api; },
+                    rpush: (k, v) => {
+                        queued.push(() => { ops.rpush += 1; lists.set(k, [...(lists.get(k) ?? []), v]); });
+                        return api;
+                    },
+                    exec: async () => { queued.forEach((f) => f()); },
+                };
+                return api;
+            },
+        };
+    };
+
+    const feed = async (agg, minutes) => {
+        for (let m = 0; m < minutes; m += 1) {
+            await agg.ingest({ symbol: "ACC", price: 1000 + m, volume: 10_000 + m * 50,
+                               timestamp: at(10, m, 5) });
+            await agg.closeCompleted(at(10, m + 1, 2));
+        }
+    };
+
+    it("produces the same series the full rebuild produced", async () => {
+        const incremental = countingRedis();
+        const full = countingRedis();
+        const a = new BarAggregator({ redis: incremental });
+        const b = new BarAggregator({ redis: full });
+
+        await feed(a, 34);
+        await feed(b, 34);
+        // Force the whole-series path on the second aggregator for comparison.
+        await b.rebuildDerivedFull("ACC");
+
+        for (const g of ["5m", "15m"]) {
+            expect(incremental.lists.get(`bars:${g}:ACC`))
+                .toEqual(full.lists.get(`bars:${g}:ACC`));
+        }
+    });
+
+    it("reads only the bucket, not the whole retained series", async () => {
+        const redis = countingRedis();
+        const agg = new BarAggregator({ redis });
+        await feed(agg, 40);
+        const before = redis.ops.scanned;
+
+        await agg.ingest({ symbol: "ACC", price: 1100, volume: 20_000, timestamp: at(10, 40, 5) });
+        await agg.closeCompleted(at(10, 41, 2));
+        const scannedForOneClose = redis.ops.scanned - before;
+
+        // A 15m bucket is at most 15 one-minute bars; the old path read 240.
+        expect(scannedForOneClose).toBeLessThanOrEqual(15 + 5 + 1);
+    });
+
+    it("never deletes and rewrites a derived list on the hot path", async () => {
+        const redis = countingRedis();
+        const agg = new BarAggregator({ redis });
+        await feed(agg, 40);
+        expect(redis.ops.del).toBe(0);
+    });
+
+    it("replaces the open bucket in place rather than appending a duplicate", async () => {
+        const redis = countingRedis();
+        const agg = new BarAggregator({ redis });
+        await feed(agg, 3);   // all inside one 5m and one 15m bucket
+        expect(redis.lists.get("bars:5m:ACC")).toHaveLength(1);
+        expect(redis.lists.get("bars:15m:ACC")).toHaveLength(1);
+        const bar = JSON.parse(redis.lists.get("bars:5m:ACC")[0]);
+        expect(bar.open).toBe(1000);
+        expect(bar.close).toBe(1002);
+    });
+
+    it("opens a new bucket when the boundary is crossed", async () => {
+        const redis = countingRedis();
+        const agg = new BarAggregator({ redis });
+        await feed(agg, 7);   // spans two 5m buckets
+        expect(redis.lists.get("bars:5m:ACC")).toHaveLength(2);
+        expect(redis.lists.get("bars:15m:ACC")).toHaveLength(1);
+    });
+
+    it("aggregates high, low and volume correctly inside a bucket", async () => {
+        const redis = countingRedis();
+        const agg = new BarAggregator({ redis });
+        for (const [m, price] of [[0, 1000], [1, 1050], [2, 990], [3, 1010], [4, 1005]]) {
+            await agg.ingest({ symbol: "ACC", price, volume: 10_000 + m * 100,
+                               timestamp: at(10, m, 5) });
+            await agg.ingest({ symbol: "ACC", price: price + 2, volume: 10_000 + m * 100 + 50,
+                               timestamp: at(10, m, 30) });
+            await agg.closeCompleted(at(10, m + 1, 2));
+        }
+        const bar = JSON.parse(redis.lists.get("bars:5m:ACC")[0]);
+        expect(bar.open).toBe(1000);
+        expect(bar.high).toBe(1052);
+        expect(bar.low).toBe(990);
+        expect(bar.close).toBe(1007);
+    });
+
+    it("the full rebuild remains available for recovery", async () => {
+        const redis = countingRedis();
+        const agg = new BarAggregator({ redis });
+        await feed(agg, 12);
+        const expected = redis.lists.get("bars:5m:ACC").slice();
+        redis.lists.delete("bars:5m:ACC");
+        redis.lists.delete("bars:15m:ACC");
+        await agg.rebuildDerivedFull("ACC");
+        expect(redis.lists.get("bars:5m:ACC")).toEqual(expected);
+    });
+});

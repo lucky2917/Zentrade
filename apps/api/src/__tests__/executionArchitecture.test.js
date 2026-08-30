@@ -29,25 +29,44 @@ describe("the AI cannot reach execution directly", () => {
         }
     });
 
-    it("only the loop may call execute, and only after the risk gate", () => {
+    // The guard used to point at loop.js, which held a second reasoning loop
+    // that nothing ran. That loop is gone; this points at the path that is
+    // actually wired, which is what a guard is for.
+    it("the orchestrator reaches execution only through the risk gate", () => {
+        const source = read("services/orchestrator/orchestrator.js");
+        expect(source).toMatch(/evaluateRisk/);
+        expect(source).toMatch(/revalidate\(/);
+        // One execute call site, and everything above it is a gate.
+        const calls = source.match(/this\.ports\.execute\(/g) ?? [];
+        expect(calls).toHaveLength(1);
+
+        const gate = source.indexOf("await this.ports.evaluateRisk");
+        const revalidation = source.indexOf("const check = revalidate(");
+        const execute = source.indexOf("await this.ports.execute(");
+        expect(revalidation).toBeGreaterThan(-1);
+        expect(gate).toBeGreaterThan(revalidation);
+        expect(execute).toBeGreaterThan(gate);
+    });
+
+    it("no second reasoning loop exists to be wired up by mistake", () => {
         const loop = read("services/autonomous/loop.js");
-        // The single execute call site must be guarded by a risk ALLOW check.
-        expect(loop).toMatch(/evaluateRisk/);
-        expect(loop).toMatch(/DECISION\.REJECT/);
-        const executeCalls = loop.match(/await execute\(/g) ?? [];
-        expect(executeCalls).toHaveLength(1);
+        expect(loop).not.toMatch(/runLoopCycle/);
+        expect(loop).not.toMatch(/reassessPosition/);
+        expect(loop).not.toMatch(/evaluateRisk/);
     });
 });
 
 describe("one execution engine, one position store", () => {
-    it("no service other than the engine and tradingEngine writes to portfolio", () => {
+    // Previously the allowlist was three modules: the engine, the manual path
+    // and the square-off. All three now write through the bookkeeper, so the
+    // allowlist is one, which is what "single writer" has to mean.
+    it("only the bookkeeper writes to portfolio", () => {
         const offenders = [];
         for (const dir of ["", "autonomous", "execution", "fyers"]) {
             const base = dir ? `services/${dir}` : "services";
             for (const file of listServices(dir)) {
                 const path = `${base}/${file}`;
-                if (path.endsWith("execution/engine.js") || path.endsWith("services/tradingEngine.js")
-                    || path.endsWith("services/squareOff.js")) continue;
+                if (path.endsWith("execution/bookkeeper.js")) continue;
                 const source = read(path);
                 if (/INSERT INTO portfolio|UPDATE portfolio SET quantity|DELETE FROM portfolio/i.test(source)) {
                     offenders.push(path);

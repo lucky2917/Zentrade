@@ -7,10 +7,16 @@ import { toPaise } from "../utils/paise.js";
 import { STOCK_MAP } from "../config/stocks.js";
 import { isMarketOpen } from "../utils/marketHours.js";
 import logger from "../utils/logger.js";
+import {
+    lockCash, applyCashDelta, readPositionForUpdate, addToPosition, reducePosition,
+    insertCompletedOrder,
+} from "./execution/bookkeeper.js";
+// The money model lives in one module. These were redeclared here with the same
+// values, which is a second definition waiting to drift from the first.
+import {
+    BROKERAGE_PAISE, BUY_SPREAD, SELL_SPREAD, remainingMarginPaise,
+} from "./execution/ledger.js";
 
-const BROKERAGE_PAISE = 2000;
-const BUY_SPREAD = 1.001;
-const SELL_SPREAD = 0.999;
 const MAX_QUANTITY = 10000;
 const MAX_PRICE_AGE_MS = 15000;
 const MAX_DELIVERY_PRICE_AGE_MS = 30 * 60 * 1000;
@@ -101,10 +107,7 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY", decisionI
         await client.query("BEGIN");
 
         // Lock user row first — establishes consistent lock order: users → portfolio
-        const userResult = await client.query(
-            "SELECT balance_paise FROM users WHERE id = $1 FOR UPDATE",
-            [userId]
-        );
+        const userResult = await lockCash(client, userId);
 
         if (userResult.rows.length === 0) {
             throw new Error("User not found");
@@ -119,30 +122,21 @@ const executeBuy = async (userId, symbol, quantity, mode = "INTRADAY", decisionI
             );
         }
 
-        await client.query(
-            "UPDATE users SET balance_paise = balance_paise - $1 WHERE id = $2",
-            [marginRequired, userId]
-        );
+        await applyCashDelta(client, userId, -marginRequired);
 
-        // H2 fix: atomic upsert — eliminates race condition on concurrent first buys
-        await client.query(
-            `INSERT INTO portfolio (user_id, symbol, quantity, avg_price_paise, order_mode, margin_used_paise)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             ON CONFLICT (user_id, symbol, order_mode) DO UPDATE
-             SET
-               quantity          = portfolio.quantity + EXCLUDED.quantity,
-               avg_price_paise   = (portfolio.quantity * portfolio.avg_price_paise + EXCLUDED.quantity * EXCLUDED.avg_price_paise)
-                                   / (portfolio.quantity + EXCLUDED.quantity),
-               margin_used_paise = portfolio.margin_used_paise + EXCLUDED.margin_used_paise,
-               updated_at        = NOW()`,
-            [userId, symbol, quantity, executionPricePaise, mode, marginRequired]
-        );
+        // Atomic upsert: two concurrent first buys on one symbol would both see
+        // no row and both insert.
+        await addToPosition(client, {
+            userId, symbol, mode, quantity,
+            pricePaise: executionPricePaise, marginPaise: marginRequired,
+        });
 
-        // H3 fix: total_value_paise = gross stock cost (price * qty); brokerage is separate
-        const { rows: [order] } = await client.query(
-            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, decision_id, client_order_id, correlation_id, state, filled_quantity, reserved_paise, completed_at, last_update_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'FILLED', $4, 0, NOW(), NOW()) RETURNING id",
-            [userId, symbol, "BUY", quantity, executionPricePaise, stockCostPaise, BROKERAGE_PAISE, mode, decisionId, clientOrderId, correlationId]
-        );
+        // total_value_paise is gross stock cost; brokerage is separate.
+        const order = await insertCompletedOrder(client, {
+            userId, symbol, side: "BUY", quantity, pricePaise: executionPricePaise,
+            totalValuePaise: stockCostPaise, brokeragePaise: BROKERAGE_PAISE, mode,
+            decisionId, clientOrderId, correlationId,
+        });
 
         await enqueueTradeExecuted(client, { orderId: order.id, symbol, side: "BUY", quantity, executionPricePaise, mode, decisionId });
 
@@ -220,18 +214,15 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY", decision
             throw new Error("User not found");
         }
 
-        const holding = await client.query(
-            "SELECT quantity, avg_price_paise, margin_used_paise FROM portfolio WHERE user_id = $1 AND symbol = $2 AND order_mode = $3 FOR UPDATE",
-            [userId, symbol, mode]
-        );
+        const holding = await readPositionForUpdate(client, { userId, symbol, mode });
 
-        if (holding.rows.length === 0 || holding.rows[0].quantity < quantity) {
+        if (!holding || holding.quantity < quantity) {
             throw new Error("Insufficient holdings");
         }
 
-        const holdingQty = holding.rows[0].quantity;
-        const avgPricePaise = Number(holding.rows[0].avg_price_paise);
-        const totalMarginPaise = Number(holding.rows[0].margin_used_paise);
+        const holdingQty = holding.quantity;
+        const avgPricePaise = holding.avgPricePaise;
+        const totalMarginPaise = holding.marginUsedPaise;
 
         // H3: pnlPaise = realized profit/loss on the units sold
         const pnlPaise = (executionPricePaise - avgPricePaise) * quantity;
@@ -251,30 +242,20 @@ const executeSell = async (userId, symbol, quantity, mode = "INTRADAY", decision
         // H1 fix: allow negative credit to flow through — balance can go negative
         // so leveraged losses are actually felt, not silently forgiven.
         // executeBuy already blocks new trades when balance < marginRequired.
-        await client.query(
-            "UPDATE users SET balance_paise = balance_paise + $1 WHERE id = $2",
-            [creditPaise, userId]
-        );
+        await applyCashDelta(client, userId, creditPaise);
 
-        const remainingQty = holdingQty - quantity;
-        if (remainingQty === 0) {
-            await client.query(
-                "DELETE FROM portfolio WHERE user_id = $1 AND symbol = $2 AND order_mode = $3",
-                [userId, symbol, mode]
-            );
-        } else {
-            const remainingMargin = Math.round(((holdingQty - quantity) / holdingQty) * totalMarginPaise);
-            await client.query(
-                "UPDATE portfolio SET quantity = $1, margin_used_paise = $2, updated_at = NOW() WHERE user_id = $3 AND symbol = $4 AND order_mode = $5",
-                [remainingQty, remainingMargin, userId, symbol, mode]
-            );
-        }
+        await reducePosition(client, {
+            userId, symbol, mode, quantity, heldQuantity: holdingQty,
+            remainingMarginPaise: remainingMarginPaise({
+                quantity, heldQuantity: holdingQty, marginUsedPaise: totalMarginPaise }),
+        });
 
-        // H3 fix: total_value_paise = gross proceeds (price * qty); pnl_paise = realized PnL
-        const { rows: [order] } = await client.query(
-            "INSERT INTO orders (user_id, symbol, type, quantity, price_paise, total_value_paise, brokerage_paise, order_mode, pnl_paise, decision_id, client_order_id, correlation_id, state, filled_quantity, reserved_paise, completed_at, last_update_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'FILLED', $4, 0, NOW(), NOW()) RETURNING id",
-            [userId, symbol, "SELL", quantity, executionPricePaise, grossProceedsPaise, BROKERAGE_PAISE, mode, pnlPaise, decisionId, clientOrderId, correlationId]
-        );
+        // total_value_paise is gross proceeds; pnl_paise is realised P&L.
+        const order = await insertCompletedOrder(client, {
+            userId, symbol, side: "SELL", quantity, pricePaise: executionPricePaise,
+            totalValuePaise: grossProceedsPaise, brokeragePaise: BROKERAGE_PAISE, mode,
+            pnlPaise, decisionId, clientOrderId, correlationId,
+        });
 
         await enqueueTradeExecuted(client, { orderId: order.id, symbol, side: "SELL", quantity, executionPricePaise, mode, decisionId, pnlPaise });
 

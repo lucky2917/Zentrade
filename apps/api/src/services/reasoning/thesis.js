@@ -107,13 +107,15 @@ THE THESIS UNDER EXAMINATION
 
 Your tasks:
 1. State the strongest argument AGAINST this thesis.
-2. Give alternative explanations for the same observations. Consider at least:
+2. State the COUNTER-THESIS: not merely an objection, but the competing
+   explanation you would trade instead, stated as a position.
+3. Give alternative explanations for the same observations. Consider at least:
    genuine move, short covering, market-wide drift, news-driven spike,
    thin-liquidity distortion, mean reversion after an overextension.
-3. Name what information is MISSING that would matter.
-4. Say whether this could be a false signal, and how you would tell.
-5. Say what evidence would change the decision.
-6. Judge whether the author was only looking for confirming evidence.
+4. Name what information is MISSING that would matter.
+5. Say whether this could be a false signal, and how you would tell.
+6. Say what evidence would change the decision.
+7. Judge whether the author was only looking for confirming evidence.
 
 Do not soften your assessment to be agreeable. If the thesis is weak, say it is
 weak. If it is sound, say that plainly too.
@@ -121,6 +123,7 @@ weak. If it is sound, say that plainly too.
 Respond with JSON only:
 {
   "strongestObjection": "<the single best argument against>",
+  "counterThesis": "<the competing view you would trade instead, as a position>",
   "alternativeHypotheses": [
     {"explanation": "<...>", "supportedBy": "<evidence or 'nothing observed'>", "plausibility": "HIGH"|"MEDIUM"|"LOW"}
   ],
@@ -176,6 +179,7 @@ export const validateChallenge = (raw) => {
         // outcome, not as an absence of objection.
         return {
             strongestObjection: "challenge unavailable",
+            counterThesis: "not established; the challenge could not be read",
             alternativeHypotheses: [], missingInformation: [],
             couldBeFalseSignal: true, falseSignalTell: "unknown",
             whatWouldChangeTheDecision: [], confirmationBiasDetected: false,
@@ -196,6 +200,11 @@ export const validateChallenge = (raw) => {
     return {
         strongestObjection: typeof raw.strongestObjection === "string"
             ? raw.strongestObjection : "none articulated",
+        // The competing view, stated as a position rather than an objection.
+        // Absent is reported as absent: a counter-thesis nobody articulated
+        // must not read as a counter-thesis that does not exist.
+        counterThesis: typeof raw.counterThesis === "string" && raw.counterThesis.trim()
+            ? raw.counterThesis.trim() : "none articulated",
         alternativeHypotheses: alternatives,
         missingInformation: asArray(raw.missingInformation),
         couldBeFalseSignal: raw.couldBeFalseSignal === true,

@@ -1,0 +1,65 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "transient_breach_and_recovery",
+  "description": "A spike through the stop that retraces still fires, and the extremes remember it.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": 98000,
+        "targetPaise": 108000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 100000,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 97800,
+        "receiveTs": 1001
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 100200,
+        "receiveTs": 1002
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "STOP",
+        "symbol": "RELIANCE",
+        "severity": "CRITICAL",
+        "reason": "STOP crossed at 97800 against 98000",
+        "pricePaise": 97800,
+        "levelPaise": 98000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1001,
+        "sequence": 2
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 100200,
+        "highPaise": 100200,
+        "lowPaise": 97800,
+        "sequence": 3,
+        "updatedTs": 1002
+      }
+    ]
+  }
+}

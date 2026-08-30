@@ -1,0 +1,60 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "invalidation_without_a_stop",
+  "description": "A named invalidation price fires on its own.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": null,
+        "targetPaise": 108000,
+        "invalidationPaise": 97000,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 97500,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 96900,
+        "receiveTs": 1001
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "INVALIDATION",
+        "symbol": "RELIANCE",
+        "severity": "CRITICAL",
+        "reason": "INVALIDATION crossed at 96900 against 97000",
+        "pricePaise": 96900,
+        "levelPaise": 97000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1001,
+        "sequence": 2
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 96900,
+        "highPaise": 97500,
+        "lowPaise": 96900,
+        "sequence": 2,
+        "updatedTs": 1001
+      }
+    ]
+  }
+}

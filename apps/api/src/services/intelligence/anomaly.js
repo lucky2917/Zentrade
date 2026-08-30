@@ -112,14 +112,25 @@ export const detectPriceAnomaly = ({ bars, index, symbol, asOf, thesisId, correl
     });
 };
 
-export const detectVolumeAnomaly = ({ bars, index, symbol, asOf, thesisId, correlationId }) => {
-    const baseline = baselineFrom(bars, index).map((b) => b.volume).filter(Number.isFinite);
+// The typical per-bar volume a spike is measured against. Exported because the
+// tick path compares the volume accumulated inside the current minute against
+// the same baseline, and two definitions of "typical" would drift.
+export const volumeBaselineOf = (bars, index, lookback = DEFAULT_LOOKBACK) => {
+    const baseline = baselineFrom(bars, index, lookback)
+        .map((b) => b.volume).filter(Number.isFinite);
     if (baseline.length < MIN_BASELINE_SAMPLES) return null;
 
     const typical = median(baseline);
     // A baseline of zero volume tells us nothing; a ratio against it is
     // undefined rather than infinite.
     if (!typical || typical <= 0) return null;
+    return { typical, samples: baseline.length };
+};
+
+export const detectVolumeAnomaly = ({ bars, index, symbol, asOf, thesisId, correlationId }) => {
+    const measured = volumeBaselineOf(bars, index);
+    if (!measured) return null;
+    const { typical, samples } = measured;
 
     const current = bars[index]?.volume;
     if (!Number.isFinite(current) || current <= 0) return null;
@@ -130,9 +141,9 @@ export const detectVolumeAnomaly = ({ bars, index, symbol, asOf, thesisId, corre
 
     return build({
         type: EVENT_TYPES.VOLUME_SPIKE, symbol, severity, asOf, thesisId, correlationId,
-        reason: `volume ${ratio.toFixed(1)}x the ${baseline.length}-bar median`,
+        reason: `volume ${ratio.toFixed(1)}x the ${samples}-bar median`,
         observed: { ratio, currentVolume: current, medianVolume: typical,
-                    baselineSamples: baseline.length },
+                    baselineSamples: samples },
         bucket: `v${severityBucket(severity)}`,
     });
 };

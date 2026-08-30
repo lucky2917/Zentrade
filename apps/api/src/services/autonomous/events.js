@@ -40,7 +40,16 @@ export const ROUTE = {
     INFRASTRUCTURE: "INFRASTRUCTURE",
 };
 
-const INFRASTRUCTURE_EVENTS = new Set([EVENT_TYPES.DATA_STALE]);
+// Conditions describing the system's own state rather than the market.
+//
+// POSITION_WITHOUT_THESIS belongs here even though it names a symbol. Routing
+// it by "carries no thesis id" classified it as a name we were merely watching,
+// which is the one thing it is not: the account already holds it. The candidate
+// path would then be asked whether to BUY a position it cannot explain.
+const INFRASTRUCTURE_EVENTS = new Set([
+    EVENT_TYPES.DATA_STALE,
+    EVENT_TYPES.POSITION_WITHOUT_THESIS,
+]);
 const MARKET_EVENTS = new Set([EVENT_TYPES.REGIME_CHANGE, EVENT_TYPES.PORTFOLIO_DRAWDOWN]);
 
 // Where an event belongs. An event attached to a thesis concerns a position we

@@ -1,0 +1,81 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "protection_is_never_displaced_by_a_signal",
+  "description": "A stop crossing and an attention signal on the same tick both appear, stop first.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": 98000,
+        "targetPaise": 108000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [
+      {
+        "symbol": "RELIANCE",
+        "entryPaise": 100000,
+        "jumpPercent": 1,
+        "thesisId": "t-1",
+        "correlationId": "c-1"
+      }
+    ],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 100000,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 97000,
+        "receiveTs": 1001
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "STOP",
+        "symbol": "RELIANCE",
+        "severity": "CRITICAL",
+        "reason": "STOP crossed at 97000 against 98000",
+        "pricePaise": 97000,
+        "levelPaise": 98000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1001,
+        "sequence": 2
+      },
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "PRICE_JUMP",
+        "symbol": "RELIANCE",
+        "severity": "WARNING",
+        "reason": "moved -3.00% within 60s",
+        "pricePaise": 97000,
+        "levelPaise": 100000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1001,
+        "sequence": 2
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 97000,
+        "highPaise": 100000,
+        "lowPaise": 97000,
+        "sequence": 2,
+        "updatedTs": 1001
+      }
+    ]
+  }
+}

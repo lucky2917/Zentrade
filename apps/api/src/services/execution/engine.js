@@ -1,4 +1,8 @@
 import { pool } from "../../config/db.js";
+import {
+    lockCash, applyCashDelta, readPositionForUpdate, addToPosition, reducePosition,
+    insertPendingOrder, updateOrderProgress,
+} from "./bookkeeper.js";
 import { STATES, assertTransition, isTerminal, stateAfterFill, InvalidTransition } from "./states.js";
 import {
     BROKERAGE_PAISE, buyMarginPaise, buyDebitPaise, buyObligationPaise, sellCreditPaise,
@@ -76,7 +80,7 @@ export const submitOrder = async ({
             "SELECT * FROM orders WHERE client_order_id = $1", [clientOrderId]);
         if (existing.rows.length) return { order: existing.rows[0], duplicate: true };
 
-        await client.query("SELECT balance_paise FROM users WHERE id = $1 FOR UPDATE", [userId]);
+        await lockCash(client, userId);
 
         const reserve = obligationPaise({ side, quantity, pricePaise, mode });
         const available = await availableCashPaise(userId, client);
@@ -87,26 +91,21 @@ export const submitOrder = async ({
         // Two callers can pass the existence check before either inserts. The
         // unique index settles it; losing that race must return the winner's
         // order, not an error, or idempotency holds only when uncontended.
-        const { rows } = await client.query(
-            `INSERT INTO orders (
-                user_id, symbol, type, quantity, price_paise, total_value_paise,
-                brokerage_paise, order_mode, decision_id, client_order_id, correlation_id,
-                state, filled_quantity, reserved_paise, order_type, limit_price_paise,
-                reference_price_paise, thesis_id, expires_at, last_update_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'NEW',0,$12,$13,$14,$15,$16,$17,NOW())
-             ON CONFLICT (client_order_id) WHERE client_order_id IS NOT NULL DO NOTHING
-             RETURNING *`,
-            [userId, symbol, side, quantity, pricePaise, pricePaise * quantity,
-             BROKERAGE_PAISE, mode, decisionId, clientOrderId, correlationId,
-             reserve, orderType, limitPricePaise, pricePaise, thesisId, expiresAt]);
+        const inserted = await insertPendingOrder(client, {
+            userId, symbol, side, quantity, pricePaise,
+            totalValuePaise: pricePaise * quantity, brokeragePaise: BROKERAGE_PAISE,
+            mode, decisionId, clientOrderId, correlationId, thesisId,
+            reservedPaise: reserve, orderType, limitPricePaise,
+            referencePricePaise: pricePaise, expiresAt,
+        });
 
-        if (!rows.length) {
+        if (!inserted) {
             const winner = await client.query(
                 "SELECT * FROM orders WHERE client_order_id = $1", [clientOrderId]);
             return { order: winner.rows[0], duplicate: true };
         }
 
-        return { order: rows[0], duplicate: false };
+        return { order: inserted, duplicate: false };
     });
 };
 
@@ -179,8 +178,7 @@ export const applyFill = async ({
             throw new ExecutionError(
                 `overfill: ${filled} of ${order.quantity} on order ${orderId}`);
 
-        await client.query("SELECT balance_paise FROM users WHERE id = $1 FOR UPDATE",
-                           [order.user_id]);
+        await lockCash(client, order.user_id);
 
         await client.query(
             `INSERT INTO order_fills (order_id, execution_ref, symbol, side, quantity,
@@ -207,62 +205,38 @@ export const applyFill = async ({
             const margin = buyMarginPaise({ quantity, pricePaise, mode: order.order_mode });
             const debit = buyDebitPaise({
                 quantity, pricePaise, mode: order.order_mode, chargeBrokerage });
-            await client.query("UPDATE users SET balance_paise = balance_paise - $1 WHERE id = $2",
-                               [debit, order.user_id]);
+            await applyCashDelta(client, order.user_id, -debit);
             // The margin this fill consumed is recorded on the row, because the
             // exit needs to know what to release. Omitting it is what made a
             // position closed by the legacy path destroy its own principal.
-            await client.query(
-                `INSERT INTO portfolio (user_id, symbol, quantity, avg_price_paise, order_mode,
-                                        margin_used_paise)
-                 VALUES ($1,$2,$3,$4,$5,$6)
-                 ON CONFLICT (user_id, symbol, order_mode) DO UPDATE SET
-                   quantity = portfolio.quantity + EXCLUDED.quantity,
-                   avg_price_paise = (portfolio.quantity * portfolio.avg_price_paise
-                                      + EXCLUDED.quantity * EXCLUDED.avg_price_paise)
-                                     / (portfolio.quantity + EXCLUDED.quantity),
-                   margin_used_paise = portfolio.margin_used_paise + EXCLUDED.margin_used_paise`,
-                [order.user_id, order.symbol, quantity, pricePaise, order.order_mode, margin]);
+            await addToPosition(client, {
+                userId: order.user_id, symbol: order.symbol, mode: order.order_mode,
+                quantity, pricePaise, marginPaise: margin });
         } else {
-            const held = await client.query(
-                `SELECT quantity, avg_price_paise, margin_used_paise FROM portfolio
-                 WHERE user_id=$1 AND symbol=$2 AND order_mode=$3 FOR UPDATE`,
-                [order.user_id, order.symbol, order.order_mode]);
-            const have = held.rows.length ? Number(held.rows[0].quantity) : 0;
+            const held = await readPositionForUpdate(client, {
+                userId: order.user_id, symbol: order.symbol, mode: order.order_mode });
+            const have = held?.quantity ?? 0;
             if (quantity > have)
                 throw new ExecutionError(
                     `sell fill of ${quantity} exceeds holding of ${have}; would create a negative position`);
 
-            const avgPricePaise = Number(held.rows[0].avg_price_paise);
-            const marginUsedPaise = Number(held.rows[0].margin_used_paise ?? 0);
+            const { avgPricePaise, marginUsedPaise } = held;
             const credit = sellCreditPaise({
                 quantity, heldQuantity: have, marginUsedPaise, avgPricePaise, pricePaise,
                 mode: order.order_mode, chargeBrokerage });
-            await client.query("UPDATE users SET balance_paise = balance_paise + $1 WHERE id = $2",
-                               [credit, order.user_id]);
+            await applyCashDelta(client, order.user_id, credit);
 
-            if (quantity === have) {
-                await client.query(
-                    "DELETE FROM portfolio WHERE user_id=$1 AND symbol=$2 AND order_mode=$3",
-                    [order.user_id, order.symbol, order.order_mode]);
-            } else {
-                await client.query(
-                    `UPDATE portfolio SET quantity = quantity - $3, margin_used_paise = $5
-                     WHERE user_id=$1 AND symbol=$2 AND order_mode=$4`,
-                    [order.user_id, order.symbol, quantity, order.order_mode,
-                     remainingMarginPaise({ quantity, heldQuantity: have, marginUsedPaise })]);
-            }
+            await reducePosition(client, {
+                userId: order.user_id, symbol: order.symbol, mode: order.order_mode,
+                quantity, heldQuantity: have,
+                remainingMarginPaise: remainingMarginPaise({
+                    quantity, heldQuantity: have, marginUsedPaise }) });
         }
 
-        const updated = await client.query(
-            `UPDATE orders SET state=$2::varchar, filled_quantity=$3, reserved_paise=$4,
-                    last_update_at=NOW(),
-                    completed_at = CASE WHEN $2::varchar = 'FILLED' THEN NOW()
-                                        ELSE completed_at END
-             WHERE id=$1 RETURNING *`,
-            [orderId, nextState, filled, reserved]);
+        const updated = await updateOrderProgress(client, {
+            orderId, state: nextState, filledQuantity: filled, reservedPaise: reserved });
 
-        return { order: updated.rows[0], duplicate: false };
+        return { order: updated, duplicate: false };
     });
 };
 

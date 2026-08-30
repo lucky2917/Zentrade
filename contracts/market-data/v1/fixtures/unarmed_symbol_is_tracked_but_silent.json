@@ -1,0 +1,40 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "unarmed_symbol_is_tracked_but_silent",
+  "description": "State advances for a symbol with no commitment; no event is produced.",
+  "input": {
+    "commitments": [],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "TCS",
+        "pricePaise": 50000,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "TCS",
+        "pricePaise": 51000,
+        "receiveTs": 1001
+      },
+      {
+        "symbol": "TCS",
+        "pricePaise": 49000,
+        "receiveTs": 1002
+      }
+    ]
+  },
+  "expected": {
+    "events": [],
+    "finalState": [
+      {
+        "symbol": "TCS",
+        "observed": true,
+        "lastPaise": 49000,
+        "highPaise": 51000,
+        "lowPaise": 49000,
+        "sequence": 3,
+        "updatedTs": 1002
+      }
+    ]
+  }
+}

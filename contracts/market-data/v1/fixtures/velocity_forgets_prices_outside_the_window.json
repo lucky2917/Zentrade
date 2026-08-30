@@ -1,0 +1,41 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "velocity_forgets_prices_outside_the_window",
+  "description": "The same move spread beyond the velocity window is a drift, not a jump.",
+  "input": {
+    "commitments": [],
+    "watches": [
+      {
+        "symbol": "TCS",
+        "jumpPercent": 2,
+        "velocityWindowMs": 30000
+      }
+    ],
+    "ticks": [
+      {
+        "symbol": "TCS",
+        "pricePaise": 100000,
+        "receiveTs": 0
+      },
+      {
+        "symbol": "TCS",
+        "pricePaise": 102500,
+        "receiveTs": 90000
+      }
+    ]
+  },
+  "expected": {
+    "events": [],
+    "finalState": [
+      {
+        "symbol": "TCS",
+        "observed": true,
+        "lastPaise": 102500,
+        "highPaise": 102500,
+        "lowPaise": 100000,
+        "sequence": 2,
+        "updatedTs": 90000
+      }
+    ]
+  }
+}

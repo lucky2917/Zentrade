@@ -1,0 +1,65 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "an_unwatched_symbol_produces_no_signals",
+  "description": "Detection is off unless a watch asks for it; an armed symbol still protects.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": 98000,
+        "targetPaise": 108000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 99000,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 105000,
+        "receiveTs": 1001
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 97000,
+        "receiveTs": 1002
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "STOP",
+        "symbol": "RELIANCE",
+        "severity": "CRITICAL",
+        "reason": "STOP crossed at 97000 against 98000",
+        "pricePaise": 97000,
+        "levelPaise": 98000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1002,
+        "sequence": 3
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 97000,
+        "highPaise": 105000,
+        "lowPaise": 97000,
+        "sequence": 3,
+        "updatedTs": 1002
+      }
+    ]
+  }
+}

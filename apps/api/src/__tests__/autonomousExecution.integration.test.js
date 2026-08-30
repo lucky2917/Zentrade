@@ -5,12 +5,14 @@ const TEST_REDIS = process.env.TEST_REDIS_URL;
 if (TEST_REDIS) process.env.REDIS_URL = TEST_REDIS;
 if (TEST_DB) process.env.DATABASE_URL = TEST_DB;
 
-// Reconciliation for the full chain: AI decision -> risk gate -> intent ->
-// paper order -> position -> cash -> journal. Uses the real tradingEngine and
-// a real Postgres; only the model is injected.
+// Reconciliation for the full chain: AI decision -> revalidation -> risk gate ->
+// intent -> paper order -> position -> cash -> journal. Real Postgres, real
+// execution engine, real risk gate, real orchestrator. Only the model is
+// injected, because the model is the only part that is not deterministic.
 
 describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous execution reconciliation", () => {
-    let pool, redis, paperExecutor, orderForClientId, runLoopCycle, DECISION;
+    let pool, redis, paperExecutor, orderForClientId, DECISION;
+    let Orchestrator, reassessPosition, intentFrom, evaluateRisk, makeEvent;
     const SYMBOLS = ["RELIANCE", "TCS", "INFY", "WIPRO", "SBIN", "ITC", "HDFCBANK"];
     const USER = 4242;
     const START_CASH = 100_000_000; // Rs 10,00,000
@@ -27,8 +29,12 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous execution reconciliation", 
             }));
         }
         ({ paperExecutor, orderForClientId } = await import("../services/autonomous/execution.js"));
-        ({ runLoopCycle } = await import("../services/autonomous/loop.js"));
-        ({ DECISION } = await import("../services/autonomous/riskGate.js"));
+        ({ intentFrom } = await import("../services/autonomous/loop.js"));
+        ({ DECISION, evaluate: evaluateRisk } =
+            await import("../services/autonomous/riskGate.js"));
+        ({ Orchestrator } = await import("../services/orchestrator/orchestrator.js"));
+        ({ reassessPosition } = await import("../services/autonomous/reassess.js"));
+        ({ makeEvent } = await import("../services/autonomous/events.js"));
 
         await pool.query("DELETE FROM orders WHERE user_id = $1", [USER]);
         await pool.query("DELETE FROM portfolio WHERE user_id = $1", [USER]);
@@ -139,7 +145,13 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous execution reconciliation", 
         });
     });
 
-    describe("the loop end to end, through the real engine", () => {
+    // These used to drive runLoopCycle, a second reasoning loop in loop.js that
+    // nothing ran. It has been removed, and every guarantee it asserted is now
+    // asserted against the path that is actually wired: the orchestrator's
+    // reasoningCycle, through the real risk gate and the real paper engine.
+    describe("the decision path end to end, through the real engine", () => {
+        const AT = new Date("2026-08-31T05:00:00Z");   // 10:30 IST, a Monday
+
         const position = (over = {}) => ({
             symbol: "RELIANCE", userId: USER, side: "BUY", quantity: 10,
             entryPricePaise: 100000, currentPricePaise: 94000, exposurePaise: 940000,
@@ -150,50 +162,84 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous execution reconciliation", 
             unrealisedPnlPaise: -60000, hasThesis: true, ...over,
         });
 
-        const portfolio = () => ({
+        const portfolio = (over = {}) => ({
             userId: USER, cashPaise: START_CASH, positionCount: 1,
-            grossExposurePaise: 940_000, netExposurePaise: 940_000, unrealisedPnlPaise: -60_000,
+            grossExposurePaise: 940_000, netExposurePaise: 940_000,
+            unrealisedPnlPaise: -60_000,
             positions: [{ symbol: "RELIANCE", quantity: 10, exposurePaise: 940_000 }],
-        });
-
-        const basePorts = (over = {}) => ({
-            recordEvent: vi.fn(async (e) => ({ id: `ev-${e.type}` })),
-            loadThesis: vi.fn(async () => ({
-                id: "t-1", side: "BUY", entry_price_paise: 100000,
-                rationale: "breakout", setup_type: "breakout",
-                invalidation_conditions: ["close below 990"], supporting_evidence: [],
-                horizon: "INTRADAY", stop_paise: 95000, target_paise: 110000,
-            })),
-            recordReassessment: vi.fn(async () => ({})),
-            journal: vi.fn(async () => ({})),
             ...over,
         });
+
+        const thesisRow = {
+            id: "t-1", side: "BUY", entry_price_paise: 100000,
+            rationale: "breakout", setup_type: "breakout",
+            invalidation_conditions: ["close below 990"], supporting_evidence: [],
+            horizon: "INTRADAY", stop_paise: 95000, target_paise: 110000,
+        };
+
+        const buildOrchestrator = ({ decision, held = position(), book = portfolio(),
+                                     recordReassessment = vi.fn(async () => ({})) }) => {
+            const orchestrator = new Orchestrator({
+                clock: () => AT,
+                ports: {
+                    loadPositions: async () => [held],
+                    loadPortfolio: async () => book,
+                    positionFor: async () => held,
+                    loadThesis: async () => thesisRow,
+                    // The real reassessment guardrails, with only the model injected.
+                    reassess: async ({ position: p, thesis, event }) => reassessPosition({
+                        position: p, thesis, event, portfolio: book,
+                        callModel: async () => decision,
+                    }),
+                    intentFrom,
+                    currentWorld: async () => ({
+                        nowMs: AT.getTime(), pricePaise: held.currentPricePaise,
+                        priceAgeMs: 1000, position: { quantity: held.quantity } }),
+                    // The real risk gate.
+                    evaluateRisk: async (intent) => evaluateRisk(intent, {
+                        portfolio: book, nowMs: AT.getTime(), stale: false,
+                        session: { trades: 0, turnoverPaise: 0, realisedLossPaise: 0 },
+                        openClientOrderIds: [],
+                    }),
+                    // The real paper engine.
+                    execute: execute(),
+                    recordEvent: vi.fn(async () => ({ id: 1 })),
+                    markEventHandled: vi.fn(async () => null),
+                    markEventFailed: vi.fn(async () => null),
+                    recordReassessment,
+                    journal: vi.fn(async () => ({})),
+                },
+            });
+            return { orchestrator, recordReassessment };
+        };
+
+        const offer = (orchestrator, over = {}) => orchestrator.queue.offer({
+            ...makeEvent({
+                type: "STOP_BREACH", symbol: "RELIANCE", severity: "CRITICAL",
+                thesisId: "t-1", correlationId: "loop-c-1", source: "test",
+                observed: {}, reason: "breached", observedAt: AT, bucket: "b", ...over }),
+            storedId: 1,
+        }, AT.getTime());
 
         it("EXIT flows through risk to a real paper order and closes the position", async () => {
             await execute()({ side: "BUY", symbol: "RELIANCE", quantity: 10,
                               clientOrderId: "seed-exit", correlationId: "loop-c-1" });
             expect((await holding("RELIANCE")).quantity).toBe(10);
 
-            const ports = basePorts({
-                callModel: async () => ({
+            const { orchestrator, recordReassessment } = buildOrchestrator({
+                decision: {
                     action: "EXIT", confidence: "HIGH", thesisStillValid: false,
                     whatChanged: "invalidation hit", material: true,
                     reasoning: "closed below the recorded level", evidence: [],
-                }),
-                execute: execute(),
+                },
             });
+            offer(orchestrator);
 
-            const cycle = await runLoopCycle({
-                positions: [position()], portfolio: portfolio(),
-                riskContext: { session: { trades: 0, turnoverPaise: 0, realisedLossPaise: 0 } },
-                now: new Date("2026-08-31T05:00:00Z"), ports,
-            });
-
-            expect(cycle.decisions[0].action).toBe("EXIT");
-            expect(cycle.decisions[0].risk).toBe(DECISION.ALLOW);
-            expect(cycle.executions).toBe(1);
+            const [handled] = await orchestrator.reasoningCycle();
+            expect(handled.action).toBe("EXIT");
+            expect(handled.executed).toBe(true);
             expect(await holding("RELIANCE")).toBeNull();
-            expect(ports.recordReassessment).toHaveBeenCalledWith(
+            expect(recordReassessment).toHaveBeenCalledWith(
                 expect.objectContaining({ executed: true, riskDecision: DECISION.ALLOW }));
         });
 
@@ -201,20 +247,15 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous execution reconciliation", 
             await execute()({ side: "BUY", symbol: "RELIANCE", quantity: 10,
                               clientOrderId: "seed-reduce", correlationId: "loop-c-2" });
 
-            const ports = basePorts({
-                callModel: async () => ({
+            const { orchestrator } = buildOrchestrator({
+                decision: {
                     action: "REDUCE", confidence: "MEDIUM", thesisStillValid: true,
                     whatChanged: "momentum faded", material: true,
                     reasoning: "trim risk", evidence: [],
-                }),
-                execute: execute(),
+                },
             });
-
-            await runLoopCycle({
-                positions: [position({ correlationId: "loop-c-2" })], portfolio: portfolio(),
-                riskContext: { session: { trades: 0, turnoverPaise: 0, realisedLossPaise: 0 } },
-                now: new Date("2026-08-31T05:00:00Z"), ports,
-            });
+            offer(orchestrator);
+            await orchestrator.reasoningCycle();
 
             expect((await holding("RELIANCE")).quantity).toBe(5);
         });
@@ -224,23 +265,20 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous execution reconciliation", 
                               clientOrderId: "seed-reject", correlationId: "loop-c-3" });
             const ordersBefore = await orderCount();
 
-            const ports = basePorts({
-                callModel: async () => ({
+            const { orchestrator } = buildOrchestrator({
+                decision: {
                     action: "ADD", confidence: "HIGH", thesisStillValid: true,
                     whatChanged: "momentum", material: true, reasoning: "add", evidence: [],
-                }),
-                execute: execute(),
+                },
+                held: position({ quantity: 600 }),
+                book: portfolio({ cashPaise: 1000 }),
             });
+            offer(orchestrator);
 
-            const cycle = await runLoopCycle({
-                positions: [position({ correlationId: "loop-c-3", quantity: 600 })],
-                portfolio: { ...portfolio(), cashPaise: 1000 },
-                riskContext: { session: { trades: 0, turnoverPaise: 0, realisedLossPaise: 0 } },
-                now: new Date("2026-08-31T05:00:00Z"), ports,
-            });
-
-            expect(cycle.riskRejections).toBe(1);
-            expect(cycle.executions).toBe(0);
+            const [handled] = await orchestrator.reasoningCycle();
+            expect(handled.executed).toBe(false);
+            expect(handled.risk).toBeDefined();
+            expect(orchestrator.metrics.riskRejections).toBe(1);
             expect(await orderCount()).toBe(ordersBefore);
             expect((await holding("RELIANCE")).quantity).toBe(10);
         });
@@ -250,22 +288,18 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous execution reconciliation", 
                               clientOrderId: "seed-hold", correlationId: "loop-c-4" });
             const ordersBefore = await orderCount();
 
-            const ports = basePorts({
-                callModel: async () => ({
+            const { orchestrator } = buildOrchestrator({
+                decision: {
                     action: "HOLD", confidence: "HIGH", thesisStillValid: true,
                     whatChanged: "nothing material", material: false,
                     reasoning: "structure intact", evidence: [],
-                }),
-                execute: execute(),
+                },
             });
+            offer(orchestrator);
 
-            const cycle = await runLoopCycle({
-                positions: [position({ correlationId: "loop-c-4" })], portfolio: portfolio(),
-                riskContext: { session: { trades: 0, turnoverPaise: 0, realisedLossPaise: 0 } },
-                now: new Date("2026-08-31T05:00:00Z"), ports,
-            });
-
-            expect(cycle.intents).toBe(0);
+            const [handled] = await orchestrator.reasoningCycle();
+            expect(handled.action).toBe("HOLD");
+            expect(handled.executed).toBe(false);
             expect(await orderCount()).toBe(ordersBefore);
         });
 
@@ -274,42 +308,38 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous execution reconciliation", 
                               clientOrderId: "seed-malformed", correlationId: "loop-c-5" });
             const ordersBefore = await orderCount();
 
-            const ports = basePorts({
-                callModel: async () => ({ action: "LIQUIDATE EVERYTHING" }),
-                execute: execute(),
+            const { orchestrator } = buildOrchestrator({
+                decision: { action: "LIQUIDATE EVERYTHING" },
             });
+            offer(orchestrator);
 
-            const cycle = await runLoopCycle({
-                positions: [position({ correlationId: "loop-c-5" })], portfolio: portfolio(),
-                riskContext: { session: { trades: 0, turnoverPaise: 0, realisedLossPaise: 0 } },
-                now: new Date("2026-08-31T05:00:00Z"), ports,
-            });
-
-            expect(cycle.decisions[0].action).toBe("HOLD");
+            const [handled] = await orchestrator.reasoningCycle();
+            expect(handled.action).toBe("HOLD");
             expect(await orderCount()).toBe(ordersBefore);
             expect((await holding("RELIANCE")).quantity).toBe(10);
         });
 
-        it("running the same cycle twice produces one order, not two", async () => {
+        it("running the same decision twice produces one order, not two", async () => {
             await execute()({ side: "BUY", symbol: "RELIANCE", quantity: 10,
                               clientOrderId: "seed-idem", correlationId: "loop-c-6" });
 
-            const ports = basePorts({
-                callModel: async () => ({
-                    action: "REDUCE", confidence: "HIGH", thesisStillValid: true,
-                    whatChanged: "x", material: true, reasoning: "y", evidence: [],
-                }),
-                execute: execute(),
-            });
-            const input = () => ({
-                positions: [position({ correlationId: "loop-c-6" })], portfolio: portfolio(),
-                riskContext: { session: { trades: 0, turnoverPaise: 0, realisedLossPaise: 0 } },
-                now: new Date("2026-08-31T05:00:00Z"), ports,
-            });
-
-            await runLoopCycle(input());
+            const decision = {
+                action: "REDUCE", confidence: "HIGH", thesisStillValid: true,
+                whatChanged: "x", material: true, reasoning: "y", evidence: [],
+            };
+            const first = buildOrchestrator({ decision });
+            offer(first.orchestrator);
+            await first.orchestrator.reasoningCycle();
             const afterFirst = await orderCount();
-            await runLoopCycle(input());
+
+            // A second orchestrator over the same state: a restart mid-session.
+            // The intent key is derived from the thesis and the action, so the
+            // engine absorbs the repeat instead of placing a second order.
+            const second = buildOrchestrator({
+                decision, held: position({ quantity: 5 }) });
+            offer(second.orchestrator);
+            await second.orchestrator.reasoningCycle();
+
             expect(await orderCount()).toBe(afterFirst);
         });
     });

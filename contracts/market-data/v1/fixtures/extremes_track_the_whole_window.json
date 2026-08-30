@@ -1,0 +1,45 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "extremes_track_the_whole_window",
+  "description": "Running high and low span every accepted tick, not just the endpoints.",
+  "input": {
+    "commitments": [],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "INFY",
+        "pricePaise": 100000,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "INFY",
+        "pricePaise": 103400,
+        "receiveTs": 1001
+      },
+      {
+        "symbol": "INFY",
+        "pricePaise": 99100,
+        "receiveTs": 1002
+      },
+      {
+        "symbol": "INFY",
+        "pricePaise": 100000,
+        "receiveTs": 1003
+      }
+    ]
+  },
+  "expected": {
+    "events": [],
+    "finalState": [
+      {
+        "symbol": "INFY",
+        "observed": true,
+        "lastPaise": 100000,
+        "highPaise": 103400,
+        "lowPaise": 99100,
+        "sequence": 4,
+        "updatedTs": 1003
+      }
+    ]
+  }
+}

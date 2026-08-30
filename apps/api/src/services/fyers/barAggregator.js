@@ -186,7 +186,7 @@ export class BarAggregator {
             }
             await this.redis.rpush(listKey, payload);
             await this.redis.ltrim(listKey, -this.maxBars, -1);
-            await this.rebuildDerived(symbol);
+            await this.rebuildDerived(symbol, bar);
         } catch (err) {
             this.logger?.error?.("BarAggregator", "persist failed",
                                  { error: err.message, symbol });
@@ -195,7 +195,62 @@ export class BarAggregator {
 
     // 5m and 15m are derived from the stored 1m series, never accumulated
     // separately, so they cannot drift from it.
-    async rebuildDerived(symbol) {
+    // Only the bucket containing the closed bar can have changed, and because
+    // bars close in order that bucket is always the last one. Recomputing the
+    // whole series instead cost 87.5 ms across the universe at the minute
+    // boundary, and every tick arriving in that window queued behind it --
+    // including a tick crossing a stop.
+    async rebuildDerived(symbol, closedBar = null) {
+        if (closedBar === null) return this.rebuildDerivedFull(symbol);
+
+        const epoch = new Date(closedBar.ts).getTime();
+        if (!Number.isFinite(epoch)) return this.rebuildDerivedFull(symbol);
+
+        for (const granularity of ["5m", "15m"]) {
+            const startMinute = bucketStartMinute(epoch, granularity);
+            if (startMinute === null) continue;
+            const bucketTs = bucketTimestamp(epoch, granularity);
+            const size = GRANULARITY_MINUTES[granularity];
+
+            // The 1m bars belonging to this bucket, and only those.
+            const window = await this.redis.lrange(`bars:1m:${symbol}`, -size, -1);
+            const members = [];
+            for (const entry of window ?? []) {
+                try {
+                    const bar = JSON.parse(entry);
+                    const barEpoch = new Date(bar.ts).getTime();
+                    if (!Number.isFinite(barEpoch)) continue;
+                    if (bucketStartMinute(barEpoch, granularity) === startMinute
+                        && istDateOf(barEpoch) === istDateOf(epoch)) {
+                        members.push(bar);
+                    }
+                } catch { /* skip malformed */ }
+            }
+            if (!members.length) continue;
+
+            const [rolled] = rollUp(members, granularity);
+            if (!rolled) continue;
+
+            const key = `bars:${granularity}:${symbol}`;
+            const tail = await this.redis.lindex(key, -1);
+            let replace = false;
+            if (tail) {
+                try { replace = JSON.parse(tail).ts === bucketTs; } catch { replace = false; }
+            }
+
+            if (replace) {
+                await this.redis.lset(key, -1, JSON.stringify(rolled));
+            } else {
+                await this.redis.rpush(key, JSON.stringify(rolled));
+                await this.redis.ltrim(key, -this.maxBars, -1);
+            }
+        }
+    }
+
+    // The whole-series rebuild. Retained for recovery, where the derived series
+    // may be missing or inconsistent and there is no single closed bar to
+    // reason from. Never on the hot path.
+    async rebuildDerivedFull(symbol) {
         const raw = await this.redis.lrange(`bars:1m:${symbol}`, -this.maxBars, -1);
         const bars1m = [];
         for (const entry of raw ?? []) {

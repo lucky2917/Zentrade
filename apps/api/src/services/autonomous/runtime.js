@@ -7,8 +7,12 @@ import { intentFrom } from "./loop.js";
 import { permits } from "../orchestrator/session.js";
 import { revalidate, VERDICT } from "../execution/revalidate.js";
 import { SymbolGate, entryIntentKey } from "./symbolGate.js";
-import { ReflexLane, CROSSING, DIRECTION } from "../tick/reflex.js";
+import { ReflexLane, CROSSING, DIRECTION, isProtective,
+         DEFAULT_STALE_AFTER_MS } from "../tick/reflex.js";
 import { makeEvent, EVENT_TYPES, SEVERITY } from "./events.js";
+import { THRESHOLDS } from "../intelligence/anomaly.js";
+import { FastPlaneBridge, PLANE_MODE } from "../tick/fastPlane.js";
+import { KIND } from "../cockpit/narrator.js";
 
 // The autonomous runtime.
 //
@@ -25,11 +29,42 @@ import { makeEvent, EVENT_TYPES, SEVERITY } from "./events.js";
 
 export const MODE = { PAPER: "PAPER", LIVE: "LIVE" };
 
+// How many unreconciled crossings the brain will hold for shadow comparison.
+const MAX_COMPARISON_BUFFER = 2_000;
+
+// The contract's kind vocabulary maps onto the reflex's one-to-one, so a plane
+// event and a local crossing reach the same protect() and cannot diverge in
+// how they are handled.
+const CROSSING_FROM_KIND = {
+    STOP: CROSSING.STOP,
+    TARGET: CROSSING.TARGET,
+    INVALIDATION: CROSSING.INVALIDATION,
+    STOP_APPROACH: CROSSING.STOP_APPROACH,
+    TARGET_APPROACH: CROSSING.TARGET_APPROACH,
+    PRICE_JUMP: CROSSING.PRICE_JUMP,
+    VWAP_DEVIATION: CROSSING.VWAP_DEVIATION,
+    VOLUME_SPIKE: CROSSING.VOLUME_SPIKE,
+};
+
+// How a continuously detected material change becomes an attention event.
+// These used to be found by the 15-second sweep; they are now found on the
+// tick that causes them, and routed to exactly the same event vocabulary.
+const SIGNAL_ROUTING = {
+    [CROSSING.TARGET]: { type: EVENT_TYPES.TARGET_BREACH, severity: SEVERITY.WARNING },
+    [CROSSING.STOP_APPROACH]: { type: EVENT_TYPES.STOP_APPROACHING, severity: SEVERITY.WARNING },
+    [CROSSING.TARGET_APPROACH]: { type: EVENT_TYPES.TARGET_APPROACHING, severity: SEVERITY.INFO },
+    [CROSSING.PRICE_JUMP]: { type: EVENT_TYPES.PRICE_JUMP, severity: SEVERITY.WARNING },
+    [CROSSING.VWAP_DEVIATION]: { type: EVENT_TYPES.TECHNICAL_BREAKDOWN, severity: SEVERITY.WARNING },
+    [CROSSING.VOLUME_SPIKE]: { type: EVENT_TYPES.VOLUME_SPIKE, severity: SEVERITY.WARNING },
+};
+
 export class AutonomousRuntime {
     constructor({
         engine, reconciler, ports, mode = MODE.PAPER,
         venueScript = {}, screen = DEFAULT_SCREEN, barAggregator = null,
         clock = () => new Date(), logger = null, userId = 1,
+        staleSweepMs = 1_000, staleAfterMs = DEFAULT_STALE_AFTER_MS,
+        fastPlane = null, narrator = null,
     }) {
         if (mode !== MODE.PAPER) {
             // The guard is here rather than in configuration so enabling live
@@ -45,6 +80,19 @@ export class AutonomousRuntime {
         this.screen = screen;
         this.sourcePorts = ports;
         this.barAggregator = barAggregator;
+        this.staleSweepMs = staleSweepMs;
+        this.staleAfterMs = staleAfterMs;
+        this.lastStaleSweepAt = null;
+
+        // The Go fast plane. OFF by default: the Node reflex is authoritative
+        // until a shadow session has run with zero divergence. In SHADOW the
+        // plane sees the same commands and the same ticks, and its events are
+        // compared rather than acted on.
+        this.fastPlane = fastPlane ?? new FastPlaneBridge({ mode: PLANE_MODE.OFF, logger });
+        // Crossings the Node reflex produced since the last reconciliation.
+        this.recentCrossings = [];
+        // Events the plane pushed while running in shadow.
+        this.planeShadowEvents = [];
 
         this.venue = new PaperVenue({ engine, script: venueScript, clock, logger });
         // One symbol, one decision in flight. Both entry paths and the
@@ -56,18 +104,35 @@ export class AutonomousRuntime {
         // the crossing meant, not whether to protect.
         this.reflex = new ReflexLane({
             clock: () => this.clock().getTime(), logger,
-            onCrossing: (crossing) => this.protect(crossing),
+            onCrossing: (crossing) => {
+                if (this.fastPlane.enabled) this.recordForComparison(crossing);
+                // ONE authoritative detector. When the Go plane is live it owns
+                // detection, and the local lane keeps state for comparison and
+                // for the supervisory range without acting on it. Two actors
+                // reacting to one crossing is two exits.
+                if (this.fastPlane.authoritative) {
+                    this.metrics.localCrossingsSuppressed += 1;
+                    return null;
+                }
+                return this.protect(crossing);
+            },
         });
 
         this.metrics = {
             candidatesScanned: 0, candidatesPassed: 0, candidatesSuppressed: 0,
             candidateReasoning: 0, entriesOpened: 0, candidatesGated: 0,
             venueTicks: 0, reconciliations: 0, revalidationRejections: 0,
-            protectiveActions: 0, protectiveExits: 0, barsClosed: 0,
+            protectiveActions: 0, protectiveExits: 0, barsClosed: 0, materialSignals: 0,
+            staleSweeps: 0, blindSymbols: 0,
+            planeEvents: 0, planeRejected: 0, localCrossingsSuppressed: 0,
         };
 
+        // Optional throughout: the runtime behaves identically without one,
+        // and narration can never change or delay a decision.
+        this.narrator = narrator;
+
         this.orchestrator = new Orchestrator({
-            clock, logger,
+            clock, logger, narrator,
             ports: this.buildOrchestratorPorts(),
         });
 
@@ -81,6 +146,7 @@ export class AutonomousRuntime {
             // The single execution port. Everything approved passes through
             // here and nowhere else.
             execute: async (intent) => this.executeIntent(intent),
+            syncBaselines: (contexts) => this.syncBaselines(contexts),
             analyseCandidate: p.analyseCandidate
                 ? async (input) => this.handleCandidate(input) : undefined,
             openOrders: () => this.engine.openOrders(this.userId),
@@ -114,6 +180,19 @@ export class AutonomousRuntime {
             });
         }
 
+        // The one condition that legitimately stays timer driven: absence of
+        // ticks cannot arrive as a tick. It runs a hundred times more often
+        // than the supervisory monitor because a blind reflex lane is a
+        // protection failure, not a data-quality note.
+        scheduler.register({
+            name: "stale-sweep",
+            intervalMs: this.staleSweepMs,
+            // Silence only means something while an exit is possible. Outside
+            // that window there is nothing to protect and nothing to fix.
+            shouldRun: () => permits(this.orchestrator.session(), "exits"),
+            run: () => this.staleSweep(),
+        });
+
         scheduler.register({
             name: "venue-tick",
             intervalMs: 5_000,
@@ -121,6 +200,9 @@ export class AutonomousRuntime {
             run: async () => {
                 const advanced = await this.venue.tick();
                 this.metrics.venueTicks += 1;
+                // A resting order moving through the state machine is part of
+                // the lifecycle an operator is watching.
+                for (const order of advanced) this.narrateOrder(order, null);
                 return advanced.length;
             },
         });
@@ -132,12 +214,64 @@ export class AutonomousRuntime {
             run: () => this.sourcePorts.ingestNews(this.clock()),
         });
 
+        // Shadow reconciliation. Only registered when the plane is running, so
+        // the default configuration adds no job and no work.
+        if (this.fastPlane.enabled) {
+            scheduler.register({
+                name: "fast-plane-reconcile",
+                intervalMs: 5_000,
+                shouldRun: () => true,
+                run: () => this.reconcileFastPlane(),
+            });
+        }
+
         scheduler.register({
             name: "health",
             intervalMs: 30_000,
             shouldRun: () => true,
             run: async () => this.health(),
         });
+    }
+
+    // ---- narration -------------------------------------------------------
+
+    narrate(kind, payload) {
+        if (!this.narrator) return null;
+        try { return this.narrator.emit(kind, payload); } catch (err) {
+            this.logger?.warn?.("Runtime", "narration failed",
+                                { error: err.message, kind });
+            return null;
+        }
+    }
+
+    // The real Phase 1 state machine's states, never invented ones.
+    narrateOrder(result, intent) {
+        const order = result?.order ?? result;
+        if (!order?.state) return;
+        this.narrate(KIND.ORDER_STATE_CHANGED, {
+            symbol: order.symbol ?? intent?.symbol ?? null,
+            orderId: order.id ?? null,
+            state: order.state,
+            side: order.type ?? intent?.side ?? null,
+            quantity: Number(order.quantity ?? intent?.quantity ?? 0),
+            filledQuantity: Number(order.filled_quantity ?? 0),
+            pricePaise: Number(order.price_paise ?? intent?.pricePaise ?? 0),
+            clientOrderId: order.client_order_id ?? intent?.clientOrderId ?? null,
+            correlationId: order.correlation_id ?? intent?.correlationId ?? null,
+            duplicate: Boolean(result?.duplicate),
+        });
+        if (order.state === "FILLED" || order.state === "PARTIALLY_FILLED") {
+            this.narrate(KIND.FILL, {
+                symbol: order.symbol ?? intent?.symbol ?? null,
+                orderId: order.id ?? null,
+                state: order.state,
+                filledQuantity: Number(order.filled_quantity ?? 0),
+                quantity: Number(order.quantity ?? 0),
+                pricePaise: Number(order.price_paise ?? 0),
+                pnlPaise: order.pnl_paise === null || order.pnl_paise === undefined
+                    ? null : Number(order.pnl_paise),
+            });
+        }
     }
 
     // ---- execution -------------------------------------------------------
@@ -152,25 +286,209 @@ export class AutonomousRuntime {
             clientOrderId: intent.clientOrderId
                 ?? `${intent.correlationId}:${intent.action}:${intent.symbol}`,
         };
-        return this.venue.submit(enriched);
+        const result = await this.venue.submit(enriched);
+        this.narrateOrder(result, enriched);
+        return result;
     }
 
     // ---- reflex ----------------------------------------------------------
 
+    // VWAP and typical volume are bar-scale quantities computed by the
+    // intelligence pass. The tick path cannot derive either, so the bar path
+    // pushes them in and the tick path compares against them. Called once per
+    // observation cycle.
+    syncBaselines(contexts) {
+        if (!contexts) return { vwap: 0, volume: 0 };
+        let vwap = 0;
+        let volume = 0;
+        for (const [symbol, context] of Object.entries(contexts)) {
+            if (!this.reflex.isWatched(symbol)) continue;
+            if (context?.vwapAvailable && Number.isFinite(context.vwap)
+                && this.reflex.updateVwap(symbol, Math.round(context.vwap * 100))) vwap += 1;
+            if (Number.isFinite(context?.volumeBaseline)
+                && this.reflex.updateVolumeBaseline(symbol, {
+                    baseline: context.volumeBaseline,
+                    // The intelligence layer owns what counts as a spike.
+                    ratio: THRESHOLDS.volumeRatioWarning,
+                })) {
+                volume += 1;
+                this.fastPlane.volumeBaseline(symbol, context.volumeBaseline,
+                                              THRESHOLDS.volumeRatioWarning);
+            }
+        }
+        return { vwap, volume };
+    }
+
+
+    // ---- fast plane ------------------------------------------------------
+
+    // One event from the Go plane, arriving by push.
+    //
+    // It is translated into the reflex's own crossing shape and handed to the
+    // SAME protect() a local crossing reaches, so a stop breach is handled
+    // identically whichever plane saw it.
+    onPlaneEvent(event) {
+        const kind = CROSSING_FROM_KIND[event?.kind];
+        if (!kind || !event.symbol) {
+            this.metrics.planeRejected += 1;
+            return null;
+        }
+        this.metrics.planeEvents += 1;
+        this.narrate(KIND.MARKET_EVENT, {
+            symbol: event.symbol, type: event.kind, severity: event.severity,
+            reason: event.reason ?? `${event.kind} on the tick`,
+            // The cockpit distinguishes a fast-plane observation from reasoning,
+            // risk and execution while showing them on one timeline.
+            source: "FAST_PLANE", detector: "go_marketdata_v1",
+            pricePaise: event.pricePaise ?? null,
+            levelPaise: event.levelPaise ?? null,
+            thesisId: event.thesisId || null,
+        });
+
+        // In shadow the plane observes and nothing acts on it.
+        if (!this.fastPlane.authoritative) {
+            this.planeShadowEvents.push(event);
+            if (this.planeShadowEvents.length > MAX_COMPARISON_BUFFER) {
+                this.planeShadowEvents.splice(
+                    0, this.planeShadowEvents.length - MAX_COMPARISON_BUFFER);
+            }
+            return null;
+        }
+
+        return this.protect({
+            kind, symbol: event.symbol,
+            pricePaise: event.pricePaise ?? null,
+            levelPaise: event.levelPaise ?? null,
+            thesisId: event.thesisId || null,
+            correlationId: event.correlationId || `plane-${event.symbol}`,
+            quantity: 0,      // sized from the holding at protect() time
+            at: event.observedTs ?? this.clock().getTime(),
+            reason: event.reason ?? null,
+        });
+    }
+
+    // Bounded. A brain that stopped reconciling must not accumulate crossings
+    // until it runs out of memory; the oldest are dropped and the loss shows up
+    // as divergence rather than as a leak.
+    recordForComparison(crossing) {
+        this.recentCrossings.push(crossing);
+        if (this.recentCrossings.length > MAX_COMPARISON_BUFFER) {
+            this.recentCrossings.splice(0, this.recentCrossings.length - MAX_COMPARISON_BUFFER);
+        }
+    }
+
+    // Compare what the two implementations saw. In SHADOW this is the only
+    // thing the plane's output is used for; nothing downstream reads it.
+    async reconcileFastPlane() {
+        if (!this.fastPlane.enabled) return { skipped: "plane off" };
+        // Everything pushed since the last pass, plus anything left in the
+        // replay log — the log catches what arrived while the subscriber was
+        // reconnecting.
+        const pushed = this.planeShadowEvents;
+        this.planeShadowEvents = [];
+        const planeEvents = pushed.concat(await this.fastPlane.drainEvents());
+        const brainCrossings = this.recentCrossings;
+        this.recentCrossings = [];
+
+        const result = this.fastPlane.reconcile(brainCrossings, planeEvents);
+        if (result.onlyPlane.length || result.onlyBrain.length) {
+            this.logger?.warn?.("FastPlane", "the two implementations disagreed", {
+                onlyPlane: result.onlyPlane.slice(0, 5),
+                onlyBrain: result.onlyBrain.slice(0, 5),
+            });
+        }
+        return result;
+    }
+
+    // A watched symbol that has stopped ticking is a symbol the reflex lane
+    // can no longer protect. Nothing here trades on that: acting on the
+    // absence of data is how a system talks itself into a decision it cannot
+    // support. It is recorded, escalated for armed symbols, and surfaced in
+    // health so the operator sees it rather than inferring it.
+    async staleSweep() {
+        this.metrics.staleSweeps += 1;
+        const now = this.clock().getTime();
+        const previous = this.lastStaleSweepAt;
+        this.lastStaleSweepAt = now;
+
+        // The sweep is gated to the trading window, so it resumes at the open
+        // after a gap, and again after a halt or a restart. Silence that
+        // accumulated while nobody was listening is not evidence of anything.
+        //
+        // The gap is judged against the sweep's own cadence, not against the
+        // staleness threshold: the question is whether the sweep was running,
+        // and a sweep that missed several of its own intervals was not.
+        const resumptionGapMs = Math.max(this.staleSweepMs * 5, 5_000);
+        if (previous === null || now - previous > resumptionGapMs) {
+            const rearmed = this.reflex.resetSilence(now);
+            return { stale: 0, resumed: true, rearmed };
+        }
+
+        const stale = this.reflex.newlyStale(now, this.staleAfterMs);
+        if (!stale.length) return { stale: 0 };
+
+        for (const entry of stale) {
+            if (entry.armed) this.metrics.blindSymbols += 1;
+            await this.raiseStaleEvent(entry, this.reflex.commitmentFor(entry.symbol));
+        }
+        this.logger?.warn?.("Reflex", "watched symbols have gone quiet",
+                            { symbols: stale.map((s) => s.symbol),
+                              armed: stale.filter((s) => s.armed).length });
+        this.narrate(KIND.STALE_DATA, {
+            symbols: stale.map((s) => s.symbol).slice(0, 20),
+            count: stale.length,
+            armed: stale.filter((s) => s.armed).length,
+            oldestAgeMs: Math.max(...stale.map((s) => s.ageMs)),
+        });
+        return { stale: stale.length };
+    }
+
+    async raiseStaleEvent(entry, commitment) {
+        try {
+            const at = this.clock();
+            const event = makeEvent({
+                type: EVENT_TYPES.DATA_STALE,
+                // An armed symbol going quiet means a pre-committed stop is
+                // unguarded. That is not the same as a watchlist name going
+                // quiet, and the severity should not pretend otherwise.
+                severity: entry.armed ? SEVERITY.CRITICAL : SEVERITY.WARNING,
+                symbol: entry.symbol,
+                thesisId: commitment?.thesisId ?? null,
+                correlationId: commitment?.correlationId ?? `stale-${entry.symbol}`,
+                source: "reflex_lane",
+                observed: { ageMs: entry.ageMs, armed: entry.armed, ticked: entry.ticked,
+                            lastPaise: entry.lastPaise, detector: "stale_sweep_v1" },
+                reason: entry.ticked
+                    ? `no tick for ${entry.symbol} in ${Math.round(entry.ageMs / 1000)}s`
+                    : `no tick for ${entry.symbol} since the watch began`,
+                observedAt: at,
+                bucket: Math.floor(at.getTime() / 60_000),
+            });
+            return await this.sourcePorts.recordEvent?.(event);
+        } catch (err) {
+            this.logger?.error?.("Reflex", "could not raise the staleness event",
+                                 { error: err.message, symbol: entry.symbol });
+            return null;
+        }
+    }
+
     // Every tick, from the websocket. Synchronous and allocation-light: this
     // runs hundreds of times a second across the universe.
-    ingestTick({ symbol, price, timestamp }) {
+    ingestTick({ symbol, price, timestamp, volume }) {
         if (!symbol || !Number.isFinite(price)) return [];
         return this.reflex.onTick({
             symbol, pricePaise: Math.round(price * 100),
             at: timestamp ?? this.clock().getTime(),
+            // Cumulative for the session as the feed reports it; the lane takes
+            // the delta inside the current minute.
+            cumulativeVolume: Number.isFinite(volume) ? volume : null,
         });
     }
 
     // Load the pre-commitments of everything currently held. Called on start
     // and after every entry, so a restart does not leave a position unprotected.
     async armOpenPositions() {
-        const positions = (await this.sourcePorts.loadPositions?.()) ?? [];
+        const positions = (await this.sourcePorts.loadPositions?.(this.clock())) ?? [];
         let armed = 0;
         for (const position of positions) {
             if (!position.thesisId) continue;
@@ -182,7 +500,31 @@ export class AutonomousRuntime {
                 quantity: position.quantity,
                 correlationId: position.correlationId,
             });
-            if (ok) armed += 1;
+            // Continuous detection needs the entry price for the approach
+            // bands, and it is the entry that makes those bands meaningful.
+            if (ok) {
+                const watch = {
+                    entryPaise: position.entryPricePaise,
+                    thesisId: position.thesisId,
+                    correlationId: position.correlationId,
+                    direction: position.side === "SELL" ? DIRECTION.SHORT : DIRECTION.LONG,
+                };
+                this.reflex.watch(position.symbol, watch);
+                // The plane is told the same thing, in the same order.
+                this.fastPlane.arm(position.symbol, {
+                    thesisId: String(position.thesisId),
+                    direction: watch.direction,
+                    stopPaise: position.stopPaise ?? null,
+                    targetPaise: position.targetPaise ?? null,
+                    quantity: position.quantity,
+                    correlationId: position.correlationId ?? "",
+                });
+                this.fastPlane.watch(position.symbol, { entryPaise: watch.entryPaise,
+                    thesisId: String(position.thesisId ?? ""),
+                    correlationId: position.correlationId ?? "",
+                    direction: watch.direction });
+                armed += 1;
+            }
         }
         return { armed, positions: positions.length };
     }
@@ -193,19 +535,43 @@ export class AutonomousRuntime {
     // sell is possible at all.
     async protect(crossing) {
         const { symbol, kind, quantity, thesisId, correlationId, pricePaise } = crossing;
-        this.metrics.protectiveActions += 1;
 
-        // A target reach is not automatically an exit: the thesis may deserve
-        // to run. It raises an event and lets the trader decide, immediately.
-        if (kind === CROSSING.TARGET) {
-            await this.raiseCrossingEvent(crossing, SEVERITY.WARNING, EVENT_TYPES.TARGET_BREACH);
-            return { protected: false, reason: "target reached; handed to reasoning" };
+        // Only a crossing of a pre-committed level authorises a protective
+        // action. Everything else is a material change: it wakes the trader
+        // immediately rather than waiting for the supervisory sweep, and it
+        // does not move the position by itself.
+        if (!isProtective(kind)) {
+            this.metrics.materialSignals += 1;
+            const routed = SIGNAL_ROUTING[kind];
+            if (routed) {
+                await this.raiseCrossingEvent(crossing, routed.severity, routed.type);
+            }
+            this.narrate(KIND.MARKET_EVENT, {
+                symbol, type: routed?.type ?? kind, severity: routed?.severity ?? "INFO",
+                reason: crossing.reason ?? `${kind} on the tick`,
+                detector: "reflex_v1", route: "POSITION", thesisId,
+                observed: { kind, pricePaise, levelPaise: crossing.levelPaise ?? null },
+            });
+            return { protected: false, reason: `${kind} handed to reasoning` };
         }
 
-        const position = (await this.sourcePorts.positionFor?.(symbol)) ?? null;
+        this.metrics.protectiveActions += 1;
+        // Tier 0. No model was consulted; the thesis pre-committed to this.
+        this.narrate(KIND.PROTECTIVE_EVENT, {
+            symbol, crossing: kind, pricePaise, levelPaise: crossing.levelPaise ?? null,
+            thesisId, correlationId, quantity,
+            because: "a level the thesis pre-committed to was crossed",
+            modelConsulted: false,
+        });
+
+        // Protection reads the world NOW, never a decision's snapshot: a
+        // pre-committed exit must be sized to what is actually held at the
+        // instant the level was crossed.
+        const position = (await this.sourcePorts.positionFor?.(symbol, this.clock())) ?? null;
         const held = position?.quantity ?? 0;
         if (held <= 0) {
             this.reflex.disarm(symbol);
+            this.fastPlane.disarm(symbol);
             return { protected: false, reason: "position already closed" };
         }
 
@@ -224,6 +590,7 @@ export class AutonomousRuntime {
             await this.executeIntent(intent);
             this.metrics.protectiveExits += 1;
             this.reflex.disarm(symbol);
+            this.fastPlane.disarm(symbol);
             this.logger?.warn?.("Reflex", "protective exit submitted", {
                 symbol, kind, quantity: size, pricePaise });
         } catch (err) {
@@ -269,8 +636,8 @@ export class AutonomousRuntime {
         const now = this.clock();
         if (!this.sourcePorts.loadObservations) return { candidates: 0 };
 
-        const observations = await this.sourcePorts.loadObservations();
-        const positions = (await this.sourcePorts.loadPositions?.()) ?? [];
+        const observations = await this.sourcePorts.loadObservations(now);
+        const positions = (await this.sourcePorts.loadPositions?.(now)) ?? [];
         const held = new Set(positions.map((p) => p.symbol));
 
         const result = scanUniverse({
@@ -284,14 +651,15 @@ export class AutonomousRuntime {
 
         for (const candidate of result.candidates) {
             await this.handleCandidate({ symbol: candidate.symbol, context: candidate.context,
-                                         reasons: candidate.reasons });
+                                         reasons: candidate.reasons, asOf: now });
         }
         return { candidates: result.candidates.length, examined: result.examined.length };
     }
 
     // A candidate is a different question from a position: "is there enough
     // evidence to establish one" rather than "is the thesis still valid".
-    async handleCandidate({ symbol, context = null, event = null, reasons = [] }) {
+    async handleCandidate({ symbol, context = null, event = null, reasons = [],
+                            asOf = null, market = null }) {
         if (!this.sourcePorts.analyseCandidate) return { skipped: "no analyser" };
         const session = this.orchestrator.session();
         if (!permits(session, "discovery")) return { skipped: `session ${session}` };
@@ -304,19 +672,22 @@ export class AutonomousRuntime {
             return { skipped: "symbol already being reasoned about" };
         }
         try {
-            return await this.decideCandidate({ symbol, context, event, reasons, session });
+            return await this.decideCandidate({ symbol, context, event, reasons, session,
+                                                asOf: asOf ?? this.clock(), market });
         } finally {
             release();
         }
     }
 
-    async decideCandidate({ symbol, context, event, reasons }) {
+    async decideCandidate({ symbol, context, event, reasons, asOf = this.clock(), market = null }) {
         const correlationId = `cand-${randomUUID()}`;
         this.metrics.candidateReasoning += 1;
 
+        // G4. One instant for this decision. Every read below is bound to it,
+        // except the Tier 4 revalidation, which must be fresh by definition.
         const decision = await this.sourcePorts.analyseCandidate({
-            symbol, context, event, reasons, correlationId,
-            market: this.orchestrator.marketState,
+            symbol, context, event, reasons, correlationId, asOf,
+            market: market ?? this.orchestrator.marketState,
         });
 
         if (!decision || decision.action !== "BUY") {
@@ -343,7 +714,7 @@ export class AutonomousRuntime {
             pricePaise: Math.round(price * 100),
             referencePricePaise: Math.round(price * 100),
             correlationId,
-            clientOrderId: entryIntentKey({ symbol, action: "BUY", at: this.clock(), epoch }),
+            clientOrderId: entryIntentKey({ symbol, action: "BUY", at: asOf, epoch }),
         };
 
         // Tier 4. The decision was formed from `context`; the world may have
@@ -351,7 +722,7 @@ export class AutonomousRuntime {
         // the failure this prevents.
         const observation = {
             pricePaise: Math.round(price * 100),
-            atMs: context?.asOf ? new Date(context.asOf).getTime() : this.clock().getTime(),
+            atMs: context?.asOf ? new Date(context.asOf).getTime() : asOf.getTime(),
             tickSeq: context?.tickSeq ?? null,
         };
         const world = (await this.sourcePorts.currentWorld?.(symbol)) ?? {
@@ -370,9 +741,9 @@ export class AutonomousRuntime {
         }
         const intent = check.intent;
 
-        const portfolio = await this.sourcePorts.loadPortfolio();
+        const portfolio = await this.sourcePorts.loadPortfolio(asOf);
         const risk = evaluateRisk(intent, {
-            portfolio, nowMs: world.nowMs ?? this.clock().getTime(),
+            portfolio, nowMs: world.nowMs ?? asOf.getTime(),
             stale: Boolean(context?.stale),
             session: (await this.sourcePorts.sessionCounters?.()) ?? {},
             openClientOrderIds: (await this.sourcePorts.openClientOrderIds?.()) ?? [],
@@ -402,6 +773,20 @@ export class AutonomousRuntime {
                     ? null : Number(thesis.target_paise),
                 quantity: intent.quantity, correlationId,
             });
+            this.reflex.watch(symbol, {
+                entryPaise: intent.pricePaise, thesisId: thesis.id,
+                correlationId, direction: DIRECTION.LONG,
+            });
+            this.fastPlane.arm(symbol, {
+                thesisId: String(thesis.id), direction: DIRECTION.LONG,
+                stopPaise: thesis.stop_paise === null || thesis.stop_paise === undefined
+                    ? null : Number(thesis.stop_paise),
+                targetPaise: thesis.target_paise === null || thesis.target_paise === undefined
+                    ? null : Number(thesis.target_paise),
+                quantity: intent.quantity, correlationId,
+            });
+            this.fastPlane.watch(symbol, { entryPaise: intent.pricePaise,
+                thesisId: String(thesis.id), correlationId, direction: DIRECTION.LONG });
         }
 
         await this.sourcePorts.journal?.({
@@ -420,11 +805,32 @@ export class AutonomousRuntime {
     // ---- lifecycle -------------------------------------------------------
 
     async start() {
+        // Listen BEFORE arming, so a crossing on a position armed a moment
+        // later cannot arrive while nothing is subscribed.
+        if (this.fastPlane.enabled) {
+            try {
+                await this.fastPlane.listen((event) => this.onPlaneEvent(event));
+            } catch (err) {
+                this.logger?.error?.("Runtime", "could not listen to the fast plane",
+                                     { error: err.message, mode: this.fastPlane.mode });
+            }
+        }
         const started = await this.orchestrator.start();
-        await this.armOpenPositions();
+        const armed = await this.armOpenPositions();
+        this.narrate(KIND.RECOVERY, {
+            session: this.orchestrator.session(),
+            mode: this.mode,
+            armedPositions: armed.armed,
+            positions: armed.positions,
+            recovery: this.orchestrator.recovery,
+            fastPlane: this.fastPlane.mode,
+        });
         return started;
     }
-    async stop() { return this.orchestrator.stop(); }
+    async stop() {
+        await this.fastPlane.stop();
+        return this.orchestrator.stop();
+    }
 
     health() {
         return {
@@ -434,6 +840,7 @@ export class AutonomousRuntime {
             venue: this.venue.health(),
             reflex: this.reflex.health(),
             gate: this.gate.health(),
+            fastPlane: this.fastPlane.health(),
             runtime: { ...this.metrics },
         };
     }

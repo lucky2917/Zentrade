@@ -1,7 +1,7 @@
 import { phaseAt, minutesIntoSession } from "./sessionPhase.js";
 import { vwapUpTo, vwapDistance } from "./vwap.js";
 import { buildMtfContext } from "./mtf.js";
-import { detectSymbolAnomalies, detectMarketWideMove } from "./anomaly.js";
+import { detectSymbolAnomalies, detectMarketWideMove, volumeBaselineOf } from "./anomaly.js";
 
 // The bridge between raw observation and the event system.
 //
@@ -22,6 +22,10 @@ export const buildObservation = ({
 
     const mtf = buildMtfContext({ bars1m, bars5m, bars15m, asOf: when });
 
+    // Every 1m bar handed in is complete, so the whole series is strictly
+    // before now. The tick path uses this to judge the minute in progress.
+    const volume = volumeBaselineOf(bars1m, bars1m.length);
+
     return {
         symbol,
         asOf: when.toISOString(),
@@ -38,6 +42,8 @@ export const buildObservation = ({
         vwapAvailable: vwapResult.available,
         vwapBarsUsed: vwapResult.barsUsed,
         vwapDistance: vwapDistance(price, vwapResult.vwap),
+        volumeBaseline: volume ? volume.typical : null,
+        volumeBaselineSamples: volume ? volume.samples : 0,
         mtf,
         barsSeen: { m1: bars1m.length, m5: bars5m.length, m15: bars15m.length },
         thesisId,

@@ -1,0 +1,60 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "vwap_deviation_against_a_pushed_value",
+  "description": "Deviation is judged against the bar plane's VWAP, and a new VWAP reopens the question.",
+  "input": {
+    "commitments": [],
+    "watches": [
+      {
+        "symbol": "INFY",
+        "vwapPaise": 100000,
+        "vwapDeviation": 0.02
+      }
+    ],
+    "ticks": [
+      {
+        "symbol": "INFY",
+        "pricePaise": 101000,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "INFY",
+        "pricePaise": 102500,
+        "receiveTs": 1001
+      },
+      {
+        "symbol": "INFY",
+        "pricePaise": 102600,
+        "receiveTs": 1002
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "VWAP_DEVIATION",
+        "symbol": "INFY",
+        "severity": "WARNING",
+        "reason": "2.50% from session VWAP",
+        "pricePaise": 102500,
+        "levelPaise": 100000,
+        "thesisId": null,
+        "correlationId": null,
+        "observedTs": 1001,
+        "sequence": 2
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "INFY",
+        "observed": true,
+        "lastPaise": 102600,
+        "highPaise": 102600,
+        "lowPaise": 101000,
+        "sequence": 3,
+        "updatedTs": 1002
+      }
+    ]
+  }
+}

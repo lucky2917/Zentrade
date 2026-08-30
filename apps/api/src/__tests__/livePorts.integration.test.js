@@ -190,7 +190,7 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("live ports (integration)", () => {
             const health = runtime.health();
             expect(health.mode).toBe(MODE.PAPER);
             expect(health.liveExecutionEnabled).toBe(false);
-            expect(health.orchestrator.scheduler.jobCount).toBe(8);
+            expect(health.orchestrator.scheduler.jobCount).toBe(9);
             expect(await runtime.stop()).toBe(true);
         });
 

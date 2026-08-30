@@ -1,0 +1,106 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "generatedFrom": "apps/api/src/services/tick/reflex.js",
+  "scenarios": [
+    {
+      "name": "quiet_inside_levels",
+      "description": "Price moves inside the levels. No crossing, but state advances.",
+      "events": 0
+    },
+    {
+      "name": "stop_crossed_once",
+      "description": "The tick that breaches the stop fires once; later ticks below it do not.",
+      "events": 1
+    },
+    {
+      "name": "stop_touched_exactly",
+      "description": "Touching the level is breaching it.",
+      "events": 1
+    },
+    {
+      "name": "transient_breach_and_recovery",
+      "description": "A spike through the stop that retraces still fires, and the extremes remember it.",
+      "events": 1
+    },
+    {
+      "name": "target_reached",
+      "description": "A target crossing is a warning, not an exit.",
+      "events": 1
+    },
+    {
+      "name": "short_mirrors_the_levels",
+      "description": "A short is stopped above and targets below.",
+      "events": 1
+    },
+    {
+      "name": "invalidation_without_a_stop",
+      "description": "A named invalidation price fires on its own.",
+      "events": 1
+    },
+    {
+      "name": "stop_and_invalidation_same_tick",
+      "description": "Evaluation order is stop, then invalidation, then target, and it is stable.",
+      "events": 2
+    },
+    {
+      "name": "unarmed_symbol_is_tracked_but_silent",
+      "description": "State advances for a symbol with no commitment; no event is produced.",
+      "events": 0
+    },
+    {
+      "name": "multiple_symbols_are_independent",
+      "description": "One symbol crossing does not disturb another.",
+      "events": 2
+    },
+    {
+      "name": "non_positive_price_is_ignored",
+      "description": "A zero or negative price does not advance state and produces nothing.",
+      "events": 0
+    },
+    {
+      "name": "extremes_track_the_whole_window",
+      "description": "Running high and low span every accepted tick, not just the endpoints.",
+      "events": 0
+    },
+    {
+      "name": "approach_bands_fire_on_the_tick",
+      "description": "Entering the stop band and the target band each fire once, and neither is protective.",
+      "events": 3
+    },
+    {
+      "name": "a_spike_that_reverses_between_polls",
+      "description": "A 3.5% move that returns inside fourteen seconds is invisible to a poll and is caught here.",
+      "events": 1
+    },
+    {
+      "name": "velocity_forgets_prices_outside_the_window",
+      "description": "The same move spread beyond the velocity window is a drift, not a jump.",
+      "events": 0
+    },
+    {
+      "name": "vwap_deviation_against_a_pushed_value",
+      "description": "Deviation is judged against the bar plane's VWAP, and a new VWAP reopens the question.",
+      "events": 1
+    },
+    {
+      "name": "volume_spike_inside_the_minute",
+      "description": "Volume is cumulative for the session; the minute in progress is the delta from its first tick.",
+      "events": 1
+    },
+    {
+      "name": "volume_counter_going_backwards_re_anchors",
+      "description": "A reconnect restarts the cumulative counter; the delta must not go negative or fire falsely.",
+      "events": 1
+    },
+    {
+      "name": "protection_is_never_displaced_by_a_signal",
+      "description": "A stop crossing and an attention signal on the same tick both appear, stop first.",
+      "events": 2
+    },
+    {
+      "name": "an_unwatched_symbol_produces_no_signals",
+      "description": "Detection is off unless a watch asks for it; an armed symbol still protects.",
+      "events": 1
+    }
+  ]
+}

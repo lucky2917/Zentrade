@@ -1,6 +1,7 @@
 import { callGroqSafe, MODELS } from "../aiEngine.js";
 import { REASSESS_ACTIONS, CONFIDENCE_LEVELS } from "./reassess.js";
 import { reason } from "../reasoning/pipeline.js";
+import { makeStageNarrator } from "../cockpit/reasoningNarration.js";
 
 // The autonomous reasoning adapters.
 //
@@ -60,17 +61,26 @@ const journal = (logger, event, decision, extra) => logger?.info?.("SeniorReason
 
 export const makeCandidateAnalyser = ({
     logger = null, formationModel = FORMATION_MODEL, challengeModel = CHALLENGE_MODEL,
-    limits = {}, transport = callGroqSafe,
+    limits = {}, transport = callGroqSafe, narrator = null,
 } = {}) =>
     async ({ symbol, context, event, reasons, correlationId, news, portfolio,
-             dailyRegimeTag = null, riskState = null, market = null }) => {
+             dailyRegimeTag = null, riskState = null, market = null,
+             memories = [], asOf = null }) => {
         const sink = [];
         let decision;
         try {
             decision = await reason({
+                // Each stage is narrated as it completes, so the cockpit shows
+                // the reasoning arriving in the order it happened.
+                onStage: narrator ? makeStageNarrator({
+                    narrator, symbol, route: "CANDIDATE", correlationId,
+                    trigger: event?.type ?? "screen",
+                }) : null,
                 symbol, context, event, news: news ?? [], portfolio, market,
                 dailyRegimeTag, riskState, screenReasons: reasons ?? [],
-                asOf: context?.asOf, limits, logger,
+                memories,
+                // The decision's instant, not the moment this line runs.
+                asOf: asOf ?? context?.asOf, limits, logger,
                 formModel: modelCaller(transport, formationModel, FORMATION_TEMPERATURE,
                                         "senior_thesis_formation", sink),
                 challengeModel: modelCaller(transport, challengeModel, CHALLENGE_TEMPERATURE,
@@ -164,11 +174,16 @@ export const thesisFromContext = (context) => ({
 // check. Two independent deterministic layers, on purpose.
 export const makeReassessmentModel = ({
     logger = null, formationModel = FORMATION_MODEL, challengeModel = CHALLENGE_MODEL,
-    limits = {}, transport = callGroqSafe,
+    limits = {}, transport = callGroqSafe, narrator = null,
 } = {}) =>
     async (context) => {
         const sink = [];
         const decision = await reason({
+            onStage: narrator ? makeStageNarrator({
+                narrator, symbol: context.symbol, route: "POSITION",
+                correlationId: context.correlationId ?? null,
+                trigger: context.trigger?.type ?? "scheduled",
+            }) : null,
             symbol: context.symbol,
             context: context.marketState,
             event: context.trigger,
@@ -178,7 +193,8 @@ export const makeReassessmentModel = ({
             portfolio: context.portfolio ?? null,
             market: context.market ?? null,
             news: context.news ?? [],
-            asOf: context.marketState?.asOf,
+            memories: context.memories ?? [],
+            asOf: context.asOf ?? context.marketState?.asOf,
             limits, logger,
             formModel: modelCaller(transport, formationModel, FORMATION_TEMPERATURE,
                                     "senior_reassess_formation", sink),

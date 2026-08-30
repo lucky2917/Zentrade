@@ -1,0 +1,60 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "short_mirrors_the_levels",
+  "description": "A short is stopped above and targets below.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "SHORT",
+        "stopPaise": 102000,
+        "targetPaise": 92000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 101000,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 102500,
+        "receiveTs": 1001
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "STOP",
+        "symbol": "RELIANCE",
+        "severity": "CRITICAL",
+        "reason": "STOP crossed at 102500 against 102000",
+        "pricePaise": 102500,
+        "levelPaise": 102000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1001,
+        "sequence": 2
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 102500,
+        "highPaise": 102500,
+        "lowPaise": 101000,
+        "sequence": 2,
+        "updatedTs": 1001
+      }
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "target_reached",
+  "description": "A target crossing is a warning, not an exit.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": 98000,
+        "targetPaise": 108000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 107000,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 108500,
+        "receiveTs": 1001
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 109000,
+        "receiveTs": 1002
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "TARGET",
+        "symbol": "RELIANCE",
+        "severity": "WARNING",
+        "reason": "TARGET crossed at 108500 against 108000",
+        "pricePaise": 108500,
+        "levelPaise": 108000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1001,
+        "sequence": 2
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 109000,
+        "highPaise": 109000,
+        "lowPaise": 107000,
+        "sequence": 3,
+        "updatedTs": 1002
+      }
+    ]
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "multiple_symbols_are_independent",
+  "description": "One symbol crossing does not disturb another.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": 98000,
+        "targetPaise": 108000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-1"
+      },
+      {
+        "symbol": "TCS",
+        "thesisId": "t-2",
+        "direction": "LONG",
+        "stopPaise": 40000,
+        "targetPaise": 60000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-2"
+      }
+    ],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 100000,
+        "receiveTs": 1000
+      },
+      {
+        "symbol": "TCS",
+        "pricePaise": 50000,
+        "receiveTs": 1001
+      },
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 97000,
+        "receiveTs": 1002
+      },
+      {
+        "symbol": "TCS",
+        "pricePaise": 50500,
+        "receiveTs": 1003
+      },
+      {
+        "symbol": "TCS",
+        "pricePaise": 39500,
+        "receiveTs": 1004
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "STOP",
+        "symbol": "RELIANCE",
+        "severity": "CRITICAL",
+        "reason": "STOP crossed at 97000 against 98000",
+        "pricePaise": 97000,
+        "levelPaise": 98000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1002,
+        "sequence": 2
+      },
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "STOP",
+        "symbol": "TCS",
+        "severity": "CRITICAL",
+        "reason": "STOP crossed at 39500 against 40000",
+        "pricePaise": 39500,
+        "levelPaise": 40000,
+        "thesisId": "t-2",
+        "correlationId": "c-2",
+        "observedTs": 1004,
+        "sequence": 3
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 97000,
+        "highPaise": 100000,
+        "lowPaise": 97000,
+        "sequence": 2,
+        "updatedTs": 1002
+      },
+      {
+        "symbol": "TCS",
+        "observed": true,
+        "lastPaise": 39500,
+        "highPaise": 50500,
+        "lowPaise": 39500,
+        "sequence": 3,
+        "updatedTs": 1004
+      }
+    ]
+  }
+}

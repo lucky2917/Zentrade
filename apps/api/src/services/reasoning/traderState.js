@@ -1,4 +1,5 @@
 import { TIER, makeEvidence } from "./evidence.js";
+import { memoryEvidence, summariseMemories } from "../memory/repository.js";
 
 // TraderState: one typed structure describing everything known at a decision
 // point, assembled deterministically before any LLM call.
@@ -129,7 +130,8 @@ const newsEvidence = (news = []) => news.slice(0, 5).map((n) => makeEvidence({
 export const buildTraderState = ({
     symbol, context, event = null, position = null, thesis = null,
     portfolio = null, news = [], dailyRegimeTag = null, riskState = null,
-    previousAssessment = null, screenReasons = [], market = null, asOf,
+    previousAssessment = null, screenReasons = [], market = null, memories = [],
+    asOf,
 }) => {
     const regime = deriveRegime({ dailyRegimeTag, mtf: context?.mtf });
 
@@ -216,12 +218,25 @@ export const buildTraderState = ({
 
         news: news.slice(0, 5),
 
+        // What happened the last times a decision like this one was made.
+        // Presented as record, never as recommendation: contradictory episodes
+        // appear together and the reasoning resolves them.
+        memory: {
+            summary: summariseMemories(memories),
+            episodes: memories.slice(0, 8).map((m) => ({
+                date: m.decisionDate, action: m.action, regime: m.regime,
+                confidence: m.confidence, hit: m.hit,
+                realizedReturnBps: m.realizedReturnBps,
+            })),
+        },
+
         evidence: [
             ...marketEvidence(market),
             ...regime.evidence,
             ...symbolEvidence(context),
             ...eventEvidence(event),
             ...newsEvidence(news),
+            ...memoryEvidence(memories),
         ],
     };
 };

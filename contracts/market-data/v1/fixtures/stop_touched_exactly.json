@@ -1,0 +1,55 @@
+{
+  "contract": "zentrade.marketdata.v1",
+  "name": "stop_touched_exactly",
+  "description": "Touching the level is breaching it.",
+  "input": {
+    "commitments": [
+      {
+        "symbol": "RELIANCE",
+        "thesisId": "t-1",
+        "direction": "LONG",
+        "stopPaise": 98000,
+        "targetPaise": 108000,
+        "invalidationPaise": null,
+        "quantity": 200,
+        "correlationId": "c-1"
+      }
+    ],
+    "watches": [],
+    "ticks": [
+      {
+        "symbol": "RELIANCE",
+        "pricePaise": 98000,
+        "receiveTs": 1000
+      }
+    ]
+  },
+  "expected": {
+    "events": [
+      {
+        "contract": "zentrade.marketdata.event.v1",
+        "kind": "STOP",
+        "symbol": "RELIANCE",
+        "severity": "CRITICAL",
+        "reason": "STOP crossed at 98000 against 98000",
+        "pricePaise": 98000,
+        "levelPaise": 98000,
+        "thesisId": "t-1",
+        "correlationId": "c-1",
+        "observedTs": 1000,
+        "sequence": 1
+      }
+    ],
+    "finalState": [
+      {
+        "symbol": "RELIANCE",
+        "observed": true,
+        "lastPaise": 98000,
+        "highPaise": 98000,
+        "lowPaise": 98000,
+        "sequence": 1,
+        "updatedTs": 1000
+      }
+    ]
+  }
+}

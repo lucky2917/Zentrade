@@ -28,6 +28,12 @@ const UsAgentActivity = lazy(() => import("./pages/UsAgentActivity.jsx"));
 // reviewers, so it must not require a session or open a market connection.
 const ArchitectureProgress = lazy(() => import("./pages/ArchitectureProgress.jsx"));
 
+// The trader cockpit. Rendered outside the trading shell: it is a full-screen
+// operator view of the autonomous system, and the shell's navbar, ticker and
+// market banner would only compete with it. It is read-only and has no path to
+// execution.
+const TraderCockpit = lazy(() => import("./pages/TraderCockpit.jsx"));
+
 const AppContent = () => {
   return (
     <>
@@ -71,6 +77,18 @@ const App = () => {
               <ErrorBoundary>
                 <Suspense fallback={<div className="loading-screen">Loading...</div>}>
                   <ArchitectureProgress />
+                </Suspense>
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/trader"
+            element={
+              <ErrorBoundary>
+                <Suspense fallback={<div className="loading-screen">Loading...</div>}>
+                  <AuthProvider>
+                    <TraderCockpit />
+                  </AuthProvider>
                 </Suspense>
               </ErrorBoundary>
             }
