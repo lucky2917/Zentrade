@@ -18,7 +18,21 @@ const stripSslParams = (url) => {
 };
 
 const connectionString = stripSslParams(process.env.DATABASE_URL);
-const isLocal = (connectionString ?? "").includes("localhost");
+
+// Loopback only. A substring test for "localhost" both misses 127.0.0.1 and
+// matches hostile hostnames like localhost.example.com, so the host is parsed
+// and compared exactly. Local Postgres has no TLS, and asking for it fails
+// with "The server does not support SSL connections".
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const isLoopback = (url) => {
+    if (!url) return false;
+    try {
+        return LOOPBACK_HOSTS.has(new URL(url).hostname);
+    } catch {
+        return false;
+    }
+};
+const isLocal = isLoopback(connectionString);
 
 const buildSsl = () => {
     if (isLocal) return false;
