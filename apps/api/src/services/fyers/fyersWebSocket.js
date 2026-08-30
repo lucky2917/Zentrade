@@ -17,6 +17,22 @@ let reconnectAttempts = 0;
 let reconnectTimer = null;
 let intentionalClose = false;
 
+// Optional sink for tick-driven bar aggregation. Injected rather than imported
+// so this module keeps no dependency on the autonomous stack.
+let barSink = null;
+export const setBarSink = (sink) => { barSink = sink; };
+
+// Optional connection-state sink, injected the same way. Without it the
+// tracker never learns that a tick arrived, so "connected but silent" and
+// "connected and healthy" are indistinguishable and staleness never fires.
+let connectionSink = null;
+export const setConnectionSink = (sink) => { connectionSink = sink; };
+
+// Tier 0 sink. Runs on every tick, before the cache write, because a
+// pre-committed protective action must not wait on Redis.
+let reflexSink = null;
+export const setReflexSink = (sink) => { reflexSink = sink; };
+
 const cacheAndPublish = async (sanitised) => {
     const key = STOCK_MAP.has(sanitised.symbol)
         ? `stock:${sanitised.symbol}`
@@ -25,6 +41,15 @@ const cacheAndPublish = async (sanitised) => {
     const payload = JSON.stringify(sanitised);
     await redis.set(key, payload);
     await redis.publish(PRICE_CHANNEL, payload);
+
+    if (barSink) {
+        try {
+            await barSink.ingest(sanitised);
+        } catch (err) {
+            // Bar aggregation must never break the price path.
+            logger.error("FyersWebSocket", "bar aggregation failed", { error: err.message });
+        }
+    }
 };
 
 const handleMessage = (message) => {
@@ -33,7 +58,21 @@ const handleMessage = (message) => {
     for (const tick of ticks) {
         try {
             const sanitised = sanitiseTick(tick);
-            if (sanitised) cacheAndPublish(sanitised);
+            if (sanitised) {
+                connectionSink?.onTick?.(Date.now());
+                // Protection first. This is synchronous and allocation-light;
+                // it never awaits, and a failure here cannot stop the feed.
+                if (reflexSink) {
+                    try {
+                        reflexSink.ingestTick(sanitised);
+                    } catch (err) {
+                        logger.error("FyersWebSocket", "reflex lane threw",
+                                     { error: err.message, symbol: sanitised.symbol });
+                    }
+                }
+                cacheAndPublish(sanitised).catch((err) =>
+                    logger.error("FyersWebSocket", "tick cache failed", { error: err.message }));
+            }
         } catch (err) {
             logger.error("FyersWebSocket", "Failed to process tick", { error: err.message });
         }
@@ -42,6 +81,7 @@ const handleMessage = (message) => {
 
 const scheduleReconnect = () => {
     if (intentionalClose) return;
+    connectionSink?.onReconnecting?.();
     const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_BACKOFF_MS);
     reconnectAttempts++;
     // Idle connections get culled upstream every few minutes when no ticks
@@ -64,6 +104,7 @@ const connect = async () => {
 
     socket.on("connect", () => {
         reconnectAttempts = 0;
+        connectionSink?.onConnected?.();
         logger.info("FyersWebSocket", "Connected");
         if (subscribedSymbols.size > 0) {
             socket.subscribe([...subscribedSymbols]);
@@ -103,6 +144,7 @@ const subscribe = (symbols) => {
 
 const stop = () => {
     intentionalClose = true;
+    connectionSink?.onDisconnected?.("shutdown");
     if (reconnectTimer) clearTimeout(reconnectTimer);
     if (socket) socket.close();
 };

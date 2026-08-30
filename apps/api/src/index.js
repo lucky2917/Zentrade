@@ -24,12 +24,20 @@ import indicesRoutes from "./routes/indices.js";
 import marketRoutes from "./routes/market.js";
 import watchlistRoutes from "./routes/watchlist.js";
 import aiRoutes from "./routes/ai.js";
-import startMarketWorker from "./services/marketWorker.js";
+import startMarketWorker, { stopMarketWorker } from "./services/marketWorker.js";
 import startWebSocketBroadcaster from "./services/websocket.js";
 import { startSquareOffJob, stopSquareOffJob, reconcileSquareOff } from "./services/squareOff.js";
 import { initFyersAuth, isConfigured as isFyersConfigured } from "./services/fyers/fyersAuth.js";
-import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket, stop as stopFyersWebSocket } from "./services/fyers/fyersWebSocket.js";
+import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket, stop as stopFyersWebSocket, setBarSink, setConnectionSink, setReflexSink } from "./services/fyers/fyersWebSocket.js";
 import { startWatchdog } from "./services/fyers/authWatchdog.js";
+import { Bootstrap, buildHealth } from "./services/orchestrator/bootstrap.js";
+import { ConnectionTracker, CONNECTION } from "./services/orchestrator/connectionState.js";
+import { sessionStateAt } from "./services/orchestrator/session.js";
+import { buildOperatorReport, renderOperatorReport } from "./services/orchestrator/operatorReport.js";
+import { NewsStore } from "./services/news/ingest.js";
+import { makeAnnouncementPoller } from "./services/news/nseAnnouncements.js";
+import { BarAggregator } from "./services/fyers/barAggregator.js";
+import { makeCandidateAnalyser, makeReassessmentModel } from "./services/autonomous/reasoning.js";
 import { startAllLanes, stopAllLanes } from "./services/fyers/laneManager.js";
 import { startPreMarketScanner } from "./services/fyers/preMarketScanner.js";
 import { startSymbolManager } from "./services/fyers/symbolManager.js";
@@ -267,6 +275,40 @@ app.get("/internal/eventbus/lag", auth, async (req, res) => {
     }
 });
 
+// The operator surface for the autonomous brain. Read-only, authenticated,
+// and safe to call at any time. buildHealth and buildOperatorReport already
+// existed; without a route they were unreachable from outside the process.
+app.get("/internal/brain", auth, async (req, res) => {
+    try {
+        res.json(await operatorReport());
+    } catch (err) {
+        logger.error("Operator", "report failed", { error: err.message });
+        res.status(500).json({ error: "report unavailable" });
+    }
+});
+
+app.get("/internal/brain/text", auth, async (req, res) => {
+    try {
+        res.type("text/plain").send(renderOperatorReport(await operatorReport()));
+    } catch (err) {
+        logger.error("Operator", "report failed", { error: err.message });
+        res.status(500).type("text/plain").send("report unavailable");
+    }
+});
+
+app.get("/internal/brain/health", auth, (req, res) => res.json(health()));
+
+// Emergency stop. HALTED keeps monitoring and reconciliation running while
+// refusing every action that adds or changes exposure, which is safer than
+// killing the process and losing in-flight reconciliation.
+app.post("/internal/brain/halt", auth, express.json(), (req, res) => {
+    if (!orchestrator) return res.status(409).json({ error: "autonomous runtime is not running" });
+    const halted = req.body?.halted !== false;
+    orchestrator.orchestrator.setHalted(halted, req.body?.reason ?? "operator request");
+    logger.warn("Operator", `brain halted=${halted}`, { reason: req.body?.reason ?? null });
+    res.json({ halted, session: orchestrator.orchestrator.session() });
+});
+
 // Unknown API routes get JSON, not Express's HTML 404 page
 app.use("/api", (req, res) => {
     res.status(404).json({ error: "Not found" });
@@ -309,6 +351,34 @@ const validateEnv = () => {
     }
 };
 
+export const connectionTracker = new ConnectionTracker({ logger });
+export let bootstrap = null;
+export let orchestrator = null;
+
+const AUTONOMOUS_ENABLED = process.env.ZENTRADE_AUTONOMOUS === "true";
+// Recovery and reconciliation are per-account. The product is single-account
+// today; this makes that assumption explicit rather than implicit.
+const DEFAULT_USER_ID = Number(process.env.ZENTRADE_ACCOUNT_ID ?? 1);
+
+export const newsStore = new NewsStore();
+
+// Builds 1m/5m/15m bars from the ticks the websocket already receives. Without
+// this the entire intelligence layer is starved: it reads bars:1m:SYMBOL and
+// nothing was writing them.
+export const barAggregator = new BarAggregator({ redis, logger });
+
+export const health = () => buildHealth({
+    bootstrap, orchestrator, connection: connectionTracker,
+});
+
+// The operator view: one structured answer to "is the brain alive and what is
+// it doing". Reads state, changes nothing.
+export const operatorReport = async () => buildOperatorReport({
+    runtime: orchestrator, bootstrap, connection: connectionTracker, newsStore,
+    engine: await import("./services/execution/engine.js"),
+    userId: DEFAULT_USER_ID,
+});
+
 const start = async () => {
     validateEnv();
 
@@ -338,21 +408,111 @@ const start = async () => {
         logger.info("Server", `Zentrade server running on port ${PORT}`);
     });
 
-    try {
-        await initFyersAuth();
-        startWatchdog();
-        if (isFyersConfigured()) {
-            await connectFyersWebSocket();
-            subscribeFyersWebSocket(STOCKS.map((s) => s.symbol));
-            await startSymbolManager();
-            startAllLanes();
-            startPreMarketScanner();
-        } else {
-            logger.info("Server", "Fyers not configured, fast-lane websocket disabled");
-        }
-    } catch (err) {
-        logger.error("Server", "Fyers startup failed, continuing without live market data", { error: err.message });
+    // Ordered boot. A critical stage failing stops the sequence; an optional
+    // one leaves the process alive but unable to add exposure.
+    bootstrap = new Bootstrap({
+        logger,
+        steps: {
+            config: async () => true,          // validateEnv already ran above
+            database: async () => { await pool.query("SELECT 1"); return true; },
+            redis: async () => { await redis.ping(); return true; },
+            recovery: async () => {
+                const { openOrders } = await import("./services/execution/engine.js");
+                const open = await openOrders(DEFAULT_USER_ID);
+                logger.info("Server", `recovered ${open.length} open order(s)`);
+                return { openOrders: open.length };
+            },
+            reconciliation: async () => {
+                const { hasUnresolvedAmbiguity } = await import("./services/execution/reconcile.js");
+                const ambiguous = await hasUnresolvedAmbiguity(DEFAULT_USER_ID);
+                if (ambiguous) {
+                    logger.error("Server",
+                        "unresolved AMBIGUOUS order(s): new exposure stays blocked until reconciled");
+                }
+                return { ambiguous };
+            },
+            session: async () => sessionStateAt(new Date()),
+            "fyers-auth": async () => {
+                await initFyersAuth();
+                startWatchdog();
+                if (!isFyersConfigured()) throw new Error("Fyers not configured");
+                // Configured but unauthenticated is not a usable state: the
+                // socket cannot open and the loop would observe nothing. Fail
+                // the stage so boot reports it instead of running blind.
+                const { getAccessToken } = await import("./services/fyers/fyersAuth.js");
+                if (!(await getAccessToken()))
+                    throw new Error("no Fyers access token; re-authenticate at /reauth");
+                return true;
+            },
+            "market-data": async () => {
+                // The socket reports its own state. Claiming CONNECTED here
+                // would mark the feed healthy before it opened, and would stay
+                // healthy after it died.
+                setBarSink(barAggregator);
+                setConnectionSink(connectionTracker);
+                connectionTracker.onConnecting();
+                await connectFyersWebSocket();
+                subscribeFyersWebSocket(STOCKS.map((s) => s.symbol));
+                return { subscribed: STOCKS.length };
+            },
+            symbols: async () => { await startSymbolManager(); return true; },
+            orchestrator: async () => {
+                startAllLanes();
+                startPreMarketScanner();
+
+                if (!AUTONOMOUS_ENABLED) {
+                    logger.info("Server",
+                        "autonomous loop disabled (set ZENTRADE_AUTONOMOUS=true to enable)");
+                    return { autonomous: false };
+                }
+
+                // Paper only, always. AutonomousRuntime throws on any other
+                // mode, so this cannot be flipped by configuration alone.
+                const engine = await import("./services/execution/engine.js");
+                const reconciler = await import("./services/execution/reconcile.js");
+                const { AutonomousRuntime, MODE } = await import("./services/autonomous/runtime.js");
+                const { buildLivePorts } = await import("./services/autonomous/livePorts.js");
+
+                const pollAnnouncements = makeAnnouncementPoller({ store: newsStore, logger });
+
+                // The operational Indian universe. STOCKS is the existing
+                // subscribed symbol list; nothing new is hardcoded here, and it
+                // is not a research membership map.
+                const universe = STOCKS.map((s) => s.symbol);
+
+                orchestrator = new AutonomousRuntime({
+                    engine, reconciler, mode: MODE.PAPER, userId: DEFAULT_USER_ID, logger,
+                    barAggregator,
+                    ports: buildLivePorts({
+                        userId: DEFAULT_USER_ID, newsStore, connectionTracker,
+                        ingestNews: pollAnnouncements, logger,
+                        universe,
+                        // The two adapters that were null. Both reuse the
+                        // existing aiEngine plumbing rather than adding a
+                        // second AI engine.
+                        callModel: makeReassessmentModel({ logger }),
+                        analyseCandidate: makeCandidateAnalyser({ logger }),
+                    }),
+                });
+
+                await orchestrator.start();
+                // Every tick now reaches the reflex lane. Before this the tick
+                // stream only fed a cache and a bar builder, and a stop breach
+                // waited for a 15-second poll and two model calls.
+                setReflexSink(orchestrator);
+                logger.info("Server", "autonomous runtime STARTED (paper mode)", {
+                    reflex: orchestrator.reflex.health(),
+                });
+                return { autonomous: true, mode: MODE.PAPER };
+            },
+        },
+    });
+
+    const boot = await bootstrap.run();
+    if (!boot.ok) {
+        logger.error("Server", `boot failed at ${boot.stage}: ${boot.error}`);
     }
+    logger.info("Server", `health: ${health().status}`);
 };
 
 start();
@@ -376,8 +536,12 @@ const shutdown = async (signal) => {
     stopOutcomeLabeler();
         stopOpsAlarms();
         await stopEventBackbone();
+        if (orchestrator) await orchestrator.stop();
+        await barAggregator.flush();
         stopAllLanes();
+        stopMarketWorker();
         stopFyersWebSocket();
+        connectionTracker.onDisconnected("shutdown");
         await pool.end();
         await redis.quit();
     } catch (err) {
