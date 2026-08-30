@@ -23,6 +23,11 @@ const UsMarkets = lazy(() => import("./pages/UsMarkets.jsx"));
 const UsStockDetail = lazy(() => import("./pages/UsStockDetail.jsx"));
 const UsAgentActivity = lazy(() => import("./pages/UsAgentActivity.jsx"));
 
+// The public architecture document. Rendered outside the trading shell and
+// outside the auth and market providers: it is a reference document for
+// reviewers, so it must not require a session or open a market connection.
+const ArchitectureProgress = lazy(() => import("./pages/ArchitectureProgress.jsx"));
+
 const AppContent = () => {
   return (
     <>
@@ -59,11 +64,28 @@ const App = () => {
   return (
     <BrowserRouter>
       <ToastProvider>
-        <AuthProvider>
-          <MarketProvider>
-            <AppContent />
-          </MarketProvider>
-        </AuthProvider>
+        <Routes>
+          <Route
+            path="/architecture-progress"
+            element={
+              <ErrorBoundary>
+                <Suspense fallback={<div className="loading-screen">Loading...</div>}>
+                  <ArchitectureProgress />
+                </Suspense>
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/*"
+            element={
+              <AuthProvider>
+                <MarketProvider>
+                  <AppContent />
+                </MarketProvider>
+              </AuthProvider>
+            }
+          />
+        </Routes>
       </ToastProvider>
     </BrowserRouter>
   );
