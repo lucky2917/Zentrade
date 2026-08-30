@@ -20,7 +20,7 @@ const GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions";
 // 2026-08-21: llama-3.3-70b-versatile and llama-3.1-8b-instant were retired
 // from Groq's catalog (calls 404 with model_not_found). Replaced with the
 // gpt-oss family, Groq's current general-purpose lineup.
-const MODELS = {
+export const MODELS = {
     technical:   "openai/gpt-oss-120b",
     sentiment:   "openai/gpt-oss-20b",
     risk:        "openai/gpt-oss-120b",
@@ -86,7 +86,7 @@ async function callGroq(model, prompt, temperature = 0.15, maxTokens = 400) {
  * canonical input hash, output, latency, tokens, cost. Failed final attempts
  * are recorded too: a run that died is still evidence.
  */
-async function callGroqSafe(model, prompt, temperature, maxTokens, sink, agentName) {
+export async function callGroqSafe(model, prompt, temperature, maxTokens, sink, agentName) {
     const record = (status, output, meta) =>
         sink?.push({
             agentName,
@@ -200,7 +200,7 @@ async function fetchIntraday(symbol) {
 
 // ─── Consensus — NEUTRAL abstains, only directional votes count ───────────────
 
-function computeConsensus(techSignal, sentimentSignal, riskBias) {
+export function computeConsensus(techSignal, sentimentSignal, riskBias) {
     let bullish = 0, bearish = 0, neutral = 0;
     for (const s of [techSignal, sentimentSignal, riskBias]) {
         if (s === "BULLISH") bullish++;
@@ -401,6 +401,29 @@ Respond ONLY in this exact JSON — no markdown:
 
 // ─── Synthesizer ──────────────────────────────────────────────────────────────
 
+export const DECISION_ACTIONS = ["BUY", "SELL", "HOLD"];
+export const CONFIDENCE_LEVELS = ["HIGH", "MEDIUM", "LOW"];
+
+// The deterministic half of the decision. The synthesizer is an LLM and can
+// return anything; these rules are what make its output safe to act on, so
+// they are a named function rather than inline sanitising, and they are
+// tested directly. HOLD is the abstention state.
+export function applyDecisionGuardrails(result, consensus, mktScore) {
+    if (!DECISION_ACTIONS.includes(result.action))
+        result.action = consensus.direction === "BULLISH" ? "BUY"
+            : consensus.direction === "BEARISH" ? "SELL" : "HOLD";
+
+    // Macro override: a crashing market outranks a bullish read unless all
+    // three agents agree. Downgrades to abstention, never upgrades.
+    if (result.action === "BUY" && mktScore === -1 && consensus.label !== "unanimous")
+        result.action = "HOLD";
+
+    if (!CONFIDENCE_LEVELS.includes(result.confidence))
+        result.confidence = consensus.impliedConfidence;
+
+    return result;
+}
+
 function roundToHalf(n) { return Math.round(n * 2) / 2; }
 
 async function runSynthesizer(stockInfo, symbol, priceData, tech, sent, risk, consensus, mktCtx, ind, intradayCtx, evidence, sink) {
@@ -481,17 +504,8 @@ Respond ONLY in this exact JSON — zero text outside JSON:
 
     const result = await callGroqSafe(MODELS.synthesizer, prompt, 0.4, 650, sink, "synthesizer");
 
-    // Sanitise
-    if (!["BUY", "SELL", "HOLD"].includes(result.action))
-        result.action = consensus.direction === "BULLISH" ? "BUY"
-            : consensus.direction === "BEARISH" ? "SELL" : "HOLD";
-
-    // Macro override — if market is crashing and LLM still said BUY, downgrade
-    if (result.action === "BUY" && mktScore === -1 && consensus.label !== "unanimous")
-        result.action = "HOLD";
-
+    applyDecisionGuardrails(result, consensus, mktScore);
     result.mode = "INTRADAY";
-    if (!["HIGH", "MEDIUM", "LOW"].includes(result.confidence)) result.confidence = consensus.impliedConfidence;
 
     // Fallback prices — always intraday ranges
     if (cp) {
