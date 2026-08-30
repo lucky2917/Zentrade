@@ -116,6 +116,9 @@ export const readPositionTimeline = async (userId, symbol, db = pool) => {
 
 // The live world as the intelligence pass last measured it. Not raw ticks:
 // the state the brain actually reasons over.
+//
+// Built in the agent process, where the orchestrator lives, and carried to the
+// API on the runtime heartbeat.
 export const buildWorld = (runtime) => {
     const orchestrator = runtime?.orchestrator;
     if (!orchestrator) return { session: "UNKNOWN", market: null, symbols: [] };
@@ -146,33 +149,39 @@ export const buildWorld = (runtime) => {
 };
 
 export const buildSnapshot = async ({
-    narrator, runtime, health, userId, db = pool, limit = 300,
+    narrator, runtimeHealth = null, health, userId, db = pool, limit = 300,
 }) => {
     const now = new Date();
-    const [positions, portfolio, openOrders, todaysOrders, plane] = await Promise.all([
+    const [positions, portfolio, openOrders, todaysOrders] = await Promise.all([
         openPositions(now, userId).catch(() => []),
         portfolioState(userId, now).catch(() => null),
         readOpenOrders(userId, db).catch(() => []),
         readTodaysOrders(userId, db).catch(() => []),
-        // The Go plane's own heartbeat. Null when the plane is off, which is a
-        // different thing from a plane that is on and not answering.
-        runtime?.fastPlane?.planeHealth?.().catch(() => null) ?? null,
     ]);
+
+    // The agent's heartbeat carries the runtime's own view: its world, its
+    // reflex, its fast-plane bridge. An absent heartbeat means the trader is
+    // not running, which the cockpit must show as exactly that rather than as
+    // a trader with nothing to say.
+    const running = Boolean(runtimeHealth?.running);
 
     return {
         at: now.toISOString(),
         // Never anything but PAPER, and stated on every payload so the UI
         // cannot render a live-money impression by omission.
-        mode: runtime?.mode ?? "PAPER",
+        mode: "PAPER",
         liveExecutionEnabled: false,
+        agentRunning: running,
+        agentReason: running ? null : (runtimeHealth?.reason ?? "the agent is not running"),
         narration: narrator.snapshot({ limit }),
-        world: buildWorld(runtime),
+        world: running ? (runtimeHealth.world ?? { session: "UNKNOWN", symbols: [] })
+                       : { session: "UNKNOWN", symbols: [] },
         health: health ?? null,
-        runtime: runtime?.health?.() ?? null,
+        runtime: running ? runtimeHealth : null,
+        fastPlane: running ? (runtimeHealth.planeHealth ?? null) : null,
         positions,
         portfolio,
         openOrders,
         todaysOrders,
-        fastPlane: plane,
     };
 };

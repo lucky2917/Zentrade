@@ -67,6 +67,26 @@ describe("a quiet market looks quiet", () => {
         expect(screen.getByText(/FEED STALE/)).toBeTruthy();
     });
 
+    // A stopped trader must never render as an armed one.
+    it("makes a stopped trader impossible to miss", () => {
+        render(<StandbyBanner events={[]} snapshot={{
+            agentRunning: false, agentReason: "the agent is not running",
+            world: { session: "OPEN" }, narration: { brain: "IDLE" } }} />);
+        expect(screen.getByText(/TRADER NOT RUNNING/)).toBeTruthy();
+        expect(screen.getByText(/npm run agent/)).toBeTruthy();
+    });
+
+    it("reports risk as STOPPED, not ARMED, when the trader is down", () => {
+        render(<StatusBar events={[]} connected snapshot={{
+            agentRunning: false, world: { session: "OPEN" },
+            narration: { brain: "IDLE", counters: {} },
+            health: { connection: { state: "CONNECTED", trusted: true },
+                      newExposurePermitted: true } }} />);
+        // Brain, fast plane and risk all read STOPPED; none reads ARMED.
+        expect(screen.getAllByText("STOPPED").length).toBeGreaterThanOrEqual(2);
+        expect(screen.queryByText("ARMED")).toBeNull();
+    });
+
     it("makes a halt impossible to miss", () => {
         render(<StandbyBanner
             snapshot={{ world: { session: "OPEN", halted: true }, narration: {} }}

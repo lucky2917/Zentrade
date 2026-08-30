@@ -28,11 +28,6 @@ export const setBarSink = (sink) => { barSink = sink; };
 let connectionSink = null;
 export const setConnectionSink = (sink) => { connectionSink = sink; };
 
-// Tier 0 sink. Runs on every tick, before the cache write, because a
-// pre-committed protective action must not wait on Redis.
-let reflexSink = null;
-export const setReflexSink = (sink) => { reflexSink = sink; };
-
 const cacheAndPublish = async (sanitised) => {
     const key = STOCK_MAP.has(sanitised.symbol)
         ? `stock:${sanitised.symbol}`
@@ -60,16 +55,10 @@ const handleMessage = (message) => {
             const sanitised = sanitiseTick(tick);
             if (sanitised) {
                 connectionSink?.onTick?.(Date.now());
-                // Protection first. This is synchronous and allocation-light;
-                // it never awaits, and a failure here cannot stop the feed.
-                if (reflexSink) {
-                    try {
-                        reflexSink.ingestTick(sanitised);
-                    } catch (err) {
-                        logger.error("FyersWebSocket", "reflex lane threw",
-                                     { error: err.message, symbol: sanitised.symbol });
-                    }
-                }
+                // Publish first, and only publish. The protective lane lives in
+                // the agent process and the Go fast plane; both subscribe to
+                // this stream. Calling into a reflex from here would put a
+                // second detector inside the vendor edge.
                 cacheAndPublish(sanitised).catch((err) =>
                     logger.error("FyersWebSocket", "tick cache failed", { error: err.message }));
             }

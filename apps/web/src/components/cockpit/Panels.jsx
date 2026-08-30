@@ -324,6 +324,7 @@ const statusOf = (ok, degraded) => (ok ? "healthy" : degraded ? "degraded" : "fa
 // A plane that is ON and not answering is not the same as a plane that is off.
 // Reporting both as "off" would hide the one that matters.
 const planeStatus = (runtime, plane) => {
+    if (!runtime) return "failed";
     const mode = runtime?.fastPlane?.mode;
     if (!mode || mode === "off") return "off";
     if (!plane?.alive) return "failed";
@@ -333,6 +334,7 @@ const planeStatus = (runtime, plane) => {
 };
 
 const planeDetail = (runtime, plane) => {
+    if (!runtime) return "the trader is not running";
     const mode = runtime?.fastPlane?.mode;
     if (!mode || mode === "off") return "off — the Node reflex is protecting";
     if (!plane?.alive) return plane?.reason ?? "no heartbeat";
@@ -348,6 +350,7 @@ export const SystemHealth = ({ snapshot }) => {
 
     const deps = health.boot?.dependencies ?? {};
     const conn = health.connection ?? {};
+    const running = snapshot?.agentRunning !== false;
     const rows = [
         ["Fyers feed", conn.state === "CONNECTED"
             ? (conn.trusted ? "healthy" : "stale") : "failed", conn.state ?? UNKNOWN],
@@ -355,14 +358,17 @@ export const SystemHealth = ({ snapshot }) => {
         ["Redis", statusOf(deps.redis, false), deps.redis ? "connected" : "unreachable"],
         ["Go fast plane", planeStatus(runtime, snapshot?.fastPlane),
             planeDetail(runtime, snapshot?.fastPlane)],
-        ["Node brain", runtime ? "healthy" : "failed",
-            health.orchestrator?.phase ?? UNKNOWN],
-        ["Scheduler", health.orchestrator?.scheduler?.healthy ? "healthy" : "degraded",
-            `${health.orchestrator?.scheduler?.jobCount ?? 0} jobs`],
-        ["Queue", "healthy", `depth ${health.orchestrator?.queue?.depth ?? 0}`],
+        ["Autonomous trader", running ? "healthy" : "failed",
+            running ? `${runtime?.orchestrator?.phase ?? UNKNOWN} · pid ${runtime?.pid ?? UNKNOWN}`
+                    : (snapshot?.agentReason ?? "not running")],
+        ["Scheduler", running && runtime?.orchestrator?.scheduler?.healthy
+            ? "healthy" : running ? "degraded" : "failed",
+            `${runtime?.orchestrator?.scheduler?.jobCount ?? 0} jobs`],
+        ["Queue", running ? "healthy" : "failed",
+            `depth ${runtime?.orchestrator?.queue?.depth ?? 0}`],
         ["Risk", health.newExposurePermitted ? "healthy" : "degraded",
             health.exposureBlockedBecause ?? "new exposure permitted"],
-        ["Reflex lane", runtime?.reflex ? "healthy" : "failed",
+        ["Reflex lane", running && runtime?.reflex ? "healthy" : "failed",
             runtime?.reflex ? `${runtime.reflex.armedSymbols ?? 0} armed` : UNKNOWN],
     ];
 

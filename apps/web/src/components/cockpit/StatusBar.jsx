@@ -43,11 +43,16 @@ export const StatusBar = ({ snapshot, events, connected }) => {
     const runtime = snapshot?.runtime ?? null;
     const last = events[events.length - 1] ?? null;
 
+    const running = snapshot?.agentRunning !== false;
     const halted = world?.halted || health?.orchestrator?.halted;
-    const risk = halted ? "HALTED"
+    // A stopped trader is not an armed one. Reporting ARMED because nothing has
+    // said otherwise is exactly the misleading-healthy state to avoid.
+    const risk = !running ? "STOPPED"
+        : halted ? "HALTED"
         : health?.newExposurePermitted === false ? "BLOCKED" : "ARMED";
-    const plane = runtime?.fastPlane?.mode
-        ? runtime.fastPlane.mode.toUpperCase() : "OFF";
+    const plane = !running ? "STOPPED"
+        : runtime?.fastPlane?.mode ? runtime.fastPlane.mode.toUpperCase() : "OFF";
+    const brain = running ? (narration?.brain ?? UNKNOWN) : "STOPPED";
 
     return (
         <header className="ck-status">
@@ -63,9 +68,9 @@ export const StatusBar = ({ snapshot, events, connected }) => {
                 <Pill label="Feed" value={feedLabel(health?.connection)}
                       tone={feedTone(health?.connection)} />
                 <Pill label="Fast plane" value={plane}
-                      tone={plane === "OFF" ? "neutral" : "good"} />
-                <Pill label="Brain" value={narration?.brain ?? UNKNOWN}
-                      tone={brainTone(narration?.brain)} />
+                      tone={plane === "STOPPED" ? "bad" : plane === "OFF" ? "neutral" : "good"} />
+                <Pill label="Brain" value={brain}
+                      tone={brain === "STOPPED" ? "bad" : brainTone(brain)} />
                 <Pill label="Risk" value={risk}
                       tone={risk === "ARMED" ? "good" : "bad"} />
                 <Pill label="Queue" value={world?.queueDepth ?? UNKNOWN} />
@@ -86,6 +91,12 @@ export const StandbyBanner = ({ snapshot, events }) => {
     const brain = snapshot?.narration?.brain;
     const last = events[events.length - 1] ?? null;
 
+    if (snapshot?.agentRunning === false) {
+        return <div className="ck-banner ck-banner-bad">
+            TRADER NOT RUNNING — {snapshot.agentReason ?? "the agent is not started"}
+            <span className="ck-banner-sub"> · start it with: npm run agent</span>
+        </div>;
+    }
     if (world?.halted) {
         return <div className="ck-banner ck-banner-bad">
             HALTED — no new exposure, no exits, observation only

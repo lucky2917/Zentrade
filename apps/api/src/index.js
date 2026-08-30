@@ -29,12 +29,13 @@ import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import startWebSocketBroadcaster from "./services/websocket.js";
-import { narrator } from "./services/cockpit/narrator.js";
+import { narrator, NARRATION_CHANNEL, RUNTIME_HEALTH_KEY }
+    from "./services/cockpit/narrator.js";
 import { attachCockpit } from "./services/cockpit/transport.js";
 import { buildCockpitRouter } from "./routes/cockpit.js";
 import { startSquareOffJob, stopSquareOffJob, reconcileSquareOff } from "./services/squareOff.js";
 import { initFyersAuth, isConfigured as isFyersConfigured } from "./services/fyers/fyersAuth.js";
-import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket, stop as stopFyersWebSocket, setBarSink, setConnectionSink, setReflexSink } from "./services/fyers/fyersWebSocket.js";
+import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket, stop as stopFyersWebSocket, setBarSink, setConnectionSink } from "./services/fyers/fyersWebSocket.js";
 import { startWatchdog } from "./services/fyers/authWatchdog.js";
 import { Bootstrap, buildHealth } from "./services/orchestrator/bootstrap.js";
 import { ConnectionTracker, CONNECTION } from "./services/orchestrator/connectionState.js";
@@ -313,7 +314,8 @@ app.get("/internal/brain/health", auth, (req, res) => res.json(health()));
 // evaluates them during module initialisation, before their own declarations,
 // and the process dies on a temporal dead zone error before it ever listens.
 app.use("/internal/cockpit", buildCockpitRouter({
-    runtime: () => orchestrator,
+    // The runtime is in the agent process; its health arrives over Redis.
+    runtimeHealth: () => readRuntimeHealth(),
     health: () => health(),
     userId: () => DEFAULT_USER_ID,
 }));
@@ -373,9 +375,11 @@ const validateEnv = () => {
 
 export const connectionTracker = new ConnectionTracker({ logger });
 export let bootstrap = null;
+// Kept null in this process by design. The autonomous runtime runs in
+// src/agent.js; buildHealth still accepts it so the shape of health does not
+// change, and a non-null value here would mean a second runtime exists.
 export let orchestrator = null;
 
-const AUTONOMOUS_ENABLED = process.env.ZENTRADE_AUTONOMOUS === "true";
 // Recovery and reconciliation are per-account. The product is single-account
 // today; this makes that assumption explicit rather than implicit.
 const DEFAULT_USER_ID = Number(process.env.ZENTRADE_ACCOUNT_ID ?? 1);
@@ -386,6 +390,19 @@ export const newsStore = new NewsStore();
 // this the entire intelligence layer is starved: it reads bars:1m:SYMBOL and
 // nothing was writing them.
 export const barAggregator = new BarAggregator({ redis, logger });
+
+// The trader's own heartbeat, written by the agent process. An expired key
+// means the trader is not running, which is a different thing from a trader
+// with nothing to say.
+export const readRuntimeHealth = async () => {
+    try {
+        const raw = await redis.get(RUNTIME_HEALTH_KEY);
+        if (!raw) return { running: false, reason: "the agent is not running" };
+        return { running: true, ...JSON.parse(raw) };
+    } catch (err) {
+        return { running: false, reason: err.message };
+    }
+};
 
 export const health = () => buildHealth({
     bootstrap, orchestrator, connection: connectionTracker,
@@ -482,65 +499,17 @@ const start = async () => {
                 startAllLanes();
                 startPreMarketScanner();
 
-                if (!AUTONOMOUS_ENABLED) {
-                    logger.info("Server",
-                        "autonomous loop disabled (set ZENTRADE_AUTONOMOUS=true to enable)");
-                    return { autonomous: false };
-                }
-
-                // Paper only, always. AutonomousRuntime throws on any other
-                // mode, so this cannot be flipped by configuration alone.
-                const engine = await import("./services/execution/engine.js");
-                const reconciler = await import("./services/execution/reconcile.js");
-                const { AutonomousRuntime, MODE } = await import("./services/autonomous/runtime.js");
-                const { buildLivePorts } = await import("./services/autonomous/livePorts.js");
-
-                const pollAnnouncements = makeAnnouncementPoller({ store: newsStore, logger });
-
-                // The operational Indian universe. STOCKS is the existing
-                // subscribed symbol list; nothing new is hardcoded here, and it
-                // is not a research membership map.
-                const universe = STOCKS.map((s) => s.symbol);
-
-                const { makeMemoryRetriever } =
-                    await import("./services/memory/repository.js");
-                const { FastPlaneBridge, modeFromEnv } =
-                    await import("./services/tick/fastPlane.js");
-
-                // The Go fast plane. OFF unless explicitly enabled, and SHADOW
-                // is the only setting a session should use until one has run
-                // with zero divergence.
-                const fastPlane = new FastPlaneBridge({
-                    mode: modeFromEnv(process.env.ZENTRADE_FAST_PLANE), logger });
-
-                orchestrator = new AutonomousRuntime({
-                    engine, reconciler, mode: MODE.PAPER, userId: DEFAULT_USER_ID, logger,
-                    barAggregator, fastPlane, narrator,
-                    ports: buildLivePorts({
-                        userId: DEFAULT_USER_ID, newsStore, connectionTracker,
-                        ingestNews: pollAnnouncements, logger,
-                        universe,
-                        // The two adapters that were null. Both reuse the
-                        // existing aiEngine plumbing rather than adding a
-                        // second AI engine.
-                        callModel: makeReassessmentModel({ logger, narrator }),
-                        analyseCandidate: makeCandidateAnalyser({ logger, narrator }),
-                        // M11-M17 built the whole memory chain and nothing read
-                        // it. Retrieval now reaches the decision path.
-                        retrieveMemories: makeMemoryRetriever({ logger }),
-                    }),
-                });
-
-                await orchestrator.start();
-                // Every tick now reaches the reflex lane. Before this the tick
-                // stream only fed a cache and a bar builder, and a stop breach
-                // waited for a 15-second poll and two model calls.
-                setReflexSink(orchestrator);
-                logger.info("Server", "autonomous runtime STARTED (paper mode)", {
-                    reflex: orchestrator.reflex.health(),
-                    fastPlane: fastPlane.mode,
-                });
-                return { autonomous: true, mode: MODE.PAPER, fastPlane: fastPlane.mode };
+                // The autonomous runtime lives in its OWN process (src/agent.js,
+                // started by `npm run agent`). This process owns the Fyers
+                // vendor edge, the API, the socket and the cockpit; it must not
+                // be able to start a second runtime, because two orchestrators
+                // over one account is two of every decision.
+                //
+                // Narration from the agent is relayed to the cockpit here.
+                await narrator.consumeFrom(redis, NARRATION_CHANNEL);
+                logger.info("Server", "following the trader's narration",
+                            { channel: NARRATION_CHANNEL });
+                return { autonomous: false, runsIn: "npm run agent" };
             },
         },
     });
@@ -629,7 +598,6 @@ const shutdown = async (signal) => {
     stopOutcomeLabeler();
         stopOpsAlarms();
         await stopEventBackbone();
-        if (orchestrator) await orchestrator.stop();
         await barAggregator.flush();
         stopAllLanes();
         stopMarketWorker();

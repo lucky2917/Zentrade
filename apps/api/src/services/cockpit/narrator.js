@@ -108,11 +108,79 @@ export class Narrator {
                           protective: 0, errors: 0 };
         this.decisionCards = [];
         this.sessionDate = null;
+        this.publisher = null;
+        this.consumer = null;
     }
 
     subscribe(fn) {
         this.subscribers.add(fn);
         return () => this.subscribers.delete(fn);
+    }
+
+    // ---- crossing a process boundary -------------------------------------
+    //
+    // The autonomous runtime and the API are separate processes: the brain can
+    // restart without dropping the cockpit, and the cockpit can be reloaded
+    // without disturbing the brain. Narration therefore has a writer side and a
+    // reader side.
+    //
+    // The WRITER assigns the sequence. The READER preserves it. If both
+    // assigned their own, a browser reconnecting to the reader would dedupe
+    // against numbers the writer never used.
+
+    // Writer: mirror every emit onto a channel. Fire and forget — a cockpit
+    // nobody is watching must not slow a decision down.
+    publishTo(client, channel) {
+        this.publisher = { client, channel };
+        return this.subscribe((event) => {
+            client.publish(channel, JSON.stringify(event)).catch((err) =>
+                this.logger?.warn?.("Narrator", "narration not published",
+                                    { error: err.message, kind: event.kind }));
+        });
+    }
+
+    // Reader: apply an event that was assigned its identity elsewhere.
+    //
+    // Out-of-order and duplicate arrivals are dropped rather than renumbered,
+    // because the sequence is what every downstream consumer dedupes on.
+    ingest(event) {
+        if (!event || !CATEGORY_OF[event.kind]) return null;
+        if (!Number.isFinite(event.seq) || event.seq <= this.seq) return null;
+
+        this.seq = event.seq;
+        this.log.push(event);
+        if (this.log.length > this.capacity) {
+            this.log.splice(0, this.log.length - this.capacity);
+        }
+        this.lastEventAt = event.at;
+        this.rollSession(new Date(event.at));
+        this.applyToState(event);
+
+        for (const fn of this.subscribers) {
+            try { fn(event); } catch (err) {
+                this.logger?.error?.("Narrator", "subscriber threw",
+                                     { error: err.message, kind: event.kind });
+            }
+        }
+        return event;
+    }
+
+    // Reader: follow a writer on another process. Returns a stop function.
+    async consumeFrom(client, channel) {
+        const subscriber = client.duplicate();
+        subscriber.on("error", (err) =>
+            this.logger?.warn?.("Narrator", "narration subscriber error",
+                                { error: err.message }));
+        await subscriber.subscribe(channel);
+        subscriber.on("message", (from, payload) => {
+            if (from !== channel) return;
+            try { this.ingest(JSON.parse(payload)); } catch { /* malformed */ }
+        });
+        this.consumer = subscriber;
+        return async () => {
+            try { await subscriber.quit(); } catch { /* already gone */ }
+            this.consumer = null;
+        };
     }
 
     // The single write path. Every field is supplied by the caller from real
@@ -157,6 +225,7 @@ export class Narrator {
     // Counters are per session, not for the life of the process: "reasoning
     // calls today" has to mean today.
     rollSession(at) {
+        if (Number.isNaN(at?.getTime?.())) return;
         const ist = new Date(at.getTime() + 5.5 * 60 * 60 * 1000)
             .toISOString().slice(0, 10);
         if (this.sessionDate === ist) return;
@@ -265,9 +334,22 @@ export class Narrator {
     health() {
         return { seq: this.seq, buffered: this.log.length, capacity: this.capacity,
                  subscribers: this.subscribers.size, brain: this.brain,
+                 publishing: Boolean(this.publisher),
+                 consuming: Boolean(this.consumer),
                  counters: { ...this.counters } };
     }
 }
 
-// One narrator per process. The runtime writes to it, the transport reads it.
+// The channel the runtime publishes narration on and the API reads it from.
+export const NARRATION_CHANNEL = "cockpit:narration";
+
+// Where the runtime publishes its own health, so the API can tell "the brain is
+// quiet" from "the brain is gone" — identical on the wire, very different in a
+// session. Short TTL, so a dead runtime disappears instead of leaving a record
+// that reads as healthy.
+export const RUNTIME_HEALTH_KEY = "cockpit:runtime:health";
+export const RUNTIME_HEALTH_TTL_SECONDS = 20;
+
+// One narrator per process. In the agent process the runtime writes to it; in
+// the API process it follows the agent and the transport reads it.
 export const narrator = new Narrator();

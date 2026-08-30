@@ -10,8 +10,13 @@ import { fileURLToPath } from "node:url";
 //   1. checks the dependencies that must exist, and names exactly what is
 //      missing rather than starting in a degraded state that looks healthy
 //   2. builds and starts the Go fast market plane, unless it is turned off
-//   3. starts the API, which hosts the Senior Trader Brain and serves the
-//      cockpit on the same port
+//   3. starts the autonomous runtime — the Senior Trader Brain, the risk gate
+//      and paper execution — in its own process
+//
+// It does NOT start the API. That is `npm run server`, in its own terminal,
+// and it owns the Fyers vendor edge, the socket and the cockpit. Keeping them
+// apart is what lets the trader restart without dropping the feed, and what
+// makes it impossible for two runtimes to exist.
 //
 // It owns the shutdown ordering too: the plane is stopped after the brain, so
 // the brain never loses its market feed while it is still reasoning.
@@ -127,9 +132,12 @@ const waitForPlane = (child) => new Promise((resolve) => {
 
 // ---- start -----------------------------------------------------------------
 
-const startApi = () => spawn(process.execPath, ["src/index.js"], {
+// The autonomous runtime, in its own process. Not the API: the API is started
+// separately with `npm run server` and owns the vendor edge, the socket and the
+// cockpit. Two processes, one runtime.
+const startTrader = () => spawn(process.execPath, ["src/agent.js"], {
     cwd: API_DIR,
-    env: { ...process.env, ZENTRADE_AUTONOMOUS: "true", ZENTRADE_FAST_PLANE: PLANE_MODE },
+    env: { ...process.env, ZENTRADE_FAST_PLANE: PLANE_MODE },
     stdio: "inherit",
 });
 
@@ -162,25 +170,25 @@ const main = async () => {
         say(`  FAST PLANE: ACTIVE (${PLANE_MODE})`);
     }
 
-    const api = startApi();
+    const trader = startTrader();
 
-    // The brain must never lose its feed while it is still reasoning, so the
-    // plane outlives it by design.
+    // Shutdown order matters. The brain stops first so it can drain and
+    // reconcile while it still has a market feed; the plane follows.
     let shuttingDown = false;
     const shutdown = (signal) => {
         if (shuttingDown) return;
         shuttingDown = true;
-        say(`\n  ${signal} — stopping the brain, then the plane`);
-        api.kill(signal);
-        setTimeout(() => plane?.kill("SIGTERM"), 500);
-        setTimeout(() => process.exit(0), 4000).unref();
+        say(`\n  ${signal} — stopping the trader, then the plane`);
+        trader.kill(signal);
+        setTimeout(() => plane?.kill("SIGTERM"), 1500);
+        setTimeout(() => process.exit(0), 6000).unref();
     };
     process.on("SIGINT", () => shutdown("SIGINT"));
     process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-    api.once("exit", (code) => {
+    trader.once("exit", (code) => {
         if (!shuttingDown) {
-            say(`\n  the brain exited with code ${code}; stopping the plane`);
+            say(`\n  the trader exited with code ${code}; stopping the plane`);
             plane?.kill("SIGTERM");
             process.exit(code ?? 1);
         }
@@ -188,7 +196,7 @@ const main = async () => {
     plane?.once("exit", (code) => {
         if (!shuttingDown) {
             say(`\n  the fast plane exited with code ${code}`);
-            say("  the brain keeps running; the Node reflex is still protecting.");
+            say("  the trader keeps running; its local reflex is still protecting.");
         }
     });
 };

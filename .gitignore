@@ -25,7 +25,17 @@ claude.md
 *.sw?
 backups/
 PROJECT_STATE.md
-docs/
+# Contents rather than the directory itself: git cannot re-include a file whose
+# parent directory is excluded, and these documents ship with the system.
+docs/*
+# The rest of docs/ is working material; these describe how to run it and
+# what it is.
+!docs/STARTUP.md
+!docs/ZENTRADE_PRESENTATION.html
+!docs/ZENTRADE_PRESENTATION.pdf
+!docs/TRADER_COCKPIT.md
+!docs/SELECTIVE_GO_CPP_ARCHITECTURE.md
+!docs/CPP_FUTURE_BOUNDARY.md
 CHANGELOG.md
 
 # US trading platform (HKUDS/AI-Trader), self-hosted for hackathon demo.

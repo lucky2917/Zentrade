@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZenTrade Autonomous Trader</title>
+<meta name="description" content="Architecture and engineering progress of an autonomous senior-trader system for the Indian equity market.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* ZenTrade — presentation document.
+   Two accent hues carry meaning rather than decoration: teal is deterministic
+   machinery, amber is model-assisted reasoning. That split is the architecture,
+   so the page encodes it in colour throughout. */
+:root{
+  --paper:#FCFBF9; --raised:#F5F2EC; --ink:#131620; --muted:#6A6558;
+  --rule:#E4E0D8; --indigo:#2A3A6B; --teal:#1F7A6B; --amber:#A8690F;
+  --good:#2F7D4F; --warn:#A8690F; --bad:#A33232;
+  --display:"Fraunces",Georgia,"Times New Roman",serif;
+  --body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --measure:68ch;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#14161C; --raised:#1B1E26; --ink:#E7E3DA; --muted:#9A9488;
+    --rule:#2A2E38; --indigo:#8FA3DC; --teal:#5CC3AE; --amber:#E0A84E;
+    --good:#63C089; --warn:#E0A84E; --bad:#E07A7A;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#14161C; --raised:#1B1E26; --ink:#E7E3DA; --muted:#9A9488;
+  --rule:#2A2E38; --indigo:#8FA3DC; --teal:#5CC3AE; --amber:#E0A84E;
+  --good:#63C089; --warn:#E0A84E; --bad:#E07A7A;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);
+  font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+.wrap{display:grid;grid-template-columns:220px minmax(0,1fr);gap:56px;
+  max-width:1180px;margin:0 auto;padding:0 32px}
+@media(max-width:960px){.wrap{grid-template-columns:1fr;gap:0}}
+
+/* masthead */
+.mast{border-bottom:1px solid var(--rule);padding:72px 0 40px;margin-bottom:8px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--muted)}
+.mast h1{font-family:var(--display);font-size:clamp(40px,7vw,72px);line-height:1.02;
+  font-weight:600;margin:18px 0 0;letter-spacing:-.02em;text-wrap:balance}
+.mast .sub{font-family:var(--display);font-size:clamp(19px,2.6vw,26px);
+  font-weight:400;color:var(--muted);margin:14px 0 0;max-width:24ch;line-height:1.28}
+.mast .meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:32px}
+.tag{font-family:var(--mono);font-size:11px;letter-spacing:.06em;padding:4px 10px;
+  border:1px solid var(--rule);border-radius:2px;color:var(--muted)}
+.tag-paper{color:var(--warn);border-color:currentColor}
+
+/* index */
+nav{position:sticky;top:0;align-self:start;padding:72px 0 40px;max-height:100vh;
+  overflow-y:auto}
+@media(max-width:960px){nav{position:static;max-height:none;padding:24px 0;
+  border-bottom:1px solid var(--rule)}}
+nav ol{list-style:none;margin:0;padding:0;counter-reset:s}
+nav a{display:grid;grid-template-columns:26px 1fr;gap:6px;padding:2px 0;
+  color:var(--muted);text-decoration:none;font-size:13px;line-height:1.35}
+nav a:hover,nav a:focus-visible{color:var(--ink)}
+nav a::before{counter-increment:s;content:counter(s,decimal-leading-zero);
+  font-family:var(--mono);font-size:10px;color:var(--rule)}
+nav a:hover::before{color:var(--teal)}
+
+main{padding-bottom:120px;min-width:0}
+section{padding:44px 0;border-top:1px solid var(--rule)}
+section:first-of-type{border-top:0}
+h2{font-family:var(--display);font-size:29px;font-weight:600;line-height:1.15;
+  margin:0 0 4px;letter-spacing:-.015em;text-wrap:balance}
+h2 .n{font-family:var(--mono);font-size:12px;font-weight:400;color:var(--teal);
+  display:block;letter-spacing:.14em;margin-bottom:10px}
+h3{font-family:var(--body);font-size:14px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--muted);margin:32px 0 10px}
+p,li{max-width:var(--measure)}
+p{margin:14px 0}
+a{color:var(--indigo)}
+strong{font-weight:600}
+.lede{font-size:19px;line-height:1.55;color:var(--ink)}
+ul,ol.body{padding-left:20px;margin:14px 0}
+li{margin:6px 0}
+
+/* diagram panels break the measure */
+.panel{background:var(--raised);border:1px solid var(--rule);border-radius:3px;
+  padding:20px 22px;margin:22px 0;overflow-x:auto}
+.panel pre{font-family:var(--mono);font-size:12.5px;line-height:1.62;margin:0;
+  white-space:pre;color:var(--ink)}
+.panel.fast{border-left:3px solid var(--teal)}
+.panel.brain{border-left:3px solid var(--amber)}
+
+/* tables */
+table{width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;
+  font-variant-numeric:tabular-nums;display:block;overflow-x:auto}
+th{text-align:left;font-weight:600;font-size:11px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);padding:8px 14px 8px 0;
+  border-bottom:1px solid var(--rule);white-space:nowrap}
+td{padding:9px 14px 9px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+td:first-child{white-space:nowrap}
+code{font-family:var(--mono);font-size:.9em;background:var(--raised);
+  padding:1px 5px;border-radius:2px}
+
+/* semantic chips */
+.chip{font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;padding:2px 7px;
+  border-radius:2px;border:1px solid currentColor;white-space:nowrap}
+.go{color:var(--teal)} .node{color:var(--indigo)} .py{color:var(--amber)}
+.no{color:var(--muted)}
+
+/* callout */
+.note{border-left:3px solid var(--rule);padding:4px 0 4px 18px;margin:22px 0;
+  color:var(--muted)}
+.note strong{color:var(--ink)}
+.note.keep{border-left-color:var(--teal)}
+.note.warn{border-left-color:var(--warn)}
+
+/* progress */
+.bars{display:grid;gap:14px;margin:24px 0;max-width:var(--measure)}
+.bar{display:grid;grid-template-columns:1fr 52px;gap:14px;align-items:center}
+.bar .label{font-size:14px}
+.bar .track{grid-column:1/-1;height:5px;background:var(--rule);border-radius:3px;
+  overflow:hidden}
+.bar .fill{height:100%;background:var(--teal);border-radius:3px}
+.bar .pct{font-family:var(--mono);font-size:13px;text-align:right;color:var(--muted)}
+
+/* steps */
+.steps{counter-reset:step;list-style:none;padding:0;margin:22px 0}
+.steps li{display:grid;grid-template-columns:30px 1fr;gap:14px;margin:0 0 22px;
+  max-width:var(--measure)}
+.steps li::before{counter-increment:step;content:counter(step);
+  font-family:var(--mono);font-size:12px;color:var(--teal);border:1px solid var(--rule);
+  border-radius:50%;width:26px;height:26px;display:grid;place-items:center;
+  margin-top:2px}
+.steps code{display:inline-block;margin-top:4px}
+
+footer{border-top:1px solid var(--rule);padding:32px 0 64px;color:var(--muted);
+  font-size:13px}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Print / PDF. The document is meant to be handed over, so Print-to-PDF from
+   any browser produces a clean result without further tooling. */
+@media print{
+  :root{--paper:#fff;--raised:#F7F5F1;--ink:#111;--muted:#555;--rule:#D8D4CC}
+  nav{display:none}
+  .wrap{display:block;max-width:none;padding:0 12mm}
+  main{padding-bottom:0}
+  section{break-inside:avoid-page;padding:22px 0}
+  h2{break-after:avoid-page}
+  .panel{break-inside:avoid-page;background:#F7F5F1}
+  table{display:table;break-inside:avoid-page}
+  .mast{padding-top:0;break-after:page}
+  p,li{max-width:none}
+  a{color:inherit;text-decoration:none}
+  footer{break-before:avoid-page}
+}
+@page{margin:14mm}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<nav aria-label="Contents">
+  <ol>
+    <li><a href="#s1">Executive overview</a></li>
+    <li><a href="#s2">The two goals</a></li>
+    <li><a href="#s3">How the trader thinks</a></li>
+    <li><a href="#s4">System architecture</a></li>
+    <li><a href="#s5">The life of one tick</a></li>
+    <li><a href="#s6">The fast plane</a></li>
+    <li><a href="#s7">The Senior Trader Brain</a></li>
+    <li><a href="#s8">The research plane</a></li>
+    <li><a href="#s9">The C++ decision</a></li>
+    <li><a href="#s10">Evidence hierarchy</a></li>
+    <li><a href="#s11">Thesis architecture</a></li>
+    <li><a href="#s12">Adversarial reasoning</a></li>
+    <li><a href="#s13">Deterministic safety</a></li>
+    <li><a href="#s14">Continuous observation</a></li>
+    <li><a href="#s15">Protective reflex</a></li>
+    <li><a href="#s16">Memory and learning</a></li>
+    <li><a href="#s17">The autonomous runtime</a></li>
+    <li><a href="#s18">The live cockpit</a></li>
+    <li><a href="#s19">A decision, end to end</a></li>
+    <li><a href="#s20">Technology ownership</a></li>
+    <li><a href="#s21">Why the model cannot trade</a></li>
+    <li><a href="#s22">Engineering progress</a></li>
+    <li><a href="#s23">Remaining limitations</a></li>
+    <li><a href="#s24">Starting it tomorrow</a></li>
+    <li><a href="#s25">Status</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="mast">
+  <div class="eyebrow">Architecture &amp; Engineering Progress</div>
+  <h1>ZenTrade</h1>
+  <p class="sub">An autonomous senior trader for the Indian equity market.</p>
+  <div class="meta">
+    <span class="tag tag-paper">Paper simulation only</span>
+    <span class="tag">NSE equities</span>
+    <span class="tag">Go · TypeScript · Python</span>
+  </div>
+</header>
+
+<section id="s1">
+<h2><span class="n">01</span>Executive overview</h2>
+<p class="lede">Most automated trading systems are rule engines: a condition fires, an order goes out. They cannot explain themselves, they cannot notice that their reason for holding a position has quietly stopped being true, and they cannot argue with themselves.</p>
+<p>ZenTrade is built around a different premise — that the valuable part of a discretionary trader is not the entry signal but the <strong>continuous reassessment</strong>. A senior trader forms a view, writes down what would prove it wrong, watches the market, and changes their mind when the evidence changes. ZenTrade does that, autonomously, and shows its work.</p>
+<p>Two things make it more than a language model with a broker attached. First, <strong>deterministic code owns every safety decision</strong> — risk, sizing, legality, arithmetic, and permission to execute. The model contributes interpretation and nothing else. Second, <strong>protection never waits for reasoning</strong>: a stop breach is acted on in microseconds by a separate process that has no model client linked into it.</p>
+<p>It trades paper only. There is no order-placement code anywhere in the repository — the safety boundary is absence, not a setting.</p>
+</section>
+
+<section id="s2">
+<h2><span class="n">02</span>The two goals</h2>
+<h3>Goal 1 — a senior-level autonomous trading agent</h3>
+<p>Not "the agent can output BUY, SELL or HOLD". The bar is behavioural: it maintains a live model of the market, notices when something material changes, forms a thesis, attacks its own thesis, considers what else could explain what it sees, prices the opportunity against real costs, checks whether the world moved while it was thinking, and keeps reassessing every position after every meaningful change.</p>
+<h3>Goal 2 — the right language for each workload</h3>
+<p>Not "rewrite it in Go". The instruction was to migrate <em>only</em> where there is a measured or structural reason, and to say so plainly where there is not. That discipline is why one component moved, one was rejected on a vendor constraint, one was fixed rather than migrated, and C++ was rejected outright with the numbers to justify it.</p>
+</section>
+
+<section id="s3">
+<h2><span class="n">03</span>How the trader thinks</h2>
+<div class="panel brain"><pre>
+   observe            continuous, every tick
+      │
+   understand         what is FACT, what is inference
+      │
+   form thesis        a falsifiable view, with its own kill conditions
+      │
+   challenge          a second pass whose job is to break the first
+      │
+   alternatives       what else explains the same observation?
+      │
+   synthesise         deterministic: R:R, cost hurdle, EV, opportunity cost
+      │
+   revalidate         has the world moved while I was thinking?
+      │
+   risk gate          deterministic, non-negotiable
+      │
+   act                paper execution
+      │
+   reassess ──────────┘  after every material change, forever
+</pre></div>
+<p>Each stage is a real artifact the system produces and records — not a narration written for display. The cockpit shows exactly these objects.</p>
+</section>
+
+<section id="s4">
+<h2><span class="n">04</span>System architecture</h2>
+<div class="panel"><pre>
+  Fyers market feed
+        │
+        ▼
+  ┌─────────────────────┐
+  │  VENDOR EDGE        │  Node — the vendor SDK speaks an obfuscated
+  │  API process        │  binary protocol; see section 09
+  └──────────┬──────────┘
+             │  normalised tick · zentrade.marketdata.tick.v1
+             ▼
+  ┌─────────────────────┐
+  │  FAST MARKET PLANE  │  Go — own process, own lifetime
+  │  · world state, 64 shards per symbol
+  │  · deterministic reflex on pre-committed levels
+  │  · continuous material-change detection
+  │  · feed liveness
+  └──────────┬──────────┘
+             │  material event · zentrade.marketdata.event.v1
+             ▼
+  ┌─────────────────────┐
+  │  SENIOR TRADER      │  TypeScript — agent process
+  │  BRAIN              │  thesis → challenge → alternatives → synthesis
+  └──────────┬──────────┘
+             ▼
+     fresh-world revalidation      deterministic
+             ▼
+        HARD RISK GATE             deterministic
+             ▼
+       PAPER EXECUTION             9-state machine, Postgres
+             ▼
+          POSITION
+             ▼
+     CONTINUOUS MONITORING ────────┐
+             ▼                     │
+        REASSESSMENT ──────────────┘
+
+  Every stage also emits to ─────────▶ LIVE COCKPIT
+</pre></div>
+<p>Three processes, three responsibilities, no overlap. The backend owns the vendor edge and the cockpit's transport. The agent owns the trading runtime. The fast plane owns the tick. None of them can do another's job.</p>
+</section>
+
+<section id="s5">
+<h2><span class="n">05</span>The life of one tick</h2>
+<p>A single price update from the exchange:</p>
+<ol class="body">
+<li><strong>Normalised at the edge.</strong> The vendor's float rupee value becomes integer paise and dies at this boundary. Timestamps become epoch milliseconds; receipt time and exchange time stay separate fields.</li>
+<li><strong>Published</strong> onto Redis, where both the fast plane and the agent are listening.</li>
+<li><strong>The fast plane updates the world.</strong> Last, high, low and a monotonic per-symbol sequence, in the shard that symbol hashes to — <strong>28.99 ns, zero allocations</strong>.</li>
+<li><strong>Levels are tested.</strong> If the tick crosses a stop, a target or a named invalidation the thesis pre-committed to, an event is emitted immediately.</li>
+<li><strong>Material change is detected.</strong> Approach bands, price velocity over a real window, VWAP deviation, and volume inside the minute in progress.</li>
+<li><strong>Nothing happens</strong> if none of that is true — which is the common case, and the system stays silent rather than manufacturing activity.</li>
+</ol>
+<p>Emitted events reach the brain by push, not by poll: roughly a millisecond from the tick, not a drain interval.</p>
+</section>
+
+<section id="s6">
+<h2><span class="n">06</span>The fast plane, and why it is Go</h2>
+<p>The honest reason is <strong>not speed</strong>. Node evaluates the same reflex in 83 nanoseconds, which is fast enough. On the real detection workload Go is 1.24× faster — not a reason to migrate anything.</p>
+<p>The reason is <strong>isolation</strong>. Tick receipt and protection used to share an event loop with model orchestration and HTTP serving, and a measured <strong>86.8 ms of head-of-line blocking</strong> proved that coupling was real. They also shared a process lifetime, and the backend exits on any uncaught exception — so an unrelated bug dropped the market feed mid-session.</p>
+<div class="note keep"><p><strong>Why a language boundary rather than just a second Node process.</strong> A minimal Node process would isolate it today and drift back into a brain within a quarter, because adding an import is free. Across a language boundary, adding a model client to the deterministic safety path is not a temptation — it is a rewrite. The fast plane has no model client, no database driver and no order path linked into it, and cannot acquire one by accident.</p></div>
+<table>
+<tr><th>Measurement</th><th>Before</th><th>After</th></tr>
+<tr><td>Tick → reflex, at a bar boundary</td><td>86.844 ms p50</td><td>0.047 ms p50</td></tr>
+<tr><td>Parallel, 200 symbols</td><td>122.1 ns/op</td><td>25.62 ns/op</td></tr>
+<tr><td>Protective path, serial</td><td>—</td><td>28.99 ns/op, 0 allocations</td></tr>
+<tr><td>Cross-language parity</td><td>—</td><td>100,000 ticks, 848 events, zero divergence</td></tr>
+</table>
+</section>
+
+<section id="s7">
+<h2><span class="n">07</span>The Senior Trader Brain, and why it stays TypeScript</h2>
+<p>The reasoning pipeline is <strong>bound by the model, not by the language</strong>. Two sequential model calls dominate at seconds each; the orchestration around them is nanoseconds. Moving it to Go would make it no faster to run and considerably slower to change — and it is the part of the system most likely to change weekly.</p>
+<p>The risk gate stays with it deliberately. Splitting a decision from the gate that authorises it across a process boundary adds a failure mode and buys nothing.</p>
+</section>
+
+<section id="s8">
+<h2><span class="n">08</span>The research plane, and why it stays Python</h2>
+<p>Point-in-time discipline, a 75.8-million-row bar spine, feature engineering, calibration, replay and backtesting all run on Polars and DuckDB — which are Rust and C++ underneath. Writing our own would be slower and less correct.</p>
+<p>The research protocol is frozen and was not touched: 156 trials, a Bonferroni threshold of 3.178, and <strong>zero holdout looks</strong>. Rewriting the harness would put those numbers at risk for no gain.</p>
+</section>
+
+<section id="s9">
+<h2><span class="n">09</span>The C++ decision</h2>
+<p><strong>No C++ was written, and that is the finding.</strong></p>
+<p>At a generous 1,000 ticks per second the entire fast plane consumes <strong>0.0083 % of one core</strong>. The reflex is <strong>0.0056 %</strong> of the protective path it feeds; the remaining 99.99 % is Postgres round trips against an instance whose bare <code>SELECT 1</code> measures 322.6 ms. Optimising the reflex in C++ would be the wrong end of the problem by five orders of magnitude.</p>
+<p>There is also nothing to compute. The system consumes last-traded price and cumulative volume. No spread, no book imbalance, no queue position — microstructure code with no microstructure data.</p>
+<div class="note"><p><strong>Where C++ would earn its place.</strong> Level-2 depth: 200 symbols × 20 levels × 2 sides, roughly 100× the message rate, with every message mutating a book rather than comparing a scalar. The boundary is pre-drawn behind the same frozen contract, with one precondition — build it in Go first and profile to saturation. If Go holds, the answer stays no. No speculative code exists.</p></div>
+<h3>A vendor constraint worth naming</h3>
+<p>The Fyers market-data socket speaks a proprietary binary protocol. The vendor SDK ships it <strong>fully obfuscated</strong> with no published schema. Reimplementing it in Go or C++ would mean reverse-engineering obfuscated code against a venue that cannot be exercised outside market hours. That is why the vendor edge stays in Node — a constraint, not a preference.</p>
+</section>
+
+<section id="s10">
+<h2><span class="n">10</span>Evidence hierarchy</h2>
+<p>A senior trader does not confuse "price is above VWAP" with "buyers are aggressive". The first is arithmetic; the second is an interpretation that may be wrong. Conflating them is how a weak inference acquires the authority of a measurement.</p>
+<table>
+<tr><th>Tier</th><th>Meaning</th><th>Assigned by</th></tr>
+<tr><td><strong>FACT</strong></td><td>Measured or computed from data held</td><td>deterministic code</td></tr>
+<tr><td><strong>OBSERVATION</strong></td><td>A measured comparison against a baseline</td><td>deterministic code</td></tr>
+<tr><td><strong>INFERENCE</strong></td><td>A conclusion drawn from facts</td><td>the model — its ceiling</td></tr>
+<tr><td><strong>HYPOTHESIS</strong></td><td>A candidate explanation, not established</td><td>the model</td></tr>
+<tr><td><strong>PREDICTION</strong></td><td>A claim about the future</td><td>the model</td></tr>
+</table>
+<p><strong>Tiers are assigned by origin, never claimed.</strong> Anything the model produces is clamped to INFERENCE or weaker. It cannot promote its own reasoning to fact.</p>
+</section>
+
+<section id="s11">
+<h2><span class="n">11</span>Thesis architecture</h2>
+<div class="panel"><pre>
+  ORIGINAL THESIS                  CURRENT BELIEF
+  written once at entry            rewritten on every reassessment
+  immutable, append-only           the evolving view
+        │                                │
+        │  rationale                     │  action
+        │  setup type                    │  thesis still valid?
+        │  invalidation conditions       │  what changed
+        │  stop, target, horizon         │  triggering event
+        │                                │
+        └────────── compared ────────────┘
+                        │
+                 has reality diverged
+                 from what I believed
+                 when I entered?
+</pre></div>
+<p>Keeping these apart is the whole point. A system that edits its entry thesis as the market moves cannot tell you it was wrong — it can only tell you what it currently believes, which is worth much less. The cockpit shows them side by side, and the entry thesis is enforced immutable at the database level.</p>
+</section>
+
+<section id="s12">
+<h2><span class="n">12</span>Adversarial reasoning</h2>
+<p>Forming a thesis is easy; a language model will produce one for any chart. The value is in the second pass, whose only job is to break the first.</p>
+<table>
+<tr><th>Artifact</th><th>What it asks</th></tr>
+<tr><td>Strongest objection</td><td>What is the single best argument against this?</td></tr>
+<tr><td><strong>Counter-thesis</strong></td><td>What would I trade <em>instead</em>, stated as a position?</td></tr>
+<tr><td>Alternative hypotheses</td><td>Short covering? Index beta? Thin liquidity? A single large order?</td></tr>
+<tr><td>Disconfirming evidence</td><td>What in the data contradicts this view?</td></tr>
+<tr><td>What would change my mind</td><td>Named, falsifiable conditions</td></tr>
+<tr><td>Confirmation bias check</td><td>Was the author only looking for supporting evidence?</td></tr>
+</table>
+<p>The challenger runs at near-zero temperature, so "this thesis is weak" is a stable judgement rather than a sample. It can only ever make the decision <strong>more conservative</strong>: a broken thesis cannot become a buy, and a weak one cannot open new exposure. And a thesis with no invalidation condition is not a thesis — the action is forced to HOLD.</p>
+</section>
+
+<section id="s13">
+<h2><span class="n">13</span>Deterministic safety</h2>
+<p>Everything below is computed in code the model cannot reach or influence.</p>
+<table>
+<tr><th>Control</th><th>What it enforces</th></tr>
+<tr><td>Risk–reward</td><td>Computed from the levels, not from the model's claim about them</td></tr>
+<tr><td>Cost hurdle</td><td><strong>73.55 bps</strong> round trip. An edge that does not clear it is not an edge</td></tr>
+<tr><td>Expected value</td><td>Derived from R:R and the cost hurdle, never asserted</td></tr>
+<tr><td>Opportunity cost</td><td>Is this better than doing nothing?</td></tr>
+<tr><td>Position sizing</td><td>Deterministic. A BUY with no usable size degrades to HOLD</td></tr>
+<tr><td>Session policy</td><td>No new exposure into the close; exits stay possible</td></tr>
+<tr><td>Freshness</td><td>Stale data blocks new exposure automatically</td></tr>
+<tr><td>Single writer</td><td>One module writes cash, positions and orders — enforced by test</td></tr>
+<tr><td>Idempotency</td><td>Intent-derived order keys; a repeat is absorbed, not duplicated</td></tr>
+</table>
+</section>
+
+<section id="s14">
+<h2><span class="n">14</span>Continuous observation</h2>
+<p>The system used to poll every fifteen seconds. That is not a tuning problem, it is a category error: a poll samples endpoints and cannot see what happened between them.</p>
+<div class="panel fast"><pre>
+  A price that moves 3.5% and returns within 14 seconds:
+
+  15-second poll        t=0  ₹1,000        t=15  ₹1,000
+                        ────────────────────────────────
+                        "nothing happened"
+
+  continuous            t=0  ₹1,000
+                        t=7  ₹1,035   ← detected on this tick
+                        t=14 ₹1,000
+</pre></div>
+<p>Eight conditions are now evaluated on every tick: stop, invalidation, target, stop approach, target approach, price velocity, VWAP deviation and volume. Only feed staleness remains timer-driven, and necessarily — the absence of ticks cannot arrive as a tick.</p>
+<p>The supervisory scheduler still runs, but for what schedulers are for: reconciliation, order expiry, health and end-of-day. It is no longer how the system finds out that the market moved.</p>
+</section>
+
+<section id="s15">
+<h2><span class="n">15</span>Protective reflex</h2>
+<p class="lede">The governing idea: <strong>the line between the fast path and the slow path is not drawn by latency budget. It is drawn by who already made the decision.</strong></p>
+<p>A thesis is a pre-commitment. It named its stop, its target and the price that would prove it wrong, and the risk gate already authorised the position those levels belong to. When a tick crosses one of them there is no judgement left to make — so there is nothing for a model to decide.</p>
+<table>
+<tr><th></th><th>Before</th><th>Now</th></tr>
+<tr><td>Stop breach noticed</td><td>15-second poll</td><td>the tick that causes it</td></tr>
+<tr><td>Then</td><td>queued behind two model calls</td><td>acted on immediately</td></tr>
+<tr><td>Level lost → order exists</td><td>≈ 35 seconds</td><td>≈ 1 millisecond</td></tr>
+<tr><td>Model consulted</td><td>yes</td><td><strong>no</strong></td></tr>
+</table>
+<p>Reasoning still happens — afterwards, to decide what the crossing <em>meant</em>, not whether to protect. And only a crossing of a pre-committed level authorises action; everything else is an attention signal that wakes the trader without moving the position.</p>
+</section>
+
+<section id="s16">
+<h2><span class="n">16</span>Memory and learning</h2>
+<div class="panel"><pre>
+  trade → outcome → reassessment → calibration → future context
+    │        │            │             │              │
+  journal  labelled    evolving      how well       retrieved as
+  entry    at a        belief        calibrated     OBSERVATION on
+           horizon                   was I?         the next decision
+</pre></div>
+<p>Every decision is journalled with its evidence. Outcomes are labelled with strict no-look-ahead rules. Episodic memories index that experience, and retrieval surfaces comparable past decisions when a similar one is being made.</p>
+<div class="note warn"><p><strong>Two rules keep this honest.</strong> Retrieved memories enter as <strong>OBSERVATION</strong>, never as current market fact, and contradictory episodes surface together rather than the flattering one being shown alone. Eligibility is strictly before the deciding session, so a memory can never contain the outcome of the decision it is informing.</p></div>
+<p>No alpha is claimed from this. It is context, and it is labelled as context.</p>
+</section>
+
+<section id="s17">
+<h2><span class="n">17</span>The autonomous runtime</h2>
+<div class="panel"><pre>
+  TERMINAL 1              TERMINAL 2              TERMINAL 3
+  npm run dev             npm run server          npm run agent
+  ─────────────           ──────────────          ─────────────
+  cockpit UI              API + auth              ① checks deps
+                          Fyers vendor edge       ② builds Go plane
+                          bar aggregation         ③ starts it, waits
+                          cockpit transport       ④ starts the trader
+                          narration relay         ⑤ prints status
+                                  ▲                       │
+                                  └──── Redis ────────────┘
+                                     narration + heartbeat
+</pre></div>
+<p>Exactly one autonomous runtime exists, and it lives in the agent process. The backend cannot start a second one — the code to do so does not exist there, and a test asserts it.</p>
+<p>The split earns its keep: the trader restarts without dropping the market feed, and the cockpit reloads without disturbing the trader. The agent writes a short-TTL heartbeat, so the cockpit distinguishes a quiet trader from a stopped one and says <strong>TRADER NOT RUNNING</strong> rather than reporting ARMED.</p>
+</section>
+
+<section id="s18">
+<h2><span class="n">18</span>The live cockpit</h2>
+<p>Not a dashboard. The intent is the experience of sitting beside an autonomous trader while it works.</p>
+<div class="panel"><pre>
+  WAITING FOR MATERIAL CHANGE          quiet market, genuinely quiet
+        ↓
+  FAST PLANE · MATERIAL CHANGE         teal — deterministic detection
+        ↓
+  MATERIALITY CHECK                    why it matters, or why it does not
+        ↓
+  SENIOR TRADER AWAKENED               amber — the model is now involved
+        ↓
+  WHAT DO I KNOW?                      evidence, tiered by origin
+        ↓
+  INITIAL THESIS  →  CHALLENGE  →  ALTERNATIVES  →  WHAT WOULD CHANGE MY MIND
+        ↓
+  DETERMINISTIC SYNTHESIS              R:R · cost hurdle · opportunity cost
+        ↓
+  DECISION  →  FRESH-WORLD REVALIDATION  →  RISK GATE
+        ↓
+  ORDER  →  FILL  →  POSITION  →  REASSESSMENT
+        ↓
+  RETURNING TO OBSERVATION
+</pre></div>
+<p>The rule the whole interface rests on: <strong>nothing generates activity</strong>. There is no timer, no synthetic event, no thinking animation. When the market is quiet the screen is quiet and says so. A value the system does not have renders as <code>UNKNOWN</code>; confidence with no stated basis renders as <code>INSUFFICIENT BASIS</code>.</p>
+<p>The browser is read-only by construction — only GET endpoints, no import that can reach execution, and a test that fires every mutating verb at the running server to prove it.</p>
+</section>
+
+<section id="s19">
+<h2><span class="n">19</span>A decision, end to end</h2>
+<div class="panel"><pre>
+  09:47:12  FAST PLANE      RELIANCE — volume 3.7× the 60-bar median
+  09:47:12  MATERIALITY     WARNING on a position route → reasoning required
+  09:47:12  BRAIN AWAKENED  trigger VOLUME_SPIKE
+
+  09:47:13  WHAT I KNOW     [FACT]        price ₹1,425
+                            [FACT]        session VWAP ₹1,401
+                            [OBSERVATION] volume 3.7× baseline
+                            [OBSERVATION] 2 comparable past decisions: 1 stop, 1 target
+                            entry thesis (immutable): "VWAP reclaim, 09:20"
+
+  09:47:14  THESIS          continuation above VWAP on expanding participation
+                            contradicting: volume rising while breadth is flat
+                            invalidated by: a 5m close below VWAP
+
+  09:47:15  CHALLENGE       verdict THESIS_WEAK
+                            objection: breadth does not confirm the move
+                            counter-thesis: thin-liquidity drift that mean-reverts
+                            alternatives: index beta · one large working order
+                            would change my mind: VWAP reclaimed on rising volume
+
+  09:47:16  SYNTHESIS       R:R 2.40 · cost hurdle 73.55 bps
+                            edge INSUFFICIENT after costs
+                            opportunity cost: capital better left unallocated
+
+  09:47:16  DECISION        HOLD — confidence LOW
+                            basis: challenger judged the thesis weak
+
+  09:47:16  NO ORDER        nothing reached the risk gate
+
+  09:47:17  RETURNING TO OBSERVATION
+</pre></div>
+<p>This is the ordinary case, and it is the point. A system that only shows you its trades is hiding the decisions that mattered most — the ones where it declined.</p>
+</section>
+
+<section id="s20">
+<h2><span class="n">20</span>Technology ownership</h2>
+<table>
+<tr><th>Component</th><th>Language</th><th>Why</th></tr>
+<tr><td>Fyers vendor socket</td><td><span class="chip node">Node</span></td><td>obfuscated vendor protocol, no schema</td></tr>
+<tr><td>Tick normalisation</td><td><span class="chip node">Node</span></td><td>must sit with the SDK that decodes the frame</td></tr>
+<tr><td>Live world state</td><td><span class="chip go">Go</span></td><td>per-symbol concurrent, zero-allocation</td></tr>
+<tr><td>Deterministic reflex</td><td><span class="chip go">Go</span></td><td>must not share a lifetime with the brain</td></tr>
+<tr><td>Material-change detection</td><td><span class="chip go">Go</span></td><td>same plane as the state it reads</td></tr>
+<tr><td>Feed liveness</td><td><span class="chip go">Go</span></td><td>supervises the plane it owns</td></tr>
+<tr><td>Reasoning pipeline</td><td><span class="chip node">TypeScript</span></td><td>model-bound; changes weekly</td></tr>
+<tr><td>Risk gate</td><td><span class="chip node">TypeScript</span></td><td>must sit with the decision it gates</td></tr>
+<tr><td>Execution &amp; ledger</td><td><span class="chip node">TypeScript</span></td><td>Postgres-bound</td></tr>
+<tr><td>API, cockpit transport</td><td><span class="chip node">TypeScript</span></td><td>orchestration and fan-out</td></tr>
+<tr><td>PIT, spine, features</td><td><span class="chip py">Python</span></td><td>Polars and DuckDB are already native</td></tr>
+<tr><td>Training, replay, backtest</td><td><span class="chip py">Python</span></td><td>ecosystem is the reason to be there</td></tr>
+<tr><td>Order-book engine</td><td><span class="chip no">C++ — future</span></td><td>not justified by any current workload</td></tr>
+</table>
+</section>
+
+<section id="s21">
+<h2><span class="n">21</span>Why the model cannot trade</h2>
+<p>The model is one voice in a system that does not take its word for anything.</p>
+<div class="panel"><pre>
+  model proposes  ──▶  deterministic validation   illegal action → HOLD
+                  ──▶  adversarial challenge      can only be more conservative
+                  ──▶  deterministic synthesis    arithmetic, never asserted
+                  ──▶  fresh-world revalidation   is this still true?
+                  ──▶  hard risk gate             deterministic, non-negotiable
+                  ──▶  execution                  9-state machine, idempotent
+</pre></div>
+<p>The model never determines risk, legality, quantity, arithmetic, freshness or permission to execute. It cannot reach the execution engine — there is no path from the reasoning modules to it. A malformed response becomes HOLD. A model outage becomes HOLD. And the protective path, where a wrong answer is most expensive, does not consult it at all.</p>
+</section>
+
+<section id="s22">
+<h2><span class="n">22</span>Engineering progress</h2>
+<h3>Code</h3>
+<table>
+<tr><th>Suite</th><th>Result</th></tr>
+<tr><td>TypeScript / JavaScript</td><td>1,076 passing</td></tr>
+<tr><td>Cockpit (React)</td><td>50 passing</td></tr>
+<tr><td>Go</td><td>all packages, race detector clean</td></tr>
+<tr><td>Python research</td><td>557 passing</td></tr>
+<tr><td>Cross-language parity</td><td>20 golden fixtures, zero divergence</td></tr>
+<tr><td>Shadow replay</td><td>100,000 ticks · 848 events · zero divergence</td></tr>
+</table>
+<p>The complete path is verified end to end against the <strong>real compiled Go binary in its own process</strong>: a tick published to Redis, detected by the plane, delivered to the brain, and closing a real position through the real execution engine — with the cockpit showing it, attributed to the plane that detected it.</p>
+<h3>Live validation</h3>
+<p>Separate, and honestly reported: <strong>the system has never processed a tick from a live market session.</strong> Everything above is proven against a real database, a real cache, the real Go binary and the real reasoning pipeline — but not against a real exchange feed.</p>
+</section>
+
+<section id="s23">
+<h2><span class="n">23</span>Remaining limitations</h2>
+<p>These are external conditions, not unfinished engineering.</p>
+<table>
+<tr><th>Limitation</th><th>What it requires</th></tr>
+<tr><td>No live session has run</td><td>a trading day with a valid broker token</td></tr>
+<tr><td>Fast plane runs in shadow</td><td>one clean live session before it becomes authoritative</td></tr>
+<tr><td>No measured edge</td><td>many sessions of recorded outcomes</td></tr>
+<tr><td>Long-only</td><td>a short-side money model; deliberately closed and pinned by test</td></tr>
+<tr><td>Paper only</td><td>intentional — no order-placement code exists</td></tr>
+</table>
+<p>No profitability is claimed. No trading edge is claimed. No live validation is claimed.</p>
+</section>
+
+<section id="s24">
+<h2><span class="n">24</span>Starting it tomorrow</h2>
+<ol class="steps">
+<li><div><strong>Re-authenticate the broker</strong><br>The token expires at 03:00 IST daily. Then run the preflight — it ends in READY or names the reason.<br><code>cd apps/api &amp;&amp; npm run preflight</code></div></li>
+<li><div><strong>Start the cockpit</strong><br><code>cd apps/web &amp;&amp; npm run dev</code></div></li>
+<li><div><strong>Start the backend</strong><br>API, vendor edge, cockpit transport. This process does not trade.<br><code>cd apps/api &amp;&amp; npm run server</code></div></li>
+<li><div><strong>Start the trader</strong><br>Builds and starts the Go fast plane, then the autonomous runtime.<br><code>cd apps/api &amp;&amp; npm run agent</code></div></li>
+</ol>
+<p><strong>Open <code>http://localhost:5173/trader</code></strong> and watch. Stop with <kbd>Ctrl-C</kbd> in the agent terminal: it drains, reconciles, releases the market-data lease and exits cleanly.</p>
+</section>
+
+<section id="s25">
+<h2><span class="n">25</span>Status</h2>
+<p>Code completion against the approved architecture. Live-market validation is reported separately in section 22 and is not deducted here.</p>
+<div class="bars">
+  <div class="bar"><span class="label">Fast market plane</span><span class="pct">97%</span><span class="track"><span class="fill" style="width:97%"></span></span></div>
+  <div class="bar"><span class="label">Senior Trader Brain</span><span class="pct">93%</span><span class="track"><span class="fill" style="width:93%"></span></span></div>
+  <div class="bar"><span class="label">Autonomous runtime</span><span class="pct">97%</span><span class="track"><span class="fill" style="width:97%"></span></span></div>
+  <div class="bar"><span class="label">Live trader cockpit</span><span class="pct">96%</span><span class="track"><span class="fill" style="width:96%"></span></span></div>
+  <div class="bar"><span class="label">Goal 1 — autonomous senior trader</span><span class="pct">95%</span><span class="track"><span class="fill" style="width:95%"></span></span></div>
+  <div class="bar"><span class="label">Goal 2 — selective technology architecture</span><span class="pct">95%</span><span class="track"><span class="fill" style="width:95%"></span></span></div>
+  <div class="bar"><span class="label">Whole approved architecture</span><span class="pct">82%</span><span class="track"><span class="fill" style="width:82%"></span></span></div>
+</div>
+<p>The last figure is held down by seven research milestones — knowledge, skills and evaluation — that are scoped but not started. Nothing on the trading path is waiting on engineering work.</p>
+</section>
+
+<footer>
+<p>ZenTrade — autonomous senior-trader architecture. Paper simulation only; no order-placement code exists in the system. No profitability, trading edge or live-market validation is claimed.</p>
+</footer>
+</main>
+</div>
+</body>
+</html>

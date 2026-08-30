@@ -13,8 +13,8 @@ import { buildSnapshot, readPositionTimeline } from "../services/cockpit/state.j
 // Every dependency is an accessor, not a value. This router is built while the
 // server module is still initialising, so anything read eagerly here is read
 // before it exists.
-export const buildCockpitRouter = ({ runtime = () => null, health = () => null,
-                                     userId }) => {
+export const buildCockpitRouter = ({ runtimeHealth = async () => null,
+                                     health = () => null, userId }) => {
     const router = express.Router();
     const account = () => (typeof userId === "function" ? userId() : userId);
 
@@ -22,7 +22,7 @@ export const buildCockpitRouter = ({ runtime = () => null, health = () => null,
         try {
             const limit = Math.min(Number(req.query.limit) || 300, 1000);
             res.json(await buildSnapshot({
-                narrator, runtime: runtime(), health: health(),
+                narrator, runtimeHealth: await runtimeHealth(), health: health(),
                 userId: account(), limit }));
         } catch (err) {
             res.status(503).json({ error: "snapshot unavailable", detail: err.message });

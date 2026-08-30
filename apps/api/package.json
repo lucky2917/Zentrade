@@ -9,12 +9,12 @@
     "scripts": {
         "dev": "node --watch src/index.js",
         "start": "node src/index.js",
-        "brain": "ZENTRADE_AUTONOMOUS=true node src/index.js",
+        "brain": "node src/agent.js",
         "preflight": "node scripts/preflight.js",
         "test": "vitest run",
         "docs": "node -e \"import('./src/config/swagger.js').then(m => console.log(JSON.stringify(m.swaggerSpec, null, 2)))\"",
-        "cockpit": "npm --prefix ../web run build && ZENTRADE_AUTONOMOUS=true node src/index.js",
-        "agent": "node scripts/agent.mjs"
+        "agent": "node scripts/agent.mjs",
+        "server": "node src/index.js"
     },
     "dependencies": {
         "@sentry/node": "^10.64.0",
