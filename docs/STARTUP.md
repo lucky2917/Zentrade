@@ -13,6 +13,10 @@ npm run preflight
 The preflight is the one authoritative check. It ends in `READY` or in
 `NOT READY` with the reason. It prints no secrets.
 
+Use `npm run --silent preflight` to suppress npm's own error block, which it
+appends whenever the exit code is non-zero — that code is deliberate, so the
+check can be scripted.
+
 ## Every morning
 
 **Re-authenticate Fyers first.** The token expires at 03:00 IST daily. Visit
@@ -109,6 +113,39 @@ starts the trader with its own local reflex protecting instead.
 
 ## Configuration
 
+### The Fyers token, and why one more line is needed
+
+Fyers registers **one** OAuth redirect URI per app, and in this deployment it is
+the hosted backend:
+
+```
+FYERS_REDIRECT_URI = https://zentrade-server.onrender.com/fyers/callback
+```
+
+So when you authenticate — wherever you start from — the auth code is exchanged
+*there*, and the token is written to *that* deployment's Redis. A machine
+running against its own Redis has no token and never will, however many times
+you re-authenticate. That is a property of the Fyers app registration, not a bug
+in this system.
+
+Startup handles it. Add the source Redis once:
+
+```
+FYERS_TOKEN_SOURCE_REDIS_URL=<the Redis of the deployment that owns the callback>
+```
+
+`npm run preflight`, `npm run server` and `npm run agent` each fetch the token
+themselves when the local one is missing or expired, preserving its real
+remaining life. Only the two auth keys move — never the price cache, the
+rate-limit budget or the market-data ownership lease.
+
+`scripts/syncFyersToken.js` remains as a manual escape hatch for fetching a
+token without starting anything. You should not need it.
+
+**If you run the backend where the callback lands** (`FYERS_REDIRECT_URI` on
+localhost, or on the hosted machine itself), none of this applies: the token is
+minted where you are and no source is needed. Startup detects this and says so.
+
 Required in `apps/api/.env`:
 
 ```
@@ -128,7 +165,8 @@ Optional:
 | `ZENTRADE_ACCOUNT_ID` | defaults to 1 |
 | `ZENTRADE_FAST_PLANE` | `shadow` (default), `live`, `off` |
 | `PORT` | defaults to 5000 |
-| `FRONTEND_URL` | cockpit URL in the banner |
+| `FRONTEND_URL` | OAuth redirects and email links, not the cockpit URL |
+| `FYERS_TOKEN_SOURCE_REDIS_URL` | see above; only when the callback belongs elsewhere |
 
 **`ZENTRADE_FAST_PLANE`.** `shadow` runs the Go plane against the real feed and
 compares it against the local reflex without acting on it. `live` makes it the
@@ -162,6 +200,6 @@ stop the backend. That is the point of the split.
 | `TRADER NOT RUNNING` in the cockpit | terminal 3 is not started |
 | `FEED STALE` | ticks stopped; new exposure is blocked automatically |
 | `MARKET CLOSED` | outside 09:15–15:30 IST, or not a trading day |
-| Preflight `access token` FAIL | re-authenticate Fyers |
+| Preflight `access token` FAIL | read the message: it says whether to re-authenticate or to set `FYERS_TOKEN_SOURCE_REDIS_URL` |
 | Preflight `positions with a thesis` FAIL | a holding cannot be reassessed or protected |
 | Agent: `another instance already owns the market-data role` | an agent is already running |

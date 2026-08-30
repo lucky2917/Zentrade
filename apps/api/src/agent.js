@@ -25,10 +25,10 @@ const USER_ID = Number(process.env.ZENTRADE_ACCOUNT_ID ?? 1);
 const PRICE_CHANNEL = "price:update";
 const HEALTH_INTERVAL_MS = 5_000;
 
-const banner = (runtime, plane) => {
+const banner = (runtime, plane, cockpitUrl) => {
     const health = runtime.health();
     const line = (label, value) => `  ${label.padEnd(18)}${value}`;
-    const url = `${process.env.FRONTEND_URL || `http://localhost:${process.env.PORT ?? 5000}`}/trader`;
+    const url = cockpitUrl;
     process.stdout.write([
         "",
         "  ZEN TRADE AUTONOMOUS TRADER",
@@ -112,7 +112,17 @@ const start = async () => {
     connectionTracker.onConnected();
 
     await runtime.start();
-    banner(runtime, planeMode);
+    // The cockpit this stack serves is the local one. FRONTEND_URL names the
+    // deployed frontend, which talks to the deployed backend — a different
+    // system, and the wrong place to look at this trader.
+    const { existsSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const dist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
+    const port = process.env.PORT ?? 5000;
+    banner(runtime, planeMode, existsSync(join(dist, "index.html"))
+        ? `http://localhost:${port}/trader`
+        : "http://localhost:5173/trader");
 
     // The runtime's own heartbeat, so the cockpit can tell a quiet brain from a
     // dead one. Short TTL: a dead runtime disappears rather than leaving a

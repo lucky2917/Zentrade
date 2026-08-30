@@ -1,82 +1,43 @@
 #!/usr/bin/env node
-// Usage: PROD_REDIS_URL=<production redis connection string> node scripts/syncFyersToken.js
+// Manual escape hatch. You should not normally need this.
 //
-// Copies just the two Fyers auth keys (access_token, token_expiry) from
-// production Redis into local dev Redis, preserving the real remaining
-// TTL. Fyers' OAuth redirect_uri is fixed to production, so local dev
-// can never mint its own token directly -- this borrows production's
-// without merging the rest of local dev's Redis (chart cache, price
-// cache, rate-limit budget counters) into production's.
+// `npm run preflight` and `npm run agent` both acquire the Fyers token
+// themselves, from the Redis named by FYERS_TOKEN_SOURCE_REDIS_URL (or the
+// older PROD_REDIS_URL) in apps/api/.env. This script does the same thing on
+// demand, for the case where you want to fetch a token without starting
+// anything.
 //
-// PROD_REDIS_URL is read from the environment at run time, never
-// hardcoded here and never passed as a plain CLI arg (shows up in shell
-// history / process lists otherwise). Run this from wherever you can
-// actually reach production Redis -- a Render Shell session, or your
-// own machine if Render exposes an external connection string.
+// The logic lives in src/services/fyers/tokenSource.js so there is one
+// implementation rather than two that can drift.
 //
-// Local Redis is read from apps/api/.env's REDIS_URL, same as the app.
+// Usage:
+//   node scripts/syncFyersToken.js
+//   FYERS_TOKEN_SOURCE_REDIS_URL=<source redis> node scripts/syncFyersToken.js
+//
+// The connection string is read from the environment, never hardcoded and
+// never passed as a CLI argument, which would put it in shell history and in
+// process listings.
 
-import Redis from "ioredis";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
-
-const ACCESS_TOKEN_KEY = "fyers:access_token";
-const TOKEN_EXPIRY_KEY = "fyers:token_expiry";
-
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.join(scriptDir, "..", ".env");
-
-const readLocalRedisUrl = () => {
-    const envText = readFileSync(envPath, "utf8");
-    const match = envText.match(/^REDIS_URL=(.+)$/m);
-    if (!match) throw new Error(`REDIS_URL not found in ${envPath}`);
-    return match[1].trim();
-};
+import "dotenv/config";
+import redis from "../src/config/redis.js";
+import { ensureFyersToken, acquired, STATUS, TOKEN_SOURCE_VARS }
+    from "../src/services/fyers/tokenSource.js";
 
 const main = async () => {
-    const prodUrl = process.env.PROD_REDIS_URL;
-    if (!prodUrl) {
-        console.error("Set PROD_REDIS_URL to production's Redis connection string and re-run.");
-        console.error("Example: PROD_REDIS_URL=redis://... node scripts/syncFyersToken.js");
-        process.exit(1);
+    const { status, message } = await ensureFyersToken({ redis });
+    process.stdout.write(`${status}: ${message}\n`);
+
+    if (status === STATUS.NO_SOURCE) {
+        process.stdout.write(
+            `\nSet ${TOKEN_SOURCE_VARS[0]} in apps/api/.env to the Redis of the `
+            + "deployment that owns the OAuth callback, and startup will do this "
+            + "for you.\n");
     }
-
-    const localUrl = readLocalRedisUrl();
-    if (localUrl === prodUrl) {
-        console.error("Local REDIS_URL matches PROD_REDIS_URL -- refusing to sync a Redis onto itself.");
-        process.exit(1);
-    }
-
-    const prod = new Redis(prodUrl, { lazyConnect: true, connectTimeout: 10_000 });
-    const local = new Redis(localUrl, { lazyConnect: true, connectTimeout: 10_000 });
-
-    try {
-        await prod.connect();
-        await local.connect();
-
-        const [token, expiry, ttl] = await Promise.all([
-            prod.get(ACCESS_TOKEN_KEY),
-            prod.get(TOKEN_EXPIRY_KEY),
-            prod.ttl(ACCESS_TOKEN_KEY),
-        ]);
-
-        if (!token || ttl <= 0) {
-            console.error("Production has no live Fyers token right now (nothing to copy). Reauth in production first.");
-            process.exit(1);
-        }
-
-        await local.set(ACCESS_TOKEN_KEY, token, "EX", ttl);
-        if (expiry) await local.set(TOKEN_EXPIRY_KEY, expiry);
-
-        console.log(`Synced Fyers token to local Redis. Valid for another ${Math.round(ttl / 60)} minutes.`);
-    } finally {
-        prod.disconnect();
-        local.disconnect();
-    }
+    await redis.quit().catch(() => {});
+    process.exit(acquired(status) ? 0 : 1);
 };
 
 main().catch((err) => {
-    console.error("Sync failed:", err.message);
+    process.stderr.write(`Token acquisition failed: ${err.message}\n`);
     process.exit(1);
 });

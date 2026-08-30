@@ -472,15 +472,27 @@ const start = async () => {
             },
             session: async () => sessionStateAt(new Date()),
             "fyers-auth": async () => {
+                if (!isFyersConfigured()) throw new Error("Fyers not configured");
+
+                // Acquire the token BEFORE initFyersAuth, so the SDK is handed
+                // a live one rather than starting blind and being fixed later.
+                //
+                // When this deployment does not own the OAuth callback the
+                // token lives in the deployment that does; this fetches it from
+                // the configured source. That is why there is no separate sync
+                // command to remember.
+                const { ensureFyersToken, acquired } =
+                    await import("./services/fyers/tokenSource.js");
+                const { status, message } = await ensureFyersToken({ redis, logger });
+                logger.info("Server", `Fyers token: ${message}`, { status });
+
                 await initFyersAuth();
                 startWatchdog();
-                if (!isFyersConfigured()) throw new Error("Fyers not configured");
+
                 // Configured but unauthenticated is not a usable state: the
-                // socket cannot open and the loop would observe nothing. Fail
-                // the stage so boot reports it instead of running blind.
-                const { getAccessToken } = await import("./services/fyers/fyersAuth.js");
-                if (!(await getAccessToken()))
-                    throw new Error("no Fyers access token; re-authenticate at /reauth");
+                // socket cannot open and the runtime would observe nothing.
+                // Fail the stage so boot reports it instead of running blind.
+                if (!acquired(status)) throw new Error(`no Fyers access token — ${message}`);
                 return true;
             },
             "market-data": async () => {
@@ -554,10 +566,11 @@ const printBanner = () => {
     // Prefer the port this process is actually serving on: with the web build
     // mounted, that is where the cockpit lives.
     const dist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
-    const base = existsSync(join(dist, "index.html"))
-        ? `http://localhost:${PORT}`
-        : (process.env.FRONTEND_URL || `http://localhost:${PORT}`);
-    const cockpitUrl = `${base}/trader`;
+    // Always the local cockpit: FRONTEND_URL is the deployed frontend, which
+    // talks to the deployed backend rather than this process.
+    const cockpitUrl = existsSync(join(dist, "index.html"))
+        ? `http://localhost:${PORT}/trader`
+        : "http://localhost:5173/trader";
     const line = (label, value) => `  ${label.padEnd(16)}${value}`;
     process.stdout.write([
         "",

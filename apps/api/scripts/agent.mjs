@@ -69,13 +69,29 @@ const checkServices = async () => {
     try { await redis.ping(); } catch (err) {
         problems.push(`Redis is unreachable: ${err.message}`);
     }
-    await pool.end().catch(() => {});
-    await redis.quit().catch(() => {});
     if (problems.length) {
+        await pool.end().catch(() => {});
+        await redis.quit().catch(() => {});
         fail("a required service is unavailable", [
-            ...problems, "", "The brain cannot run without both.",
+            ...problems, "", "The trader cannot run without both.",
         ]);
     }
+
+    // Acquire the Fyers token before anything starts. When the OAuth callback
+    // belongs to another deployment this fetches it from the configured source,
+    // so authenticating once is the whole of the operator's morning.
+    const { ensureFyersToken, acquired } =
+        await import("../src/services/fyers/tokenSource.js");
+    const { status, message } = await ensureFyersToken({ redis });
+    say(acquired(status) ? `  FYERS TOKEN: ${message}` : `  FYERS TOKEN: ${message}`);
+    if (!acquired(status)) {
+        say("");
+        say("  Starting anyway: the trader will run and observe nothing until a");
+        say("  token exists. Nothing can be executed without market data.");
+    }
+
+    await pool.end().catch(() => {});
+    await redis.quit().catch(() => {});
 };
 
 // ---- the Go fast plane -----------------------------------------------------

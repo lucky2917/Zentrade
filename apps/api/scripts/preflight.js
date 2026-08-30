@@ -119,20 +119,21 @@ const checkRedis = async (redis) => {
     }
 };
 
-const checkFyers = async (getAccessToken, getTokenExpiry) => {
-    const token = await getAccessToken();
-    if (!token) {
-        const reauth = `${process.env.FRONTEND_URL ?? ""}/reauth`;
-        return record("FYERS", "access token", BLOCKING, false,
-                      `absent; re-authenticate at ${reauth}`);
+// The token is ACQUIRED here, not merely inspected. If the OAuth callback
+// belongs to another deployment, this fetches the token from the configured
+// source so the operator does not have to remember a separate command once a
+// day, at the one moment they are busy.
+const checkFyers = async (redis) => {
+    const { ensureFyersToken, acquired, STATUS } =
+        await import("../src/services/fyers/tokenSource.js");
+    const { status, message } = await ensureFyersToken({ redis, logger: null });
+
+    record("FYERS", "access token", BLOCKING, acquired(status), message);
+    if (status === STATUS.SYNCED) {
+        record("FYERS", "token source", ADVISORY, true,
+               "startup fetches the token automatically; no manual sync");
     }
-    const expiry = await getTokenExpiry();
-    if (!expiry) return record("FYERS", "access token", ADVISORY, true,
-                               "present, expiry unknown");
-    const minutes = Math.round((expiry - Date.now()) / 60_000);
-    return record("FYERS", "access token", BLOCKING, minutes > 0,
-                  minutes > 0 ? `valid for ${Math.floor(minutes / 60)}h ${minutes % 60}m`
-                              : "expired; re-authenticate before the open");
+    return acquired(status);
 };
 
 const checkMarketData = async (redis, universe) => {
@@ -218,13 +219,16 @@ const checkRuntime = async (redis) => {
            free ? `${port} free; \`npm run server\` will bind it`
                 : `${port} in use; the backend is already running`);
 
+    // The cockpit these commands start is the LOCAL one. FRONTEND_URL points at
+    // the deployed frontend, which talks to the deployed backend — showing it
+    // here would send the operator to a different system entirely.
+    const built = existsSync(join(WEB_DIST, "index.html"));
     record("COCKPIT", "web build", ADVISORY, true,
-           existsSync(join(WEB_DIST, "index.html"))
-               ? "present; the backend serves /trader itself"
-               : "absent; run `npm run dev` in apps/web, or build it");
-
+           built ? "present; the backend serves /trader itself"
+                 : "absent; `npm run dev` in apps/web serves it on 5173");
     record("COCKPIT", "endpoint", ADVISORY, true,
-           `${process.env.FRONTEND_URL || `http://localhost:${port}`}/trader`);
+           built ? `http://localhost:${port}/trader`
+                 : "http://localhost:5173/trader");
 };
 
 const checkSafety = async () => {
@@ -280,16 +284,13 @@ const main = async () => {
     const { sessionStateAt, isTradingDay } =
         await import("../src/services/orchestrator/session.js");
     const { STOCKS } = await import("../src/config/stocks.js");
-    const { getAccessToken, getTokenExpiry } =
-        await import("../src/services/fyers/fyersAuth.js");
-
     const universe = STOCKS.map((s) => s.symbol);
     record("CONFIG", "universe", BLOCKING, universe.length > 0,
            `${universe.length} symbols subscribed`);
 
     if (await checkDatabase(pool)) await checkAccountAndRisk(pool, userId);
     if (await checkRedis(redis)) {
-        await checkFyers(getAccessToken, getTokenExpiry);
+        await checkFyers(redis);
         await checkMarketData(redis, universe);
         await checkFastPlane(redis);
         await checkRuntime(redis);
