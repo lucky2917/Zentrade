@@ -13,9 +13,7 @@ import zentrade
 from ...spine.layout import spine_root
 from ...spine.semantics import INTRADAY_GRANULARITIES
 from ...spine.writer import write_bars
-from .fyers_intraday import (
-    ParseReport, completeness_from_report, iter_cache_files, parse_file,
-)
+from .fyers_intraday import ParseReport, iter_cache_files, parse_file
 
 VENUE = "NSE"
 
@@ -37,7 +35,6 @@ class IngestResult:
     inserted: int = 0
     replaced: int = 0
     partitions: int = 0
-    completeness: dict = field(default_factory=dict)
 
     def summary(self) -> str:
         return (f"{self.granularity}: {self.parse.rows:,} rows -> "
@@ -77,7 +74,6 @@ def ingest(cache_dir: Path, spine_base: Path, granularity: str, log=None) -> Ing
     for month in sorted(pending):
         flush(month)
 
-    result.completeness = completeness_from_report(result.parse, granularity)
     return result
 
 
@@ -112,11 +108,7 @@ def main(argv: list[str]) -> int:
         result = ingest(cache_dir, spine_base, granularity,
                         log=lambda m: print(m, flush=True))
         print(f"  {result.summary()}")
-        print(f"     parse: {result.parse.summary()}")
-        c = result.completeness
-        print(f"     sessions: {c['symbol_sessions']:,} symbol-sessions, "
-              f"min {c['min']} max {c['max']} expected {c['expected']}, "
-              f"short {len(c['short']):,}, over {len(c['over']):,}", flush=True)
+        print(f"     parse: {result.parse.summary()}", flush=True)
     return 0
 
 

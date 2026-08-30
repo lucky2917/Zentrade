@@ -31,7 +31,6 @@ class ParseReport:
     unordered_files: int = 0
     symbols: set[str] = field(default_factory=set)
     sessions: set[str] = field(default_factory=set)
-    per_cell: dict[tuple[str, str], int] = field(default_factory=dict)
 
     def summary(self) -> str:
         return (f"files {self.files} | raw {self.raw_candles:,} | rows {self.rows:,} | "
@@ -91,8 +90,6 @@ def parse_file(path: Path, report: ParseReport) -> list[dict]:
             continue
 
         report.sessions.add(session)
-        cell = (symbol, session)
-        report.per_cell[cell] = report.per_cell.get(cell, 0) + 1
         seen[ts_utc] = {
             "symbol": symbol, "ts_utc": ts_utc,
             "open": to_minor(str(open_), CURRENCY), "high": to_minor(str(high), CURRENCY),
@@ -142,22 +139,23 @@ def load_cache(cache_dir: Path, granularity: str) -> tuple[list[dict], ParseRepo
     return rows, report
 
 
-def completeness_from_report(report: ParseReport, granularity: str) -> dict:
-    expected = EXPECTED_CANDLES_PER_SESSION[granularity]
-    counts = sorted(report.per_cell.values())
-    return {
-        "expected": expected, "symbol_sessions": len(report.per_cell),
-        "min": counts[0] if counts else 0, "max": counts[-1] if counts else 0,
-        "short": {k: n for k, n in report.per_cell.items() if n < expected},
-        "over": {k: n for k, n in report.per_cell.items() if n > expected},
-    }
-
-
 def session_completeness(rows: list[dict], granularity: str) -> dict:
-    """Candles per session against what the granularity implies."""
-    report = ParseReport()
+    """Candles per session for an already-deduplicated set of rows.
+
+    Only valid on rows that have been through the writer, or on a single
+    file. Tallying across cache files double counts any session two windows
+    both cover, so the spine itself is the authority on completeness.
+    """
+    expected = EXPECTED_CANDLES_PER_SESSION[granularity]
+    per_cell: dict[tuple[str, str], int] = {}
     for row in rows:
         session, _ = ist_parts(row["ts_utc"] // 1_000_000)
         cell = (row["symbol"], session)
-        report.per_cell[cell] = report.per_cell.get(cell, 0) + 1
-    return completeness_from_report(report, granularity)
+        per_cell[cell] = per_cell.get(cell, 0) + 1
+    counts = sorted(per_cell.values())
+    return {
+        "expected": expected, "symbol_sessions": len(per_cell),
+        "min": counts[0] if counts else 0, "max": counts[-1] if counts else 0,
+        "short": {k: n for k, n in per_cell.items() if n < expected},
+        "over": {k: n for k, n in per_cell.items() if n > expected},
+    }
