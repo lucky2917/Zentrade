@@ -116,6 +116,36 @@ describe("a position with nothing protecting it is reported as such", () => {
         expect(runtime.reflex.isArmed("INFY")).toBe(true);
     });
 
+    // The audit runs every thirty seconds. Repeating the same warning on every
+    // pass would push the events an operator needs out of the cockpit's ring.
+    it("reports a standing condition once, not on every pass", async () => {
+        const narrated = [];
+        const runtime = await makeRuntime([position({ thesisId: null })]);
+        runtime.narrator = { emit: (kind, payload) => { narrated.push({ kind, payload }); } };
+
+        await runtime.armOpenPositions();
+        await runtime.armOpenPositions();
+        await runtime.armOpenPositions();
+        expect(narrated).toHaveLength(1);
+        // Still reported in health throughout, which is where it belongs.
+        expect(runtime.health().unprotectedPositions).toHaveLength(1);
+    });
+
+    it("reports again when a different position becomes uncovered", async () => {
+        const narrated = [];
+        const positions = [position({ symbol: "TCS", thesisId: null })];
+        const runtime = await makeRuntime(positions);
+        runtime.narrator = { emit: (kind, payload) => { narrated.push({ kind, payload }); } };
+
+        await runtime.armOpenPositions();
+        expect(narrated).toHaveLength(1);
+
+        positions.push(position({ symbol: "INFY", thesisId: null }));
+        await runtime.armOpenPositions();
+        expect(narrated).toHaveLength(2);
+        expect(narrated[1].payload.symbols).toEqual(["TCS", "INFY"]);
+    });
+
     it("protects the ones it can and reports only the one it cannot", async () => {
         const runtime = await makeRuntime([
             position({ symbol: "TCS" }),

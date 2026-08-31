@@ -22,8 +22,11 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("two trading days across three restarts
 
     const DAY1 = "2026-09-01";                 // a Tuesday
     const DAY2 = "2026-09-02";
-    const at = (day, h, m) => new Date(`${day}T${String(h - 5).padStart(2, "0")}:${
-        String(m + 30).padStart(2, "0")}:00.000Z`);   // IST h:m as UTC
+    // An IST wall-clock time on a given day, as the UTC instant it is.
+    // Subtracting 5h30m by hand only worked while the minutes stayed under 30.
+    const at = (day, h, m) =>
+        new Date(new Date(`${day}T00:00:00.000Z`).getTime()
+                 + (h * 60 + m - (5 * 60 + 30)) * 60_000);
 
     beforeAll(async () => {
         ({ pool } = await import("../config/db.js"));
@@ -214,6 +217,116 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("two trading days across three restarts
         expect(reconciled.driftPaise).toBe(0);
 
         marks.clear();
+    });
+
+    // BUY, then a reassessment that says hold, then one that says exit, then the
+    // P&L, across a restart and a day boundary. The reasoning is scripted so
+    // the test is deterministic, but everything under it is the real path:
+    // reassessPosition, intentFrom, the risk gate, the engine and the ledger.
+    it("carries a position through reassessment to exit and on to the next day",
+       async () => {
+        const { reassessPosition } = await import("../services/autonomous/reassess.js");
+        const { intentFrom } = await import("../services/autonomous/loop.js");
+        const { evaluate: evaluateRisk } = await import("../services/autonomous/riskGate.js");
+        const { buildPositionState } = await import("../services/autonomous/positionState.js");
+
+        const day1 = await boot(at(DAY1, 9, 30));
+        const entry = await buy(day1.venue,
+            { symbol: A, quantity: 100, pricePaise: 300_000, ref: "life-buy" });
+        expect(entry.order.state).toBe("FILLED");
+
+        const holding = { user_id: USER, symbol: A, quantity: 100, avg_price_paise: 300_000 };
+        const thesisRow = {
+            id: entry.thesisId, correlation_id: "life-buy", side: "BUY",
+            opened_at: at(DAY1, 9, 30).toISOString(),
+            stop_paise: 294_000, target_paise: 312_000,
+        };
+        const positionAt = (pricePaise, now) => buildPositionState({
+            holding, thesis: thesisRow,
+            tick: { price: pricePaise / 100, timestamp: now.toISOString() }, now });
+
+        const portfolio = async () => ({
+            userId: USER, cashPaise: await cash(), positionCount: 1,
+            grossExposurePaise: 30_000_000, netExposurePaise: 30_000_000,
+            positions: [{ symbol: A, quantity: 100, exposurePaise: 30_000_000 }],
+        });
+        const risk = async (intent) => evaluateRisk(intent, {
+            portfolio: await portfolio(), nowMs: at(DAY1, 12, 0).getTime(),
+            stale: false, ambiguousOrders: 0,
+            session: { trades: 1, turnoverPaise: 30_000_000, realisedLossPaise: 0 },
+        });
+
+        // --- reassessment one: the thesis still holds -----------------------
+        const holdCall = async () => ({
+            action: "HOLD", confidence: "MEDIUM", thesisStillValid: true,
+            whatChanged: "drifted with the market, nothing structural",
+            material: false, reasoning: "the level that mattered has not broken",
+            evidence: [],
+        });
+        const held = await reassessPosition({
+            position: positionAt(303_000, at(DAY1, 11, 0)), thesis: thesisRow,
+            event: { type: "PRICE_JUMP", severity: "WARNING", reason: "moved 1%" },
+            callModel: holdCall,
+        });
+        expect(held.action).toBe("HOLD");
+        expect(intentFrom(held, positionAt(303_000, at(DAY1, 11, 0)))).toBeNull();
+
+        // A HOLD moves nothing. The position and the cash are where they were.
+        const afterHold = await day1.acct.state();
+        expect(afterHold.positions).toHaveLength(1);
+        expect(afterHold.realisedPnlPaise).toBe(0);
+
+        // --- reassessment two: the thesis is broken, exit -------------------
+        const exitCall = async () => ({
+            action: "EXIT", confidence: "HIGH", thesisStillValid: false,
+            whatChanged: "the level it was bought on gave way",
+            material: true, reasoning: "the entry condition no longer holds",
+            evidence: [],
+        });
+        const exitAt = positionAt(297_000, at(DAY1, 14, 0));
+        const decision = await reassessPosition({
+            position: exitAt, thesis: thesisRow,
+            event: { type: "TECHNICAL_BREAKDOWN", severity: "CRITICAL", reason: "lost the level" },
+            callModel: exitCall,
+        });
+        expect(decision.action).toBe("EXIT");
+
+        const intent = intentFrom(decision, exitAt);
+        expect(intent).toMatchObject({ side: "SELL", symbol: A, quantity: 100 });
+        expect((await risk(intent)).decision).toBe("ALLOW");
+
+        await day1.venue.submit({
+            ...intent, userId: USER, mode: "INTRADAY",
+            clientOrderId: `${entry.thesisId}:EXIT`, thesisId: entry.thesisId });
+        await pool.query("UPDATE trade_thesis SET closed_at=NOW() WHERE id=$1",
+                         [entry.thesisId]);
+
+        // --- the P&L that came out of it ------------------------------------
+        const afterExit = await day1.acct.state();
+        expect(afterExit.positions).toHaveLength(0);
+        // 100 shares bought at 3000.00, sold at 2970.00.
+        expect(afterExit.realisedPnlPaise).toBe(-300_000);
+        expect(afterExit.equityPaise).toBe(await cash());
+
+        await pool.query(
+            `UPDATE orders SET created_at=$2::timestamptz, completed_at=$2::timestamptz
+             WHERE user_id=$1`, [USER, at(DAY1, 12, 0)]);
+        await account.writeSessionSummary({
+            userId: USER, state: afterExit, at: at(DAY1, 15, 25) });
+        await day1.acct.close("end of day");
+        const closingCash = await cash();
+
+        // --- restart, then the next day -------------------------------------
+        const day2 = await boot(at(DAY2, 9, 20));
+        expect(day2.acct.opening.cashPaise).toBe(closingCash);
+        expect(day2.acct.opening.startingCapitalPaise).toBe(START);
+        expect(day2.acct.opening.realisedPnlPaise).toBe(-300_000);
+        expect(day2.acct.opening.positions).toHaveLength(0);
+        expect(day2.acct.reconciliation.ok).toBe(true);
+
+        // The loss is carried, not forgotten and not double counted.
+        expect(day2.acct.opening.totalPnlPaise)
+            .toBe(-300_000 - day2.acct.opening.costsPaise);
     });
 
     it("a restart never places the same order twice", async () => {

@@ -219,7 +219,7 @@ after a restart.
 ## Stopping the trader without killing it
 
 ```
-curl -XPOST localhost:5000/internal/brain/halt \
+curl -XPOST localhost:$PORT/internal/brain/halt \
   -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
   -d '{"halted":true,"reason":"feed looks wrong"}'
 ```

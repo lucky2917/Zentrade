@@ -55,6 +55,11 @@ const REQUIRED_COLUMNS = [
     ["position_events", "thesis_id"], ["position_reassessments", "event_id"],
     ["orders", "state"], ["orders", "client_order_id"], ["orders", "reserved_paise"],
     ["trade_thesis", "stop_paise"], ["memories", "memory_key"],
+    // The persistent account. Without these the trader starts, trades, and
+    // records none of it.
+    ["paper_account", "starting_capital_paise"], ["paper_account", "opening_adjustment_paise"],
+    ["decision_records", "decision_id"], ["session_summaries", "session_date"],
+    ["agent_events", "kind"],
 ];
 
 const checkDatabase = async (pool) => {
@@ -93,6 +98,46 @@ const checkAccountAndRisk = async (pool, userId) => {
     record("RISK", "ambiguous orders", BLOCKING, ambiguous.rows[0].n === 0,
            ambiguous.rows[0].n === 0 ? "none"
                : `${ambiguous.rows[0].n} unresolved; new exposure stays blocked`);
+
+    // The account itself: opened once, continuing, and adding up.
+    try {
+        const { accountState, reconcileAccount } =
+            await import("../src/services/account/paperAccount.js");
+        const state = await accountState({ userId });
+        if (!state) {
+            record("RISK", "paper account", BLOCKING, false,
+                   "never opened; the trader would start with no account to continue");
+        } else {
+            record("RISK", "paper account", ADVISORY, true,
+                   `opened at ${(state.startingCapitalPaise / 100).toFixed(2)}, `
+                   + `cash ${(state.cashPaise / 100).toFixed(2)}, `
+                   + `equity ${(state.equityPaise / 100).toFixed(2)}`);
+            const reconciled = await reconcileAccount({ userId });
+            record("RISK", "account reconciles", BLOCKING, reconciled.ok,
+                   reconciled.ok
+                       ? "cash equals starting capital plus realised P&L, less costs and margin"
+                       : `drift ${(reconciled.driftPaise / 100).toFixed(2)}; `
+                         + `failed: ${reconciled.checks.filter((c) => !c.ok)
+                             .map((c) => c.name).join(", ")}`);
+        }
+    } catch (err) {
+        // A check that could not be performed is a failure to perform it.
+        record("RISK", "paper account", BLOCKING, false, err.message);
+    }
+
+    // An operator stop left in place overnight would silently hold the trader
+    // all day, and the only symptom would be a system that never trades.
+    try {
+        const { default: redis } = await import("../src/config/redis.js");
+        const { RUNTIME_HALT_KEY } = await import("../src/services/cockpit/narrator.js");
+        const raw = await redis.get(RUNTIME_HALT_KEY);
+        const halted = raw ? Boolean(JSON.parse(raw).halted) : false;
+        record("RISK", "operator halt", BLOCKING, !halted,
+               halted ? "the trader is HALTED and will not act until it is cleared"
+                      : "not halted");
+    } catch (err) {
+        record("RISK", "operator halt", ADVISORY, false, err.message);
+    }
 
     const positions = await pool.query(
         `SELECT COUNT(*)::int AS n,

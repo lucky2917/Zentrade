@@ -164,6 +164,9 @@ export class AutonomousRuntime {
         // Open positions no level is protecting, refreshed every time the
         // commitments are rebuilt. Empty until the first pass has run.
         this.unprotected = [];
+        // What was reported last time, so a standing condition is stated once
+        // rather than on every pass of the audit.
+        this.unprotectedSignature = "";
 
         // Tier 0. Levels recorded at entry are tested on every tick, and a
         // crossing acts immediately. Reasoning runs afterwards to decide what
@@ -709,9 +712,16 @@ export class AutonomousRuntime {
             }
         }
 
+        // Reported when it CHANGES, not on every pass. This runs on a timer, and
+        // repeating the same warning every thirty seconds would push the events
+        // an operator actually needs out of the cockpit's ring buffer.
+        const signature = unprotected.map((p) => `${p.symbol}:${p.reason}`).sort().join("|");
+        const changed = signature !== this.unprotectedSignature;
         this.unprotected = unprotected;
+        this.unprotectedSignature = signature;
         this.metrics.unprotectedPositions = unprotected.length;
-        if (unprotected.length) {
+
+        if (changed && unprotected.length) {
             this.logger?.error?.("Runtime", "open positions that nothing is protecting",
                                  { positions: unprotected });
             this.narrate(KIND.STALE_DATA, {
@@ -719,6 +729,8 @@ export class AutonomousRuntime {
                 count: unprotected.length, armed: 0,
                 because: "these positions carry capital with no level protecting them",
             });
+        } else if (changed && this.unprotectedSignature !== "") {
+            this.logger?.info?.("Runtime", "every open position is protected again");
         }
         return { armed, positions: positions.length, unprotected };
     }

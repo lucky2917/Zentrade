@@ -5,6 +5,8 @@ import logger from "./utils/logger.js";
 import { STOCKS } from "./config/stocks.js";
 import { NewsStore } from "./services/news/ingest.js";
 import { ConnectionTracker } from "./services/orchestrator/connectionState.js";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { narrator, NARRATION_CHANNEL, RUNTIME_HEALTH_KEY, RUNTIME_HEALTH_TTL_SECONDS }
     from "./services/cockpit/narrator.js";
 
@@ -51,9 +53,47 @@ const banner = (runtime, plane, cockpitUrl) => {
     ].join("\n"));
 };
 
+// Is another trader already running against this account?
+//
+// The Go plane refuses a second instance through its ownership lease; the Node
+// runtime had no such guard, so `npm run agent` twice gave one account two
+// orchestrators. Duplicate ORDERS are structurally impossible — both would
+// derive the same client order id and the engine absorbs the second — but two
+// brains still pay twice for every decision and narrate two of everything.
+//
+// The heartbeat is the evidence, and its short TTL is what makes this safe: a
+// trader that died leaves no record within twenty seconds.
+export const otherRuntimeRunning = async (client, pid = process.pid) => {
+    const raw = await client.get(RUNTIME_HEALTH_KEY);
+    if (!raw) return null;
+    try {
+        const heartbeat = JSON.parse(raw);
+        if (!heartbeat?.pid || heartbeat.pid === pid) return null;
+        return { pid: heartbeat.pid, at: heartbeat.at ?? null };
+    } catch {
+        // An unreadable heartbeat is not evidence of a running trader.
+        return null;
+    }
+};
+
 const start = async () => {
     await pool.query("SELECT 1");
     await redis.ping();
+
+    const other = await otherRuntimeRunning(redis);
+    if (other) {
+        logger.error("Agent",
+            "another trader is already running against this account; refusing to start a second",
+            { runningPid: other.pid, lastHeartbeat: other.at });
+        console.error(
+            `\n  A trader is already running (pid ${other.pid}, last seen ${other.at}).\n`
+            + `  Two brains on one account pay twice for every decision.\n\n`
+            + `  Stop that one first. If it is already gone, its heartbeat expires\n`
+            + `  within ${RUNTIME_HEALTH_TTL_SECONDS} seconds — wait, then start again.\n`);
+        await pool.end().catch(() => {});
+        await redis.quit().catch(() => {});
+        process.exit(1);
+    }
 
     const { AutonomousRuntime, MODE } = await import("./services/autonomous/runtime.js");
     const { buildLivePorts } = await import("./services/autonomous/livePorts.js");
@@ -140,7 +180,7 @@ const start = async () => {
     // dead one. Short TTL: a dead runtime disappears rather than leaving a
     // record that reads as healthy.
     const { buildWorld } = await import("./services/cockpit/state.js");
-    const heartbeat = setInterval(async () => {
+    const writeHeartbeat = async () => {
         try {
             await redis.set(RUNTIME_HEALTH_KEY, JSON.stringify({
                 at: new Date().toISOString(), pid: process.pid,
@@ -151,7 +191,12 @@ const start = async () => {
         } catch (err) {
             logger.warn("Agent", "heartbeat not written", { error: err.message });
         }
-    }, HEALTH_INTERVAL_MS);
+    };
+    // Once immediately. Waiting for the first interval left the cockpit
+    // reporting TRADER NOT RUNNING for five seconds after it started, which is
+    // a false status rather than a slow one.
+    await writeHeartbeat();
+    const heartbeat = setInterval(writeHeartbeat, HEALTH_INTERVAL_MS);
     heartbeat.unref();
 
     let stopping = false;
@@ -204,8 +249,16 @@ const start = async () => {
     });
 };
 
-start().catch((err) => {
-    logger.error("Agent", "the trader could not start", { error: err.message });
-    process.stdout.write(`\n  THE TRADER COULD NOT START\n    ${err.message}\n\n`);
-    process.exit(1);
-});
+// Only when this file IS the program. Importing it — a test reaching for one
+// of its helpers, a tool inspecting it — must not start a trader as a side
+// effect of the import.
+const invokedDirectly = process.argv[1]
+    && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+
+if (invokedDirectly) {
+    start().catch((err) => {
+        logger.error("Agent", "the trader could not start", { error: err.message });
+        process.stdout.write(`\n  THE TRADER COULD NOT START\n    ${err.message}\n\n`);
+        process.exit(1);
+    });
+}
