@@ -123,6 +123,11 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous loop end to end", () => {
                 portfolio: await ports.loadPortfolio(),
                 nowMs: marketOpenAt.getTime(), stale: !connection.isTrusted(),
                 session: { trades: 0, turnoverPaise: 0, realisedLossPaise: 0 },
+                // Read from the database, like the live ports do, so the
+                // ambiguity block below is exercised rather than assumed.
+                ambiguousOrders: Number((await pool.query(
+                    "SELECT COUNT(*)::int n FROM orders WHERE user_id=$1 AND state='AMBIGUOUS'",
+                    [USER])).rows[0].n),
             }),
             execute: async (intent) => {
                 const { order } = await engine.submitOrder({
@@ -256,10 +261,34 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous loop end to end", () => {
         await engine.workOrder(order.id);
         await reconcile.reconcileOrder(order.id, null);   // venue unreachable
 
-        const { orch } = buildLoop({ tickPrice: 1000 });
+        const { orch, ports } = buildLoop({ tickPrice: 1000 });
         await orch.start();
         expect(orch.health().recovery.ambiguousOrders).toBe(1);
         expect(await reconcile.hasUnresolvedAmbiguity(USER)).toBe(true);
+
+        // And it actually blocks. This assertion is the point of the test: the
+        // boot log had claimed exposure was blocked while nothing enforced it,
+        // so an order of unknown outcome sat there while the system opened more.
+        const probe = {
+            action: "BUY", side: "BUY", symbol: SYMBOL, quantity: 20,
+            pricePaise: PRICE, referencePricePaise: PRICE,
+        };
+        const blocked = await ports.evaluateRisk(probe);
+        expect(blocked.decision).toBe("REJECT");
+        expect(blocked.code).toBe("UNRESOLVED_AMBIGUITY");
+
+        // Closing what we already hold stays possible. A limit that stops you
+        // reducing is a limit that traps you.
+        const exit = await ports.evaluateRisk({
+            action: "EXIT", side: "SELL", symbol: SYMBOL, quantity: 10,
+            pricePaise: PRICE, referencePricePaise: PRICE,
+        });
+        expect(exit.decision).toBe("ALLOW");
+
+        // Once reconciliation resolves it, exposure is permitted again.
+        await engine.resolveTo(order.id, "CANCELLED");
+        expect((await ports.evaluateRisk(probe)).decision).toBe("ALLOW");
+
         await orch.stop();
     });
 

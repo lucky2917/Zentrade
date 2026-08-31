@@ -117,7 +117,7 @@ describe("revalidation hands the risk gate something it can actually judge", () 
         // Inside revalidation tolerance, so it proceeds; the gate sees a real
         // 20 bps difference rather than a value compared with itself.
         expect(r.intent.pricePaise).not.toBe(r.intent.referencePricePaise);
-        const risk = evaluateRisk(r.intent, { portfolio, nowMs: NOW, session: {} });
+        const risk = evaluateRisk(r.intent, { portfolio, ambiguousOrders: 0, nowMs: NOW, session: {} });
         expect(risk.decision).toBe(DECISION.ALLOW);
     });
 
@@ -125,7 +125,7 @@ describe("revalidation hands the risk gate something it can actually judge", () 
         const r = revalidate({ intent: entry(), observation: observation(), world: world() });
         expect(Number.isFinite(r.intent.createdAtMs)).toBe(true);
         // Six minutes later the gate refuses it on age alone.
-        const risk = evaluateRisk(r.intent, { portfolio, nowMs: NOW + 6 * 60 * 1000, session: {} });
+        const risk = evaluateRisk(r.intent, { portfolio, ambiguousOrders: 0, nowMs: NOW + 6 * 60 * 1000, session: {} });
         expect(risk.decision).toBe(DECISION.REJECT);
         expect(risk.code).toBe("STALE_PROPOSAL");
     });
@@ -133,7 +133,7 @@ describe("revalidation hands the risk gate something it can actually judge", () 
     it("without revalidation both guards are structurally dead", () => {
         // The pre-fix intent: same price for both fields, no createdAtMs.
         const raw = entry({ referencePricePaise: 100_000 });
-        const risk = evaluateRisk(raw, { portfolio, nowMs: NOW + 60 * 60 * 1000, session: {} });
+        const risk = evaluateRisk(raw, { portfolio, ambiguousOrders: 0, nowMs: NOW + 60 * 60 * 1000, session: {} });
         expect(risk.decision).toBe(DECISION.ALLOW);   // an hour-old decision, approved
     });
 });

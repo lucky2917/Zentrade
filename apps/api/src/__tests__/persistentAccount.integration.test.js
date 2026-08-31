@@ -455,6 +455,53 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("persistent paper account", () => {
             expect(errors).toHaveLength(1);
         });
 
+        // Every reassessment of one position shares the thesis's correlation
+        // id. Keying the record on that stored the first decision and silently
+        // discarded every later one, which is most of a position's life.
+        it("stores every decision on one position, not just the first",
+           async () => {
+            const { buildLivePorts } = await import("../services/autonomous/livePorts.js");
+            const ports = buildLivePorts({
+                userId: USER, newsStore: null, connectionTracker: null,
+                clock: () => open(DAY1) });
+
+            for (const [i, action] of ["HOLD", "HOLD", "EXIT"].entries()) {
+                await ports.journal({
+                    // One thesis, one correlation id, three decisions.
+                    correlationId: "thesis-corr-1",
+                    decisionId: `dec-${i}`,
+                    symbol: SYMBOL, route: "POSITION", asOf: open(DAY1),
+                    event: { type: "STOP_APPROACHING", severity: "WARNING" },
+                    decision: { action, confidence: "MEDIUM",
+                                reasoning: `pass ${i}`, evidence: [] },
+                    risk: { decision: "ALLOW" },
+                    executed: action === "EXIT",
+                });
+            }
+
+            const rows = await account.recentDecisions({ userId: USER });
+            expect(rows).toHaveLength(3);
+            expect(rows.map((r) => r.action).sort()).toEqual(["EXIT", "HOLD", "HOLD"]);
+            // The correlation is still what ties them to the position.
+            expect(new Set(rows.map((r) => r.correlation_id))).toEqual(
+                new Set(["thesis-corr-1"]));
+        });
+
+        it("still absorbs a genuine retry of the same decision", async () => {
+            const { buildLivePorts } = await import("../services/autonomous/livePorts.js");
+            const ports = buildLivePorts({
+                userId: USER, newsStore: null, connectionTracker: null,
+                clock: () => open(DAY1) });
+            const entry = {
+                correlationId: "thesis-corr-2", decisionId: "dec-same",
+                symbol: SYMBOL, route: "POSITION", asOf: open(DAY1),
+                decision: { action: "HOLD" }, executed: false,
+            };
+            await ports.journal(entry);
+            await ports.journal(entry);
+            expect(await account.recentDecisions({ userId: USER })).toHaveLength(1);
+        });
+
         it("filters by symbol", async () => {
             await account.recordDecision({ userId: USER, record: decision("cand-1") });
             await account.recordDecision({
@@ -462,6 +509,66 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("persistent paper account", () => {
             const rows = await account.recentDecisions({ userId: USER, symbol: "INFY" });
             expect(rows).toHaveLength(1);
             expect(rows[0].symbol).toBe("INFY");
+        });
+    });
+
+    describe("partial fills", () => {
+        // A partially filled order that then expires settled real cash and
+        // booked real P&L. Counting only state='FILLED' left that money out of
+        // realised P&L and costs, which showed up as reconciliation drift on an
+        // account that was in fact correct.
+        const fillPart = async ({ side, quantity, pricePaise, ref, of }) => {
+            const { order } = await engine.submitOrder({
+                userId: USER, symbol: SYMBOL, side, quantity: of, pricePaise,
+                mode: "INTRADAY", clientOrderId: `part-${ref}`, correlationId: `part-${ref}` });
+            await engine.acceptOrder(order.id);
+            await engine.workOrder(order.id);
+            await engine.applyFill({ orderId: order.id, executionRef: ref, quantity, pricePaise });
+            return order;
+        };
+
+        it("counts the P&L and costs of an order that expired part-filled",
+           async () => {
+            await restart(open(DAY1));
+            await fill({ side: "BUY", quantity: 100, pricePaise: 300_000, ref: "d1-buy" });
+            await openThesis("acct-d1-buy", { quantity: 100, entryPricePaise: 300_000 });
+
+            // Half the exit fills, then the rest of the order expires.
+            const order = await fillPart({ side: "SELL", quantity: 50, of: 100,
+                                           pricePaise: 310_000, ref: "d1-part" });
+            await engine.expireOrder(order.id);
+
+            const after = await pool.query(
+                "SELECT state, filled_quantity, pnl_paise, brokerage_paise FROM orders WHERE id=$1",
+                [order.id]);
+            expect(after.rows[0].state).toBe("EXPIRED");
+            expect(Number(after.rows[0].filled_quantity)).toBe(50);
+            expect(Number(after.rows[0].pnl_paise)).toBe(500_000);
+
+            const state = await account.accountState({ userId: USER, priceFor });
+            expect(state.realisedPnlPaise).toBe(500_000);
+            expect(state.costsPaise).toBe(4_000);
+
+            // And the identity still holds, because the same money is on both
+            // sides of it.
+            const result = await account.reconcileAccount({ userId: USER });
+            expect(result.driftPaise).toBe(0);
+            expect(result.ok).toBe(true);
+        });
+
+        it("ignores an order that never filled at all", async () => {
+            await restart(open(DAY1));
+            const { order } = await engine.submitOrder({
+                userId: USER, symbol: SYMBOL, side: "BUY", quantity: 10,
+                pricePaise: 300_000, mode: "INTRADAY",
+                clientOrderId: "never-filled", correlationId: "never-filled" });
+            await engine.acceptOrder(order.id);
+            await engine.cancelOrder(order.id);
+
+            const state = await account.accountState({ userId: USER, priceFor });
+            // Brokerage is written on the row at submission but no cash moved.
+            expect(state.costsPaise).toBe(0);
+            expect((await account.reconcileAccount({ userId: USER })).ok).toBe(true);
         });
     });
 

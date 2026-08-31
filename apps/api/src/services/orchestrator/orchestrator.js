@@ -31,6 +31,7 @@ export const DEFAULT_INTERVALS = {
     reasoningMs: 5_000,
     reconciliationMs: 60_000,
     expiryMs: 60_000,
+    pendingSweepMs: 30_000,
 };
 
 // How much reasoning may be in flight at once.
@@ -75,10 +76,11 @@ export class Orchestrator {
             cycles: 0, eventsEmitted: 0, eventsQueued: 0,
             reasoningInvocations: 0, reasoningAvoided: 0, reasoningBatches: 0,
             maxReasoningConcurrency: 0,
-            riskRejections: 0, executions: 0, errors: 0,
+            riskRejections: 0, executions: 0, errors: 0, duplicatesSuppressed: 0,
             anomaliesDetected: 0, marketWideAnomalies: 0,
             newsEventsReceived: 0, newsEventsDeduplicated: 0, eventsReleased: 0,
             lastMarketUpdateAt: null, lastDecisionAt: null, lastExecutionAt: null,
+            eventsReclaimed: 0,
         };
         this.recovery = null;
         this.registerJobs();
@@ -104,6 +106,15 @@ export class Orchestrator {
             intervalMs: this.intervals.reconciliationMs,
             shouldRun: () => permits(this.session(), "reconciliation"),
             run: () => this.reconciliationCycle(),
+        });
+        // The durable store's other half. recover() reads unfinished work at
+        // startup; this reads it while running, so a condition the queue had to
+        // drop comes back in the same session rather than at the next restart.
+        this.scheduler.register({
+            name: "pending-sweep",
+            intervalMs: this.intervals.pendingSweepMs,
+            shouldRun: () => permits(this.session(), "reasoning"),
+            run: () => this.sweepPendingEvents(),
         });
         this.scheduler.register({
             name: "order-expiry",
@@ -288,6 +299,29 @@ export class Orchestrator {
         return { events: events.length, queued: this.queue.size };
     }
 
+    // Unfinished work that nobody is holding, offered back to the queue.
+    //
+    // An event the queue expired or dropped at capacity was returned to the
+    // store as PENDING and then waited for a restart, because that was the only
+    // thing that ever read it back. Coalescing means re-offering something
+    // already queued is harmless.
+    async sweepPendingEvents() {
+        if (!this.ports.claimPendingEvents) return { reclaimed: 0 };
+        const pending = await this.ports.claimPendingEvents({ limit: this.reasoning.batch * 10 });
+        if (!pending.length) return { reclaimed: 0 };
+
+        const now = this.clock().getTime();
+        let requeued = 0;
+        for (const event of pending) {
+            const outcome = this.queue.offer(event, now);
+            if (outcome === "admitted" || outcome === "coalesced") requeued += 1;
+        }
+        this.metrics.eventsReclaimed += requeued;
+        this.logger?.info?.("Orchestrator", "returned unfinished work to the queue",
+                            { found: pending.length, requeued });
+        return { reclaimed: requeued, found: pending.length };
+    }
+
     // Tier 3. Only runs against queued events, so a quiet market produces no
     // LLM calls at all.
     //
@@ -299,6 +333,14 @@ export class Orchestrator {
         const session = this.session();
         const events = this.queue.drain(limit);
         const handled = [];
+
+        // Held for the length of this pass. Without the lease the sweep above
+        // would hand a condition already being reasoned about to a second
+        // worker; with it, a process that dies mid-decision releases the work
+        // when the lease runs out instead of losing it.
+        if (events.length) {
+            await this.ports.leaseEvents?.(events.map((e) => e.storedId));
+        }
 
         if (events.length) {
             this.metrics.reasoningBatches += 1;
@@ -370,6 +412,13 @@ export class Orchestrator {
 
     async handleEvent(event, correlationId, session) {
         const route = routeOf(event);
+
+        // One decision, one identity. The correlation id belongs to the THREAD
+        // — a position's reassessments all share the thesis's — so it cannot
+        // also be what a record is deduplicated on.
+        const decisionId = randomUUID();
+        const record = (fields) => this.ports.journal?.({
+            decisionId, correlationId, event, ...fields });
         // The decision's instant. Every read that forms this decision uses it;
         // only the Tier 4 revalidation below deliberately takes a fresh one,
         // because revalidating against the decision's own timestamp would
@@ -411,9 +460,8 @@ export class Orchestrator {
             // outcome; recording it again here logged one decision twice. A
             // plain analyser port does not, so it is still recorded.
             if (!analysis?.journaled) {
-                await this.ports.journal?.({ correlationId, event, decision: analysis,
-                                             risk: null, route: ROUTE.CANDIDATE,
-                                             executed: Boolean(analysis?.executed) });
+                await record({ decision: analysis, risk: null, route: ROUTE.CANDIDATE,
+                               executed: Boolean(analysis?.executed) });
             }
             return { route: ROUTE.CANDIDATE, action: analysis?.action ?? null,
                      executed: Boolean(analysis?.executed) };
@@ -452,7 +500,7 @@ export class Orchestrator {
         if (!intent) {
             await this.persistReassessment({ position, thesis, event, decision, risk: null,
                                              correlationId, executed: false });
-            await this.ports.journal?.({ correlationId, event, decision, risk: null, executed: false });
+            await record({ decision, risk: null, executed: false });
             this.narrateReassessment({ event, correlationId, decision, position, executed: false });
             this.narrate(KIND.REASONING_FINISHED, {
                 symbol: event.symbol, route: ROUTE.POSITION, correlationId,
@@ -466,10 +514,8 @@ export class Orchestrator {
         const reducing = ["EXIT", "REDUCE"].includes(decision.action);
         const capability = reducing ? "exits" : "newExposure";
         if (!permits(session, capability)) {
-            await this.ports.journal?.({
-                correlationId, event, decision, risk: null, executed: false,
-                blocked: `session ${session} does not permit ${capability}`,
-            });
+            await record({ decision, risk: null, executed: false,
+                           blocked: `session ${session} does not permit ${capability}` });
             this.narrate(KIND.RISK_DECISION, {
                 symbol: event.symbol, correlationId, decision: "REJECT",
                 code: "SESSION", reason: `session ${session} does not permit ${capability}`,
@@ -506,9 +552,8 @@ export class Orchestrator {
         if (check.verdict === VERDICT.REJECT) {
             await this.persistReassessment({ position, thesis, event, decision, risk: null,
                                              correlationId, executed: false });
-            await this.ports.journal?.({
-                correlationId, event, decision, risk: null, executed: false,
-                blocked: `revalidation ${check.code}: ${check.reason}` });
+            await record({ decision, risk: null, executed: false,
+                           blocked: `revalidation ${check.code}: ${check.reason}` });
             this.narrateReassessment({ event, correlationId, decision, position, executed: false });
             this.narrate(KIND.REASONING_FINISHED, {
                 symbol: event.symbol, route: ROUTE.POSITION, correlationId,
@@ -528,7 +573,7 @@ export class Orchestrator {
             this.metrics.riskRejections += 1;
             await this.persistReassessment({ position, thesis, event, decision, risk,
                                              correlationId, executed: false });
-            await this.ports.journal?.({ correlationId, event, decision, risk, executed: false });
+            await record({ decision, risk, executed: false });
             this.narrateReassessment({ event, correlationId, decision, position, executed: false });
             this.narrate(KIND.REASONING_FINISHED, {
                 symbol: event.symbol, route: ROUTE.POSITION, correlationId,
@@ -537,19 +582,33 @@ export class Orchestrator {
         }
 
         const result = await this.ports.execute({ ...revalidated, correlationId });
-        this.metrics.executions += 1;
-        this.metrics.lastExecutionAt = this.clock().toISOString();
+
+        // The engine absorbs a repeat of an intent it has already seen and says
+        // so. Recording that as an execution reported a trade that did not
+        // happen: one thesis gets one action of each kind, and a second one
+        // arriving is suppression, not success.
+        const executed = !result?.duplicate;
+        if (executed) {
+            this.metrics.executions += 1;
+            this.metrics.lastExecutionAt = this.clock().toISOString();
+        } else {
+            this.metrics.duplicatesSuppressed += 1;
+        }
+
         await this.persistReassessment({ position, thesis, event, decision, risk,
-                                         correlationId, executed: true });
-        await this.ports.journal?.({ correlationId, event, decision, risk, executed: true });
-        this.narrateReassessment({ event, correlationId, decision, position, executed: true });
+                                         correlationId, executed });
+        await record({ decision, risk, executed, intent: revalidated,
+                       blocked: executed ? undefined
+                           : `already actioned: ${revalidated.clientOrderId}` });
+        this.narrateReassessment({ event, correlationId, decision, position, executed });
         this.narrate(KIND.REASONING_FINISHED, {
             symbol: event.symbol, route: ROUTE.POSITION, correlationId,
-            action: decision.action, executed: true, holdingPositions: true,
+            action: decision.action, executed, holdingPositions: true,
             card: this.safeCard({ symbol: event.symbol, action: decision.action,
                                   decision, risk, intent: revalidated, order: result }),
         });
-        return { action: decision.action, executed: true };
+        return { action: decision.action, executed,
+                 ...(executed ? {} : { blocked: "duplicate intent" }) };
     }
 
     // ---- narration -------------------------------------------------------

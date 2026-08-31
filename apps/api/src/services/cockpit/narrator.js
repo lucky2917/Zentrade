@@ -43,6 +43,7 @@ export const KIND = {
     // system
     STALE_DATA: "STALE_DATA",
     RECOVERY: "RECOVERY",
+    HALT: "HALT",
     ERROR: "ERROR",
 };
 
@@ -75,6 +76,7 @@ const CATEGORY_OF = {
     [KIND.PROTECTIVE_EVENT]: CATEGORY.POSITIONS,
     [KIND.STALE_DATA]: CATEGORY.SYSTEM,
     [KIND.RECOVERY]: CATEGORY.SYSTEM,
+    [KIND.HALT]: CATEGORY.SYSTEM,
     [KIND.ERROR]: CATEGORY.SYSTEM,
 };
 
@@ -349,6 +351,14 @@ export const NARRATION_CHANNEL = "cockpit:narration";
 // that reads as healthy.
 export const RUNTIME_HEALTH_KEY = "cockpit:runtime:health";
 export const RUNTIME_HEALTH_TTL_SECONDS = 20;
+
+// The operator's stop. Written by the API process, read by the runtime in the
+// agent process, which is where the only orchestrator lives.
+//
+// A durable key rather than a published message, deliberately: a halt must
+// survive the agent restarting. A stop that a restart silently undoes is worse
+// than no stop, because the operator believes the system is held.
+export const RUNTIME_HALT_KEY = "cockpit:runtime:halt";
 
 // One narrator per process. In the agent process the runtime writes to it; in
 // the API process it follows the agent and the transport reads it.

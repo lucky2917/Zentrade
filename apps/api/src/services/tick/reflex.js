@@ -76,7 +76,7 @@ export class ReflexLane {
         // Symbols already reported stale. Absence of ticks persists, so the
         // report has to be edge triggered like everything else here.
         this.staleLatched = new Set();
-        this.stats = { ticks: 0, crossings: 0, armed: 0, disarmed: 0, suppressed: 0,
+        this.stats = { ticks: 0, crossings: 0, armed: 0, disarmed: 0, suppressed: 0, rearmed: 0,
                        signals: 0, stale: 0, recovered: 0 };
     }
 
@@ -102,6 +102,25 @@ export class ReflexLane {
         this.staleLatched.delete(symbol);
         if (this.armed.delete(symbol)) { this.stats.disarmed += 1; return true; }
         return false;
+    }
+
+    // Clear one latch so the level fires again on the next tick.
+    //
+    // The latch is set when the crossing is DETECTED, which is before anything
+    // has acted on it. That is right for an edge trigger and wrong for a
+    // handler that failed: a protective exit that could not be submitted must
+    // be attempted again, or one transient error silently disarms the stop for
+    // the rest of the session while the position stays open.
+    //
+    // Only the handler may call this, and only when it did not act.
+    rearm(symbol, kind) {
+        const commitment = this.armed.get(symbol);
+        const watch = this.watches.get(symbol);
+        let cleared = false;
+        if (commitment?.fired.delete(kind)) cleared = true;
+        if (watch?.fired.delete(kind)) cleared = true;
+        if (cleared) this.stats.rearmed += 1;
+        return cleared;
     }
 
     // Continuous detection for one symbol. `entryPaise` enables the approach

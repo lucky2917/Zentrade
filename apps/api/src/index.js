@@ -30,7 +30,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setFeedTracker } from "./services/fyers/feedStatus.js";
 import startWebSocketBroadcaster from "./services/websocket.js";
-import { narrator, NARRATION_CHANNEL, RUNTIME_HEALTH_KEY }
+import { narrator, NARRATION_CHANNEL, RUNTIME_HEALTH_KEY, RUNTIME_HALT_KEY }
     from "./services/cockpit/narrator.js";
 import { attachCockpit } from "./services/cockpit/transport.js";
 import { buildCockpitRouter } from "./routes/cockpit.js";
@@ -324,12 +324,60 @@ app.use("/internal/cockpit", buildCockpitRouter({
 // Emergency stop. HALTED keeps monitoring and reconciliation running while
 // refusing every action that adds or changes exposure, which is safer than
 // killing the process and losing in-flight reconciliation.
-app.post("/internal/brain/halt", auth, express.json(), (req, res) => {
-    if (!orchestrator) return res.status(409).json({ error: "autonomous runtime is not running" });
+//
+// The only orchestrator lives in the agent process, so this cannot call it. It
+// writes the operator's intent to a durable key the runtime reads; the runtime
+// applies it within its watch interval and narrates that it did.
+//
+// The key is durable on purpose. A halt that an agent restart silently undid
+// would be worse than none, because the operator would believe the system was
+// held while it traded.
+app.post("/internal/brain/halt", auth, express.json(), async (req, res) => {
     const halted = req.body?.halted !== false;
-    orchestrator.orchestrator.setHalted(halted, req.body?.reason ?? "operator request");
-    logger.warn("Operator", `brain halted=${halted}`, { reason: req.body?.reason ?? null });
-    res.json({ halted, session: orchestrator.orchestrator.session() });
+    const reason = req.body?.reason ?? "operator request";
+    try {
+        if (halted) {
+            await redis.set(RUNTIME_HALT_KEY, JSON.stringify({
+                halted: true, reason, at: new Date().toISOString(),
+                by: req.user?.id ?? null,
+            }));
+        } else {
+            await redis.del(RUNTIME_HALT_KEY);
+        }
+    } catch (err) {
+        // A halt that was not recorded has not happened, and saying otherwise
+        // is the one answer this endpoint must never give.
+        logger.error("Operator", "halt request could not be recorded",
+                     { error: err.message, halted });
+        return res.status(503).json({ error: "halt not recorded", detail: err.message });
+    }
+    logger.warn("Operator", `brain halted=${halted}`, { reason });
+    const running = await readRuntimeHealth();
+    res.json({
+        halted, reason,
+        // Honest about the gap: the trader applies this on its next watch tick.
+        applied: running.running ? "the trader applies this within a few seconds" : null,
+        traderRunning: Boolean(running.running),
+    });
+});
+
+app.get("/internal/brain/halt", auth, async (_req, res) => {
+    try {
+        const raw = await redis.get(RUNTIME_HALT_KEY);
+        const requested = raw ? JSON.parse(raw) : { halted: false, reason: null };
+        const running = await readRuntimeHealth();
+        res.json({
+            requested,
+            // What the trader actually reports, which is the thing that matters.
+            observed: running.running
+                ? { halted: Boolean(running.orchestrator?.halted),
+                    session: running.orchestrator?.session ?? null }
+                : null,
+            traderRunning: Boolean(running.running),
+        });
+    } catch (err) {
+        res.status(503).json({ error: "halt state unavailable", detail: err.message });
+    }
 });
 
 // Unknown API routes get JSON, not Express's HTML 404 page
@@ -379,7 +427,11 @@ export let bootstrap = null;
 // Kept null in this process by design. The autonomous runtime runs in
 // src/agent.js; buildHealth still accepts it so the shape of health does not
 // change, and a non-null value here would mean a second runtime exists.
-export let orchestrator = null;
+// This process does not host an autonomous runtime and there is a test
+// asserting the code to start one does not exist here. Health and the operator
+// report take it as an argument, and null is the truthful answer: the trader
+// lives in the agent process and reports itself over the heartbeat key.
+const LOCAL_RUNTIME = null;
 
 // Recovery and reconciliation are per-account. The product is single-account
 // today; this makes that assumption explicit rather than implicit.
@@ -406,13 +458,13 @@ export const readRuntimeHealth = async () => {
 };
 
 export const health = () => buildHealth({
-    bootstrap, orchestrator, connection: connectionTracker,
+    bootstrap, orchestrator: LOCAL_RUNTIME, connection: connectionTracker,
 });
 
 // The operator view: one structured answer to "is the brain alive and what is
 // it doing". Reads state, changes nothing.
 export const operatorReport = async () => buildOperatorReport({
-    runtime: orchestrator, bootstrap, connection: connectionTracker, newsStore,
+    runtime: LOCAL_RUNTIME, bootstrap, connection: connectionTracker, newsStore,
     engine: await import("./services/execution/engine.js"),
     userId: DEFAULT_USER_ID,
 });

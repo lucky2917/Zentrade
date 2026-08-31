@@ -293,7 +293,7 @@ const accountState = (over = {}) => ({
     openedAt: "2026-08-24T03:45:00.000Z",
     cashPaise: 98_320_400, marginUsedPaise: 1_675_600, positionValuePaise: 8_478_000,
     equityPaise: 101_200_000, realisedPnlPaise: 1_250_000, unrealisedPnlPaise: 54_000,
-    costsPaise: 6_000, totalPnlPaise: 1_200_000, filledOrders: 6,
+    costsPaise: 6_000, totalPnlPaise: 1_200_000, settledOrders: 6,
     openingAdjustmentPaise: 0,
     positions: [{ symbol: "OLAELEC", quantity: 2000, avgPricePaise: 4189,
                   lastPricePaise: 4216, priced: true }],

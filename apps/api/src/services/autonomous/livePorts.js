@@ -9,6 +9,7 @@ import { eventsForReasoning } from "../news/ingest.js";
 import { toPaise } from "../../utils/paise.js";
 import { MAX_RETRIEVAL } from "../memory/repository.js";
 import { recordDecision, sessionDateOf } from "../account/paperAccount.js";
+import { RUNTIME_HALT_KEY } from "../cockpit/narrator.js";
 
 // The live ports.
 //
@@ -18,6 +19,15 @@ import { recordDecision, sessionDateOf } from "../account/paperAccount.js";
 // which is what let the whole loop be tested against fakes first.
 
 const BAR_HISTORY = 60;
+
+// How long a condition may be held by one reasoning pass before the store
+// assumes the holder is gone. Comfortably longer than the model timeout, so a
+// slow decision is never handed out twice.
+const EVENT_LEASE_MS = 120_000;
+
+// A condition that has failed this many times is abandoned rather than retried
+// forever. Retrying it indefinitely starves everything behind it.
+const MAX_EVENT_ATTEMPTS = 5;
 
 // Rolling per-symbol bar history in Redis, appended by the market worker /
 // websocket path. Absent history simply means less context, never a guess.
@@ -138,8 +148,19 @@ export const buildLivePorts = ({
                        WHEN EXCLUDED.severity = 'WARNING'
                          OR position_events.severity = 'WARNING'  THEN 'WARNING'
                        ELSE 'INFO' END,
-                   state       = 'PENDING',
-                   leased_until = NULL
+                   -- A condition that recurs while it is being reasoned about
+                   -- must not release the lease on it. Resetting to PENDING
+                   -- here handed the same row to a second worker: two model
+                   -- calls, and two decisions, for one condition.
+                   state       = CASE
+                       WHEN position_events.state = 'LEASED'
+                        AND position_events.leased_until > NOW() THEN 'LEASED'
+                       ELSE 'PENDING' END,
+                   leased_until = CASE
+                       WHEN position_events.state = 'LEASED'
+                        AND position_events.leased_until > NOW()
+                       THEN position_events.leased_until
+                       ELSE NULL END
                  WHERE position_events.state <> 'HANDLED'
                  RETURNING id, severity`,
                 [event.key, event.type, event.severity, event.symbol, userId,
@@ -177,6 +198,77 @@ export const buildLivePorts = ({
                  WHERE user_id=$1 AND symbol=$2 AND type='BUY'
                    AND created_at >= date_trunc('day', NOW())`, [userId, symbol]);
             return rows[0].n;
+        },
+
+        // Claim work that is durable but not in anyone's hands.
+        //
+        // The queue is memory. An event it expired or dropped at capacity was
+        // returned to the store as PENDING and then sat there: loadPendingEvents
+        // only ran at startup, so the condition came back on the next restart or
+        // never. This is the in-session half of that, and it is what makes the
+        // LEASED state and the attempts counter mean something.
+        //
+        // A lease that has run out is reclaimed, which is how work survives a
+        // process that died holding it.
+        claimPendingEvents: async ({ limit = 50, maxAttempts = MAX_EVENT_ATTEMPTS } = {}) => {
+            // An event that has failed this many times is not going to succeed
+            // by being tried again, and retrying it forever starves everything
+            // behind it.
+            await pool.query(
+                `UPDATE position_events SET state='ABANDONED', leased_until=NULL
+                 WHERE user_id=$1 AND state IN ('PENDING','LEASED') AND attempts >= $2`,
+                [userId, maxAttempts]);
+
+            const { rows } = await pool.query(
+                `SELECT id, event_key, event_type, severity, symbol, thesis_id,
+                        correlation_id, source, observed, reason, observed_at
+                 FROM position_events
+                 WHERE user_id = $1
+                   AND (state = 'PENDING'
+                        OR (state = 'LEASED' AND leased_until < NOW()))
+                 ORDER BY CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'WARNING' THEN 1 ELSE 2 END,
+                          observed_at ASC
+                 LIMIT $2`, [userId, limit]);
+            return rows.map((r) => ({
+                storedId: r.id, key: r.event_key, type: r.event_type, severity: r.severity,
+                symbol: r.symbol, thesisId: r.thesis_id, correlationId: r.correlation_id,
+                source: r.source, observed: r.observed, reason: r.reason,
+                observedAt: r.observed_at instanceof Date
+                    ? r.observed_at.toISOString() : r.observed_at,
+                reclaimed: true,
+            }));
+        },
+
+        // Taken out of the store and into reasoning. The lease is what stops the
+        // sweep above handing the same condition to a second worker, and its
+        // expiry is what returns the work when a process dies mid-decision.
+        leaseEvents: async (eventIds, leaseMs = EVENT_LEASE_MS) => {
+            const ids = (eventIds ?? []).filter(Boolean);
+            if (!ids.length) return 0;
+            const { rowCount } = await pool.query(
+                `UPDATE position_events
+                 SET state='LEASED',
+                     leased_until = NOW() + ($2::bigint * INTERVAL '1 millisecond')
+                 WHERE id = ANY($1::uuid[]) AND state <> 'HANDLED'`,
+                [ids, leaseMs]);
+            return rowCount;
+        },
+
+        // The operator's stop, written by the API process. Unreadable is not
+        // the same as "not halted": a Redis that cannot be reached must not
+        // silently resume a trader the operator stopped, so the last known
+        // state stands and the caller is told nothing changed.
+        readHaltRequest: async () => {
+            try {
+                const raw = await redis.get(RUNTIME_HALT_KEY);
+                if (!raw) return { halted: false, reason: null };
+                const parsed = JSON.parse(raw);
+                return { halted: Boolean(parsed.halted), reason: parsed.reason ?? null };
+            } catch (err) {
+                logger?.warn?.("Autonomous", "could not read the halt request",
+                               { error: err.message });
+                return null;
+            }
         },
 
         markEventHandled: async (eventId) => {
@@ -258,6 +350,7 @@ export const buildLivePorts = ({
                 stale: !connectionTracker?.isTrusted?.(),
                 session: await ports.sessionCounters(),
                 openClientOrderIds: await ports.openClientOrderIds(),
+                ambiguousOrders: await ports.ambiguousOrderCount(),
             });
         },
 
@@ -274,6 +367,16 @@ export const buildLivePorts = ({
                 turnoverPaise: Number(rows[0].turnover),
                 realisedLossPaise: Number(rows[0].loss),
             };
+        },
+
+        // Orders whose real outcome could not be established. While any exist
+        // the system does not know what it owns, so the risk gate refuses new
+        // exposure until reconciliation resolves them.
+        ambiguousOrderCount: async () => {
+            const { rows } = await pool.query(
+                `SELECT COUNT(*)::int AS n FROM orders
+                 WHERE user_id = $1 AND state = 'AMBIGUOUS'`, [userId]);
+            return rows[0].n;
         },
 
         openClientOrderIds: async () => {
@@ -357,6 +460,9 @@ export const buildLivePorts = ({
             // bad, and failing the trade because of it is worse.
             try {
                 await recordDecision({ userId, record: {
+                    // The decision's own identity. The correlation is the
+                    // thread it belongs to and is deliberately not unique.
+                    decisionId: entry.decisionId ?? entry.correlationId,
                     correlationId: entry.correlationId,
                     sessionDate: sessionDateOf(now(entry.asOf)),
                     symbol, route: entry.route ?? "POSITION",

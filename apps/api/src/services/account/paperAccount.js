@@ -13,6 +13,14 @@ import { pool } from "../../config/db.js";
 
 export const DEFAULT_STARTING_CAPITAL_PAISE = 100_000_000;   // Rs 10,00,000
 
+// Which orders actually moved money.
+//
+// NOT state='FILLED'. An order that filled part way and then expired or was
+// cancelled settled cash, booked P&L and paid brokerage exactly like a complete
+// one; excluding it understated realised P&L and costs and showed up as
+// reconciliation drift on an account that was correct.
+const SETTLED = "filled_quantity > 0";
+
 const IST_OFFSET = "5 hours 30 minutes";
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
@@ -39,9 +47,9 @@ export const ensureAccount = async ({
          SELECT $1, $2,
                 (SELECT balance_paise FROM users WHERE id = $1) - $2
                 - COALESCE((SELECT SUM(pnl_paise) FROM orders
-                            WHERE user_id = $1 AND state = 'FILLED'), 0)
+                            WHERE user_id = $1 AND ${SETTLED}), 0)
                 + COALESCE((SELECT SUM(brokerage_paise) FROM orders
-                            WHERE user_id = $1 AND state = 'FILLED'), 0)
+                            WHERE user_id = $1 AND ${SETTLED}), 0)
                 + COALESCE((SELECT SUM(margin_used_paise) FROM portfolio
                             WHERE user_id = $1 AND quantity > 0), 0)
          WHERE EXISTS (SELECT 1 FROM users WHERE id = $1)
@@ -68,7 +76,7 @@ export const accountState = async ({ userId, priceFor = async () => null, db = p
         db.query(`SELECT COALESCE(SUM(pnl_paise),0) AS pnl,
                          COALESCE(SUM(brokerage_paise),0) AS costs,
                          COUNT(*)::int AS orders
-                  FROM orders WHERE user_id=$1 AND state='FILLED'`, [userId]),
+                  FROM orders WHERE user_id=$1 AND ${SETTLED}`, [userId]),
     ]);
     if (!account.rows.length || !user.rows.length) return null;
 
@@ -116,28 +124,32 @@ export const accountState = async ({ userId, priceFor = async () => null, db = p
         unrealisedPnlPaise,
         costsPaise: Number(realised.rows[0].costs),
         totalPnlPaise: equityPaise - startingCapitalPaise,
-        filledOrders: realised.rows[0].orders,
+        settledOrders: realised.rows[0].orders,
         positions: held,
         fullyPriced: valued === positions.rows.length,
     };
 };
 
-// The auditable record of one decision. Append-only, idempotent on the
-// correlation id, so a retried or replayed decision cannot be recorded twice.
+// The auditable record of one decision.
+//
+// Append-only, and idempotent on the DECISION id, not the correlation id. A
+// position's reassessments all share one correlation id — that is what ties
+// them together — so keying identity on it stored the first decision and
+// discarded the rest.
 export const recordDecision = async ({ userId, record, db = pool }) => {
     const { rows } = await db.query(
         `INSERT INTO decision_records (
-            user_id, correlation_id, session_date, symbol, route,
+            user_id, decision_id, correlation_id, session_date, symbol, route,
             trigger_type, trigger_severity, trigger_reason, action, confidence,
             evidence, thesis, supporting, contradicting, counter_thesis,
             alternatives, what_would_change, challenge_verdict, synthesis,
             risk_decision, risk_code, risk_reason, executed, blocked_reason,
             thesis_id, price_paise, quantity, decided_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13::jsonb,$14::jsonb,
-                 $15,$16::jsonb,$17::jsonb,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,
-                 $26,$27,$28)
-         ON CONFLICT (correlation_id) DO NOTHING RETURNING id`,
-        [userId, record.correlationId,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14::jsonb,$15::jsonb,
+                 $16,$17::jsonb,$18::jsonb,$19,$20::jsonb,$21,$22,$23,$24,$25,$26,
+                 $27,$28,$29)
+         ON CONFLICT (decision_id) DO NOTHING RETURNING id`,
+        [userId, record.decisionId ?? record.correlationId, record.correlationId,
          record.sessionDate ?? sessionDateOf(record.decidedAt ?? new Date()),
          record.symbol, record.route ?? "CANDIDATE",
          record.triggerType ?? null, record.triggerSeverity ?? null, record.triggerReason ?? null,
@@ -185,7 +197,7 @@ export const writeSessionSummary = async ({ userId, state, at = new Date(), db =
                 COALESCE(SUM(pnl_paise),0) AS realised,
                 COALESCE(SUM(brokerage_paise),0) AS costs
          FROM orders
-         WHERE user_id = $1 AND state = 'FILLED'
+         WHERE user_id = $1 AND ${SETTLED}
            AND created_at >= ($2::date::timestamp - $3::interval) AT TIME ZONE 'UTC'
            AND created_at <  ($2::date::timestamp + interval '1 day' - $3::interval)
                              AT TIME ZONE 'UTC'`,
@@ -252,7 +264,7 @@ export const reconcileAccount = async ({ userId, db = pool } = {}) => {
                   FROM portfolio WHERE user_id=$1 AND quantity > 0`, [userId]),
         db.query(`SELECT COALESCE(SUM(pnl_paise),0) AS pnl,
                          COALESCE(SUM(brokerage_paise),0) AS costs
-                  FROM orders WHERE user_id=$1 AND state='FILLED'`, [userId]),
+                  FROM orders WHERE user_id=$1 AND ${SETTLED}`, [userId]),
         db.query(`SELECT client_order_id, COUNT(*)::int AS n FROM orders
                   WHERE user_id=$1 AND client_order_id IS NOT NULL
                   GROUP BY client_order_id HAVING COUNT(*) > 1`, [userId]),

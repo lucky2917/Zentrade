@@ -189,7 +189,7 @@ export class AutonomousRuntime {
             staleSweeps: 0, blindSymbols: 0,
             planeEvents: 0, planeRejected: 0, localCrossingsSuppressed: 0,
             candidatesDeferred: 0, candidatesCooledDown: 0, candidatesBudgetSkipped: 0,
-            candidatesPaced: 0,
+            candidatesPaced: 0, protectiveRetries: 0, ordersAdopted: 0, haltChanges: 0,
         };
 
         // Optional throughout: the runtime behaves identically without one,
@@ -290,12 +290,51 @@ export class AutonomousRuntime {
             });
         }
 
+        // The operator's stop, read from the shared key.
+        //
+        // The only orchestrator lives in this process, so the API cannot halt
+        // it directly. It writes the intent and this applies it. Runs in every
+        // session state, because being unable to stop a trader outside market
+        // hours is not a property worth having.
+        if (this.sourcePorts.readHaltRequest) {
+            scheduler.register({
+                name: "halt-watch",
+                intervalMs: 2_000,
+                shouldRun: () => true,
+                run: () => this.applyHaltRequest(),
+            });
+        }
+
         scheduler.register({
             name: "health",
             intervalMs: 30_000,
             shouldRun: () => true,
             run: async () => this.health(),
         });
+    }
+
+    // ---- operator control ------------------------------------------------
+
+    async applyHaltRequest() {
+        const request = await this.sourcePorts.readHaltRequest();
+        // Null means the request could not be read. Treating that as "not
+        // halted" would silently resume a trader the operator stopped, so the
+        // last known state stands.
+        if (!request) return { halted: this.orchestrator.halted, changed: false,
+                               unreadable: true };
+        const halted = Boolean(request.halted);
+        if (halted === this.orchestrator.halted) return { halted, changed: false };
+
+        this.orchestrator.setHalted(halted, request.reason ?? "operator request");
+        this.metrics.haltChanges += 1;
+        this.logger?.warn?.("Runtime", halted ? "halted by the operator" : "resumed by the operator",
+                            { reason: request.reason ?? null });
+        this.narrate(KIND.HALT, {
+            state: halted ? "HALTED" : "RESUMED",
+            because: request.reason ?? "operator request",
+            session: this.orchestrator.session(),
+        });
+        return { halted, changed: true };
     }
 
     // ---- narration -------------------------------------------------------
@@ -630,39 +669,55 @@ export class AutonomousRuntime {
             modelConsulted: false,
         });
 
-        // Protection reads the world NOW, never a decision's snapshot: a
-        // pre-committed exit must be sized to what is actually held at the
-        // instant the level was crossed.
-        const position = (await this.sourcePorts.positionFor?.(symbol, this.clock())) ?? null;
-        const held = position?.quantity ?? 0;
-        if (held <= 0) {
-            this.reflex.disarm(symbol);
-            this.fastPlane.disarm(symbol);
-            return { protected: false, reason: "position already closed" };
-        }
-
-        const size = Math.min(quantity || held, held);
-        const intent = {
-            action: "EXIT", side: "SELL", symbol, quantity: size,
-            pricePaise, referencePricePaise: pricePaise,
-            correlationId: correlationId ?? `reflex-${symbol}`,
-            thesisId,
-            // One protective exit per thesis per crossing kind, whatever else
-            // is happening elsewhere in the system.
-            clientOrderId: `${thesisId ?? symbol}:PROTECT:${kind}`,
-        };
-
+        // Everything from here can fail, and a failure must leave the level
+        // armed.
+        //
+        // The latch is set when the crossing is DETECTED, before anything has
+        // acted on it. Anything that threw after that point — reading the
+        // position, submitting the order — used to leave the latch set with no
+        // exit placed, which silently disarmed a pre-committed stop for the
+        // rest of the session while the position stayed open. One failure, one
+        // unguarded position, no alarm.
+        let size = quantity;
         try {
-            await this.executeIntent(intent);
+            // Protection reads the world NOW, never a decision's snapshot: a
+            // pre-committed exit must be sized to what is actually held at the
+            // instant the level was crossed.
+            const position = (await this.sourcePorts.positionFor?.(symbol, this.clock())) ?? null;
+            const held = position?.quantity ?? 0;
+            if (held <= 0) {
+                this.reflex.disarm(symbol);
+                this.fastPlane.disarm(symbol);
+                return { protected: false, reason: "position already closed" };
+            }
+
+            size = Math.min(quantity || held, held);
+            await this.executeIntent({
+                action: "EXIT", side: "SELL", symbol, quantity: size,
+                pricePaise, referencePricePaise: pricePaise,
+                correlationId: correlationId ?? `reflex-${symbol}`,
+                thesisId,
+                // One protective exit per thesis per crossing kind, whatever
+                // else is happening elsewhere in the system.
+                clientOrderId: `${thesisId ?? symbol}:PROTECT:${kind}`,
+            });
             this.metrics.protectiveExits += 1;
             this.reflex.disarm(symbol);
             this.fastPlane.disarm(symbol);
             this.logger?.warn?.("Reflex", "protective exit submitted", {
                 symbol, kind, quantity: size, pricePaise });
         } catch (err) {
-            this.logger?.error?.("Reflex", "protective exit failed",
+            this.metrics.protectiveRetries += 1;
+            this.reflex.rearm(symbol, kind);
+            this.logger?.error?.("Reflex", "protective exit failed; the level stays armed",
                                  { error: err.message, symbol, kind });
-            return { protected: false, error: err.message };
+            this.narrate(KIND.PROTECTIVE_EVENT, {
+                symbol, crossing: kind, pricePaise, thesisId, correlationId,
+                quantity: size, failed: true,
+                because: "the protective exit could not be submitted; the level stays armed",
+                modelConsulted: false,
+            });
+            return { protected: false, error: err.message, rearmed: true };
         }
 
         // Now tell the trader what happened, so the thesis is reassessed with
@@ -789,7 +844,8 @@ export class AutonomousRuntime {
         // decision and the world it was taken in are the same for all of them,
         // so they are bound once here rather than repeated at each exit.
         const record = (fields) => this.sourcePorts.journal?.({
-            correlationId, symbol, route: "CANDIDATE", event, context, reasons, asOf, ...fields });
+            decisionId: correlationId, correlationId, symbol, route: "CANDIDATE",
+            event, context, reasons, asOf, ...fields });
 
         // G4. One instant for this decision. Every read below is bound to it,
         // except the Tier 4 revalidation, which must be fresh by definition.
@@ -852,6 +908,9 @@ export class AutonomousRuntime {
             stale: Boolean(context?.stale),
             session: (await this.sourcePorts.sessionCounters?.()) ?? {},
             openClientOrderIds: (await this.sourcePorts.openClientOrderIds?.()) ?? [],
+            // Undefined rather than 0 when the port is absent: the gate fails
+            // closed on a count it cannot establish, which is the point of it.
+            ambiguousOrders: await this.sourcePorts.ambiguousOrderCount?.(),
         });
 
         if (risk.decision !== DECISION.ALLOW) {
@@ -920,12 +979,24 @@ export class AutonomousRuntime {
             }
         }
         const started = await this.orchestrator.start();
+
+        // Orders the previous process left resting. Without this they are in
+        // the database but in nobody's hands: never advanced, never expired,
+        // and holding a cash reservation for the rest of the account's life.
+        const adopted = await this.venue.adopt(await this.engine.openOrders(this.userId));
+        if (adopted) {
+            this.metrics.ordersAdopted += adopted;
+            this.logger?.warn?.("Runtime", "resumed orders left resting by the last process",
+                                { count: adopted });
+        }
+
         const armed = await this.armOpenPositions();
         this.narrate(KIND.RECOVERY, {
             session: this.orchestrator.session(),
             mode: this.mode,
             armedPositions: armed.armed,
             positions: armed.positions,
+            adoptedOrders: adopted,
             recovery: this.orchestrator.recovery,
             fastPlane: this.fastPlane.mode,
         });

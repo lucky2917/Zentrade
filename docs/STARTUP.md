@@ -216,6 +216,22 @@ committed to positions, and whether the account reconciled. The Decision record
 panel below it reads back from the database, which is why it is still populated
 after a restart.
 
+## Stopping the trader without killing it
+
+```
+curl -XPOST localhost:5000/internal/brain/halt \
+  -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+  -d '{"halted":true,"reason":"feed looks wrong"}'
+```
+
+HALTED keeps observation and reconciliation running and refuses everything that
+adds or changes exposure. The trader applies it within a couple of seconds and
+narrates that it did; `GET` the same path to see both what was requested and
+what the trader reports.
+
+The stop is durable, so restarting the agent does not clear it. Send
+`{"halted":false}` to resume.
+
 ## Shutdown
 
 `Ctrl-C` in terminal 3. In order: the trader stops taking new work, drains,

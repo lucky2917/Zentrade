@@ -110,6 +110,7 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("paper autonomous soak", () => {
             evaluateRisk: async () => ({ decision: "ALLOW" }),
             journal: async () => ({}),
             sessionCounters: async () => ({ trades: 0, turnoverPaise: 0, realisedLossPaise: 0 }),
+            ambiguousOrderCount: async () => 0,
         };
 
         const runtime = new AutonomousRuntime({
@@ -187,6 +188,7 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("paper autonomous soak", () => {
             recordThesis: async () => ({ id: null }),
             journal: async () => ({}),
             sessionCounters: async () => ({ trades: 0, turnoverPaise: 0, realisedLossPaise: 0 }),
+            ambiguousOrderCount: async () => 0,
         };
 
         const runtime = new AutonomousRuntime({

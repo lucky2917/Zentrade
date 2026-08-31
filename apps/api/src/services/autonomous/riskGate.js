@@ -68,6 +68,17 @@ export const evaluate = (intent, context, limits = DEFAULT_LIMITS) => {
     if (context.killSwitchEngaged && !isReducing(intent.action))
         return reject("KILL_SWITCH", "kill switch engaged; only risk-reducing actions permitted");
 
+    // An order whose outcome could not be established means we do not know what
+    // we own. Adding exposure on top of that is precisely the failure AMBIGUOUS
+    // exists to prevent, so it is refused until reconciliation resolves it.
+    // Absent means unevaluable, and unevaluable is a rejection like any other.
+    if (!isReducing(intent.action)
+        && (!Number.isFinite(context.ambiguousOrders) || context.ambiguousOrders > 0))
+        return reject("UNRESOLVED_AMBIGUITY",
+            Number.isFinite(context.ambiguousOrders)
+                ? `${context.ambiguousOrders} order(s) of unknown outcome; no new exposure until reconciled`
+                : "the count of unresolved orders is unavailable");
+
     if (context.stale === true && !isReducing(intent.action))
         return reject("STALE_DATA", "market data is stale; no new exposure on an untrusted price");
 

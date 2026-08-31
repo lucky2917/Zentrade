@@ -31,6 +31,12 @@ export const VENUE_BEHAVIOUR = {
     DUPLICATE_FILL: "DUPLICATE_FILL",
 };
 
+// States a resting order can be picked back up from. AMBIGUOUS is excluded on
+// purpose: reconciliation owns it.
+const ADOPTABLE = new Set([
+    STATES.NEW, STATES.ACCEPTED, STATES.WORKING, STATES.PARTIALLY_FILLED,
+]);
+
 export class PaperVenue {
     // `script` maps a symbol to the behaviour it should exhibit. Anything not
     // scripted uses `defaultBehaviour`.
@@ -105,14 +111,57 @@ export class PaperVenue {
         return { order: await this.advance(order.id), duplicate: false, behaviour };
     }
 
+    // Resting orders left behind by a process that went away.
+    //
+    // The pending map is memory. A restart built an empty one, so an order the
+    // database still showed as ACCEPTED or WORKING was never advanced again: it
+    // could not fill, the runtime sets no expiry so it could not expire, and
+    // reconciliation compared it against this venue's reading of the same row
+    // and reported MATCHED. It rested forever holding its cash reservation.
+    //
+    // AMBIGUOUS orders are deliberately not adopted. Their outcome is unknown,
+    // and filling one would be inventing the answer reconciliation exists to
+    // establish.
+    async adopt(orders = []) {
+        let adopted = 0;
+        for (const order of orders) {
+            if (this.pending.has(order.id)) continue;
+            if (!ADOPTABLE.has(order.state)) continue;
+            this.pending.set(order.id, {
+                intent: null, behaviour: this.behaviourFor(order.symbol), filled: 0,
+                recovered: true,
+            });
+            adopted += 1;
+        }
+        if (adopted) {
+            this.logger?.info?.("PaperVenue", "adopted resting orders after a restart",
+                                { count: adopted });
+        }
+        return adopted;
+    }
+
     // One venue tick for a resting order. Called by the scheduler so a delayed
     // fill lands on a later cycle rather than instantly.
     async advance(orderId) {
         const entry = this.pending.get(orderId);
         if (!entry) return this.engine.getOrder(orderId);
 
-        const order = await this.engine.getOrder(orderId);
-        if (!order || !["WORKING", "PARTIALLY_FILLED"].includes(order.state)) {
+        let order = await this.engine.getOrder(orderId);
+        if (!order) { this.pending.delete(orderId); return order; }
+
+        // An adopted order may not have reached the book yet. Walk it forward
+        // the same way submit() would have, so recovery drives one order
+        // lifecycle rather than a second, parallel one.
+        if (order.state === STATES.NEW) {
+            await this.engine.acceptOrder(orderId);
+            this.stats.acknowledged += 1;
+            order = await this.engine.getOrder(orderId);
+        }
+        if (order.state === STATES.ACCEPTED) {
+            order = await this.engine.workOrder(orderId);
+        }
+
+        if (!["WORKING", "PARTIALLY_FILLED"].includes(order.state)) {
             this.pending.delete(orderId);
             return order;
         }

@@ -190,7 +190,9 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("live ports (integration)", () => {
             const health = runtime.health();
             expect(health.mode).toBe(MODE.PAPER);
             expect(health.liveExecutionEnabled).toBe(false);
-            expect(health.orchestrator.scheduler.jobCount).toBe(9);
+            // The base set plus halt-watch, which only registers when the ports
+            // can actually read the operator's stop.
+            expect(health.orchestrator.scheduler.jobCount).toBe(11);
             expect(await runtime.stop()).toBe(true);
         });
 

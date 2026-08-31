@@ -381,10 +381,67 @@ describe("orchestrator lifecycle and decision path", () => {
         const h = orch.health();
         expect(h.phase).toBe(PHASE.RUNNING);
         expect(h.session).toBe(SESSION.OPEN);
-        expect(h.scheduler.jobCount).toBe(4);
+        // position-monitor, reasoning, reconciliation, pending-sweep, order-expiry
+        expect(h.scheduler.jobCount).toBe(5);
         expect(h.queue).toHaveProperty("depth");
         expect(h.metrics).toHaveProperty("reasoningAvoided");
         await orch.stop();
+    });
+
+    // The engine absorbs a repeat of an intent it has already seen and reports
+    // it. Ignoring that flag recorded a trade that did not happen: a second
+    // REDUCE on one thesis derives the same client order id, so nothing is
+    // placed, and the journal said executed anyway.
+    it("does not report a suppressed duplicate as an execution", async () => {
+        const { orch, ports } = build({
+            reassess: async () => ({ action: "REDUCE", confidence: "HIGH" }),
+            execute: vi.fn(async () => ({ order: { id: 1, state: "FILLED" }, duplicate: true })),
+        });
+        const outcome = await orch.handleEvent(
+            { type: "STOP_APPROACHING", severity: "WARNING", symbol: "RELIANCE",
+              thesisId: "t-1", storedId: "ev-1" }, "c-1", SESSION.OPEN);
+
+        expect(ports.execute).toHaveBeenCalled();
+        expect(outcome.executed).toBe(false);
+        expect(outcome.blocked).toBe("duplicate intent");
+        expect(orch.metrics.executions).toBe(0);
+        expect(orch.metrics.duplicatesSuppressed).toBe(1);
+        expect(ports.journal).toHaveBeenCalledWith(
+            expect.objectContaining({ executed: false }));
+    });
+
+    it("reports a real execution as one", async () => {
+        const { orch, ports } = build({
+            execute: vi.fn(async () => ({ order: { id: 2, state: "FILLED" }, duplicate: false })),
+        });
+        const outcome = await orch.handleEvent(
+            { type: "STOP_APPROACHING", severity: "WARNING", symbol: "RELIANCE",
+              thesisId: "t-1", storedId: "ev-2" }, "c-2", SESSION.OPEN);
+        expect(outcome.executed).toBe(true);
+        expect(orch.metrics.executions).toBe(1);
+        expect(orch.metrics.duplicatesSuppressed).toBe(0);
+    });
+
+    // Every decision on one position carries the thesis's correlation id, so
+    // the record needs an identity of its own or only the first survives.
+    it("gives every decision its own identity", async () => {
+        const { orch, ports } = build({
+            reassess: async () => ({ action: "HOLD", confidence: "LOW" }),
+        });
+        for (const storedId of ["ev-a", "ev-b"]) {
+            await orch.handleEvent(
+                { type: "STOP_APPROACHING", severity: "WARNING", symbol: "RELIANCE",
+                  thesisId: "t-1", storedId },
+                "same-correlation", SESSION.OPEN);
+        }
+        const ids = ports.journal.mock.calls.map(([entry]) => entry.decisionId);
+        expect(ids).toHaveLength(2);
+        expect(ids[0]).toBeTruthy();
+        expect(ids[0]).not.toBe(ids[1]);
+        // The correlation still ties them together.
+        for (const [entry] of ports.journal.mock.calls) {
+            expect(entry.correlationId).toBe("same-correlation");
+        }
     });
 
     it("propagates a correlation id from event through to execution", async () => {

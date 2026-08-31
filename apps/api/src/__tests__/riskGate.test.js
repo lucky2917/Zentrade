@@ -16,6 +16,9 @@ const context = (over = {}) => {
     const { portfolio: portfolioOver, ...rest } = over;
     return {
         nowMs: 1_000_000, stale: false, killSwitchEngaged: false,
+        // Nothing of unknown outcome. The gate refuses new exposure while any
+        // order is AMBIGUOUS, which has its own tests.
+        ambiguousOrders: 0,
         session: { trades: 0, turnoverPaise: 0, realisedLossPaise: 0 },
         ...rest,
         portfolio: portfolio(portfolioOver),
