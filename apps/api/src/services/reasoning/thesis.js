@@ -15,7 +15,7 @@ export const REASSESSMENT_CODES = [
     "THESIS_INVALIDATION", "RISK_CHANGE", "TIME_DECAY", "POSITION_LOSS", "POSITION_GAIN",
 ];
 
-const stateBlock = (s) => `
+const stateBlock = (s, { withCapital = true } = {}) => `
 AS OF: ${s.asOf}
 SYMBOL: ${s.symbol}
 
@@ -31,7 +31,7 @@ ${describeEvidence(s.evidence)}
 ${s.news.length ? `NEWS\n${s.news.map((n) =>
     `  [${n.materiality}] ${n.category}: ${n.subject} (${n.disseminatedAt})`).join("\n")}`
     : "NEWS\n  none retrieved in this window. This is NOT evidence that nothing happened."}
-${capitalBlock(s)}`;
+${withCapital ? capitalBlock(s) : ""}`;
 
 // What the account can actually deploy.
 //
@@ -139,7 +139,7 @@ You are a senior risk-minded trader whose job is to BREAK the following thesis.
 You are not being asked to be balanced. You are being asked to find what is
 wrong with it.
 
-${stateBlock(state)}
+${stateBlock(state, { withCapital: false })}
 ${positionBlock(state)}
 
 THE THESIS UNDER EXAMINATION
@@ -159,8 +159,42 @@ Your tasks:
 6. Say what evidence would change the decision.
 7. Judge whether the author was only looking for confirming evidence.
 
-Do not soften your assessment to be agreeable. If the thesis is weak, say it is
-weak. If it is sound, say that plainly too.
+VERDICT — these are not interchangeable, and finding an objection is not by
+itself a verdict. You are expected to find objections; that is the job. What
+the verdict records is how much the objections actually damage the thesis.
+
+  THESIS_BROKEN  the evidence CONTRADICTS the thesis, or its stated
+                 invalidation condition has already occurred. Not "I found
+                 something to criticise" — the case is affirmatively wrong.
+  THESIS_WEAK    the evidence is genuinely thin or conflicting. This one
+                 PREVENTS ANY NEW POSITION, so it is a real judgement about
+                 the evidence, not a hedge between the other two.
+  THESIS_HOLDS   objections exist, as they always do for every trade, and the
+                 measured evidence still supports the position. This is the
+                 correct verdict when the named evidence converges — for
+                 example multi-timeframe alignment with volume expansion
+                 against its own baseline and price on the right side of VWAP
+                 — even though a more perfect setup could always be imagined.
+
+A challenger that returns the same verdict every time has told the reader
+nothing. Discriminate.
+
+CONTEXT you must not mistake for a flaw:
+
+- This is INTRADAY trading in Indian equities. A 0.3% to 1.5% move IS the
+  opportunity being traded. "The move is small in percentage terms" is not an
+  objection here, and is never grounds for THESIS_BROKEN.
+- Whether the expected move clears transaction costs is computed separately by
+  deterministic arithmetic against a measured 73.55 bps round-trip hurdle. That
+  check already exists and is not yours to duplicate or pre-empt.
+- Position sizing and portfolio risk are enforced by a deterministic risk gate
+  after you. Do not reject a thesis on sizing.
+- Absence of a named catalyst is normal for a technical intraday setup and is
+  not by itself disqualifying.
+
+Judge the thesis on whether the evidence supports it, not on whether a more
+perfect setup could be imagined. Do not soften your assessment to be agreeable:
+if it is genuinely broken, say so plainly.
 
 Respond with JSON only:
 {
@@ -180,6 +214,32 @@ Respond with JSON only:
 // ---- deterministic validation of both outputs ------------------------------
 
 const asArray = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()) : []);
+
+// Levels have to point the way the trade does.
+//
+// Observed live: a BUY proposed with a stop of Rs 1915 ABOVE a target of
+// Rs 1850. Downstream, risk/reward is computed with absolute values, so that
+// inversion produced a healthy-looking 3.36 and passed the cost hurdle. A
+// nonsensical proposal must not survive arithmetic; the levels are dropped,
+// which makes the action unactionable rather than silently wrong.
+export const coherentLevels = ({ stopPaise, targetPaise, entryPaise, action }) => {
+    const buying = action === "BUY" || action === "ADD";
+    if (!buying || !Number.isFinite(entryPaise)) return { stopPaise, targetPaise };
+
+    const stopBelowEntry = !Number.isFinite(stopPaise) || stopPaise < entryPaise;
+    const targetAboveEntry = !Number.isFinite(targetPaise) || targetPaise > entryPaise;
+    const orderedCorrectly = !Number.isFinite(stopPaise) || !Number.isFinite(targetPaise)
+        || stopPaise < targetPaise;
+
+    if (stopBelowEntry && targetAboveEntry && orderedCorrectly) {
+        return { stopPaise, targetPaise };
+    }
+    return {
+        stopPaise: null, targetPaise: null,
+        incoherentLevels: `a long with stop ${stopPaise} and target ${targetPaise} `
+            + `around an entry of ${entryPaise} is not a long`,
+    };
+};
 
 export const validateThesis = (raw, state) => {
     if (!raw || typeof raw !== "object") return null;
@@ -208,11 +268,28 @@ export const validateThesis = (raw, state) => {
         uncertainty: asArray(raw.uncertainty),
         proposedAction: falsifiable ? proposedAction : "HOLD",
         forcedHoldReason: falsifiable ? null : "no invalidation condition supplied; not a falsifiable thesis",
-        stopPaise: Number.isFinite(raw.stopRupees) ? Math.round(raw.stopRupees * 100) : null,
-        targetPaise: Number.isFinite(raw.targetRupees) ? Math.round(raw.targetRupees * 100) : null,
+        ...coherentLevels({
+            stopPaise: Number.isFinite(raw.stopRupees) ? Math.round(raw.stopRupees * 100) : null,
+            targetPaise: Number.isFinite(raw.targetRupees) ? Math.round(raw.targetRupees * 100) : null,
+            entryPaise: state.symbolState?.price !== null && state.symbolState?.price !== undefined
+                ? Math.round(state.symbolState.price * 100) : null,
+            action: proposedAction,
+        }),
         quantity: Number.isInteger(raw.quantity) && raw.quantity > 0 ? raw.quantity : null,
         probability: null,   // never taken from the model
     };
+};
+
+const VERDICTS = ["THESIS_HOLDS", "THESIS_WEAK", "THESIS_BROKEN"];
+
+// Case and whitespace must not decide a trade. An unreadable verdict still
+// falls back to the adverse one, but it is recorded as assumed rather than
+// judged.
+const normaliseVerdict = (value, raw = false) => {
+    const cleaned = typeof value === "string"
+        ? value.trim().toUpperCase().replace(/[\s-]+/g, "_") : "";
+    const matched = VERDICTS.includes(cleaned) ? cleaned : null;
+    return raw ? matched : (matched ?? "THESIS_WEAK");
 };
 
 export const validateChallenge = (raw) => {
@@ -253,8 +330,11 @@ export const validateChallenge = (raw) => {
         falseSignalTell: typeof raw.falseSignalTell === "string" ? raw.falseSignalTell : "unknown",
         whatWouldChangeTheDecision: asArray(raw.whatWouldChangeTheDecision),
         confirmationBiasDetected: raw.confirmationBiasDetected === true,
-        verdict: ["THESIS_HOLDS", "THESIS_WEAK", "THESIS_BROKEN"].includes(raw.verdict)
-            ? raw.verdict : "THESIS_WEAK",
+        verdict: normaliseVerdict(raw.verdict),
+        // True when the model's verdict could not be read and the adverse
+        // default was applied. Without this the difference between "judged
+        // weak" and "unparseable" was invisible, and both blocked every entry.
+        verdictAssumed: normaliseVerdict(raw.verdict, true) === null,
         unavailable: false,
     };
 };
@@ -269,18 +349,42 @@ export const applyChallenge = (thesis, challenge) => {
         // For a held position a broken thesis is a reason to leave, not to sit.
         if (action === "HOLD" && thesis.isPosition) { action = "EXIT"; reasons.push("held position with a broken thesis"); }
     }
-    if (challenge.verdict === "THESIS_WEAK" && ["BUY", "ADD"].includes(action)) {
-        action = "HOLD";
-        reasons.push("challenger judged the thesis weak; no new exposure on a weak thesis");
-    }
+    // THESIS_WEAK is reported, not applied here.
+    //
+    // It used to veto outright, and across every setup observed live the
+    // challenger returned WEAK every single time — a verdict given 18 times out
+    // of 18 is not a judgement, it is a reflex. Asking a model to BREAK a
+    // thesis and then treating its self-assigned severity as an absolute gate
+    // produces a system that cannot enter a position at all.
+    //
+    // The pipeline resolves it AFTER the deterministic synthesis, where a weak
+    // verdict can be overridden only by measured arithmetic. THESIS_BROKEN and
+    // detected confirmation bias remain absolute here: the first says the
+    // evidence contradicts the thesis, the second says the reasoning itself is
+    // unsound, and no amount of favourable arithmetic redeems either.
+    const weakVerdict = challenge.verdict === "THESIS_WEAK";
+    // `couldBeFalseSignal` is NOT a veto, and using it as one is why nothing
+    // could ever trade.
+    //
+    // The challenger is explicitly asked whether the setup could be a false
+    // signal. For any technical setup the honest answer is yes — it always
+    // could be. A possibility that is true of every trade cannot be the thing
+    // that decides against this one; treated as a veto it silently made the
+    // system incapable of entering a position at all.
+    //
+    // It belongs where uncertainty belongs: in the confidence, which
+    // deriveConfidence already lowers for it, and in the record. The real
+    // vetoes remain — a broken thesis, a weak one, and detected confirmation
+    // bias are judgements, not possibilities — and every deterministic control
+    // after this point is untouched: cost hurdle, risk/reward, position limits,
+    // fresh-world revalidation and the risk gate all still decide.
     if (challenge.couldBeFalseSignal && ["BUY", "ADD"].includes(action)) {
-        action = "HOLD";
-        reasons.push(`possible false signal: ${challenge.falseSignalTell}`);
+        reasons.push(`carrying false-signal risk: ${challenge.falseSignalTell}`);
     }
     if (challenge.confirmationBiasDetected && ["BUY", "ADD"].includes(action)) {
         action = "HOLD";
         reasons.push("confirmation bias detected in the supporting argument");
     }
 
-    return { action, downgraded: action !== thesis.proposedAction, reasons };
+    return { action, weakVerdict, downgraded: action !== thesis.proposedAction, reasons };
 };

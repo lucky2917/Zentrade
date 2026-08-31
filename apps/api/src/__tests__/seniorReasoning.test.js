@@ -145,16 +145,24 @@ describe("thesis validation", () => {
 describe("the challenger can only make things more conservative", () => {
     const thesis = { proposedAction: "BUY", isPosition: false };
 
-    it("downgrades a BUY when the thesis is judged weak", () => {
+    // A weak verdict is REPORTED here and resolved after the deterministic
+    // synthesis, where measured arithmetic can override the challenger's
+    // opinion that the evidence is thin. Applied as an absolute veto it made
+    // entry impossible: observed live, the challenger returned THESIS_WEAK on
+    // 18 of 18 setups.
+    it("reports a weak verdict for the synthesis to resolve", () => {
         const r = applyChallenge(thesis, validateChallenge({ verdict: "THESIS_WEAK" }));
-        expect(r.action).toBe("HOLD");
+        expect(r.weakVerdict).toBe(true);
+        expect(r.action).toBe("BUY");
     });
 
-    it("downgrades a BUY on a possible false signal", () => {
+    // "Could this be a false signal?" is true of every technical setup, so as a
+    // veto it decided against every trade. It belongs in the confidence.
+    it("records false-signal risk without vetoing the action", () => {
         const r = applyChallenge(thesis, validateChallenge({
             verdict: "THESIS_HOLDS", couldBeFalseSignal: true, falseSignalTell: "no volume" }));
-        expect(r.action).toBe("HOLD");
-        expect(r.reasons[0]).toMatch(/false signal/);
+        expect(r.action).toBe("BUY");
+        expect(r.reasons.join(" ")).toMatch(/false-signal risk: no volume/);
     });
 
     it("downgrades a BUY when confirmation bias is detected", () => {
@@ -276,7 +284,12 @@ describe("senior-trader scenarios", () => {
                               { explanation: "short covering", supportedBy: "no news", plausibility: "HIGH" },
                               { explanation: "index inclusion flow", supportedBy: "nothing observed", plausibility: "LOW" }],
                           strongestObjection: "a 3% move with no catalyst is often mean-reverting" } });
-        expect(d.action).toBe("HOLD");
+        // Entry 1030, stop 1010, target 1060 is 1.5 risk/reward, exactly the
+        // floor a weak thesis must clear, and the move clears costs. The
+        // challenger's doubt no longer vetoes arithmetic that supports the
+        // trade — but the alternatives it raised are still on the record.
+        expect(d.action).toBe("BUY");
+        expect(d.reasons.join(" ")).toMatch(/entering on the arithmetic/);
         expect(d.alternativeHypotheses.some((a) => a.explanation === "short covering")).toBe(true);
     });
 
@@ -564,5 +577,75 @@ describe("reassessment codes are bounded", () => {
         ["SOMETHING_NEW", "NEW_INFORMATION"],
     ])("maps %s to %s", (type, code) => {
         expect(reassessmentCodeFor({ trigger: { type } })).toBe(code);
+    });
+});
+
+// The floors that replaced the blanket vetoes. These are what now stand
+// between a proposal and a position, so they are pinned individually.
+describe("arithmetic floors on a new position", () => {
+    const asOf = "2026-08-31T05:00:00.000Z";
+    const buy = (over = {}) => ({
+        thesis: "t", setup: "s", direction: "LONG", proposedAction: "BUY",
+        supportingEvidence: ["a"], contradictingEvidence: [],
+        invalidationConditions: ["x"], uncertainty: [],
+        stopRupees: 990, targetRupees: 1060, quantity: 10, ...over,
+    });
+    const run = ({ formed, challenge }) => reason({
+        symbol: "X", context: { price: 1000, asOf, vwap: 995, vwapAvailable: true },
+        asOf,
+        formModel: async () => formed,
+        challengeModel: async () => challenge,
+    });
+
+    it("takes a weak thesis when the measured edge and risk/reward support it", async () => {
+        // 1000 entry, 990 stop, 1060 target -> 6.0 risk/reward.
+        const d = await run({ formed: buy(),
+                              challenge: { verdict: "THESIS_WEAK", couldBeFalseSignal: false } });
+        expect(d.action).toBe("BUY");
+        expect(d.reasons.join(" ")).toMatch(/entering on the arithmetic/);
+    });
+
+    it("refuses a weak thesis whose risk/reward is below the weak-thesis floor", async () => {
+        // 1000 entry, 990 stop, 1013 target -> 1.3, under the 1.5 weak floor.
+        const d = await run({ formed: buy({ targetRupees: 1013 }),
+                              challenge: { verdict: "THESIS_WEAK" } });
+        expect(d.action).toBe("HOLD");
+        expect(d.reasons.join(" ")).toMatch(/below the 1.5 floor/);
+    });
+
+    // A favourable verdict does not make a bad trade good, and the cost hurdle
+    // does not catch this: a big enough move clears costs while still risking
+    // more than it stands to gain. Observed live at 0.84.
+    it("refuses any entry below the universal risk/reward floor", async () => {
+        // 1000 entry, 950 stop, 1042 target -> 0.84.
+        const d = await run({ formed: buy({ stopRupees: 950, targetRupees: 1042 }),
+                              challenge: { verdict: "THESIS_HOLDS" } });
+        expect(d.action).toBe("HOLD");
+        expect(d.reasons.join(" ")).toMatch(/below the 1.2 floor for a new position/);
+    });
+
+    // Arithmetic may override a challenger's opinion. It may not stand in for a
+    // challenge that never happened.
+    it("never trades a thesis that was not actually challenged", async () => {
+        const d = await reason({
+            symbol: "X", context: { price: 1000, asOf, vwap: 995, vwapAvailable: true }, asOf,
+            formModel: async () => buy(),
+            challengeModel: async () => { throw new Error("provider down"); } });
+        expect(d.action).toBe("HOLD");
+        expect(d.confidence).toBe("LOW");
+        expect(d.reasons.join(" ")).toMatch(/never actually challenged/);
+    });
+
+    it("still refuses a broken thesis however good the arithmetic", async () => {
+        const d = await run({ formed: buy(),
+                              challenge: { verdict: "THESIS_BROKEN" } });
+        expect(d.action).toBe("HOLD");
+    });
+
+    it("still refuses when confirmation bias was detected", async () => {
+        const d = await run({ formed: buy(),
+                              challenge: { verdict: "THESIS_HOLDS",
+                                           confirmationBiasDetected: true } });
+        expect(d.action).toBe("HOLD");
     });
 });

@@ -74,6 +74,19 @@ export const deriveConfidence = ({ thesis, challenge, synthesis }) => {
         reasons.push(`${support} supporting, ${against} contradicting, ${unknowns} stated unknown(s)`);
     }
 
+    // False-signal risk lowers confidence rather than vetoing the action. It is
+    // true of every technical setup, so as a veto it stopped the system trading
+    // at all; as a confidence input it does what it should.
+    if (challenge?.couldBeFalseSignal) {
+        if (level === "HIGH") level = "MEDIUM";
+        reasons.push(`could be a false signal: ${challenge.falseSignalTell ?? "tell not stated"}`);
+    }
+    // A verdict the challenger did not actually give must not read as one it did.
+    if (challenge?.verdictAssumed) {
+        level = "LOW";
+        reasons.push("the challenge could not be read; the adverse verdict was assumed");
+    }
+
     if (unknowns > 0) reasons.push(`open questions: ${thesis.uncertainty.join("; ")}`);
     if (synthesis?.edge?.verdict === "INSUFFICIENT_BASIS") {
         reasons.push("expected move not quantifiable, so edge is unproven");
@@ -91,6 +104,19 @@ export const deriveConfidence = ({ thesis, challenge, synthesis }) => {
 // a 20-second bound killed challenges while they were still queued, and an
 // unreadable challenge is treated as the most adverse outcome — so every one
 // of those became a forced HOLD that looked like a considered judgement.
+// The risk/reward a weak thesis must reach before measured arithmetic is
+// allowed to override the challenger's verdict. A trade taken on a thesis the
+// challenger doubted has to be worth appreciably more than it risks.
+export const MIN_RR_ON_WEAK_THESIS = 1.5;
+
+// The floor for ANY new entry, whatever the challenger concluded.
+//
+// Observed live: a BUY taken at 0.84 risk/reward — risking 50 paise to make 42.
+// A favourable verdict does not make that a good trade, and the cost hurdle
+// alone does not catch it, because a large enough move clears costs while still
+// risking more than it stands to gain.
+export const MIN_RISK_REWARD = 1.2;
+
 const callWithTimeout = async (fn, timeoutMs, label) => Promise.race([
     fn(),
     new Promise((_, reject) =>
@@ -165,10 +191,57 @@ export const reason = async ({
         traderState: state, limits,
     });
 
+    // A weak verdict is resolved here, against measured arithmetic rather than
+    // against the challenger's opinion of itself.
+    //
+    // Entry is permitted on a weak thesis ONLY when the deterministic synthesis
+    // independently establishes that the move clears the 73.55 bps cost hurdle
+    // AND the risk/reward reaches the floor below. Both are computed from the
+    // thesis's own stop and target, not asserted by any model. If either fails,
+    // the weak verdict stands and the action becomes HOLD.
+    //
+    // Nothing downstream is relaxed: position limits, exposure caps, session
+    // policy, fresh-world revalidation and the risk gate all still decide, and
+    // this cannot turn a HOLD into a BUY — only decline to override one.
     stage("synthesis", { synthesis });
 
     const legal = position ? LEGAL_POSITION_ACTIONS : LEGAL_CANDIDATE_ACTIONS;
-    const action = legal.includes(synthesis.action) ? synthesis.action : "HOLD";
+    let action = legal.includes(synthesis.action) ? synthesis.action : "HOLD";
+
+    // The gates that replaced the challenger's blanket vetoes. Applied HERE,
+    // on the action that actually becomes the decision — the synthesis owns
+    // that value, so gating the intermediate object silently did nothing.
+    const entryGates = [];
+    if (["BUY", "ADD"].includes(action)) {
+        const ratio = synthesis.riskReward?.ratio;
+        const clears = synthesis.edge?.verdict === "CLEARS_COSTS";
+
+        // A favourable verdict does not make a bad trade good, and the cost
+        // hurdle does not catch this: a large enough move clears costs while
+        // still risking more than it stands to gain. Observed live at 0.84.
+        if (!Number.isFinite(ratio) || ratio < MIN_RISK_REWARD) {
+            action = "HOLD";
+            entryGates.push(`risk/reward ${Number.isFinite(ratio) ? ratio.toFixed(2) : "UNKNOWN"} `
+                + `is below the ${MIN_RISK_REWARD} floor for a new position`);
+        } else if (challenged.weakVerdict) {
+            // Arithmetic may override the challenger's OPINION that evidence is
+            // thin. It may not stand in for a challenge that never happened.
+            const actuallyChallenged = !challenge.unavailable && !challenge.verdictAssumed;
+            if (!actuallyChallenged) {
+                action = "HOLD";
+                entryGates.push("the thesis was never actually challenged; no new exposure");
+            } else if (clears && ratio >= MIN_RR_ON_WEAK_THESIS) {
+                entryGates.push(`challenger judged the thesis weak, but the measured edge `
+                    + `clears costs at ${ratio.toFixed(2)} risk/reward; entering on the arithmetic`);
+            } else {
+                action = "HOLD";
+                entryGates.push(clears
+                    ? `challenger judged the thesis weak and risk/reward ${ratio.toFixed(2)} `
+                        + `is below the ${MIN_RR_ON_WEAK_THESIS} floor for a weak thesis`
+                    : "challenger judged the thesis weak and the edge does not clear costs");
+            }
+        }
+    }
 
     const confidence = deriveConfidence({ thesis: formed, challenge, synthesis });
 
@@ -176,6 +249,7 @@ export const reason = async ({
         ...(formed.forcedHoldReason ? [formed.forcedHoldReason] : []),
         ...challenged.reasons,
         ...synthesis.reasons,
+        ...entryGates,
     ];
 
     return {

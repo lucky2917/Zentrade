@@ -224,9 +224,18 @@ export class Orchestrator {
 
         for (const event of events) {
             this.metrics.eventsEmitted += 1;
+            // Reasoning is a finite budget, not a free operation: each decision
+            // costs two model calls, and a day's token allowance buys tens of
+            // them, not hundreds. A WARNING on a name we do not hold is the
+            // weakest thing that can ask for the brain's attention, and there
+            // are hundreds of them a session.
+            //
+            // Held positions are unaffected — a WARNING on something we own
+            // still wakes the brain, because that is a question about capital
+            // already at risk. This only raises the bar for DISCOVERY.
             const candidateWorthy = routeOf(event) === ROUTE.CANDIDATE
                 && this.ports.analyseCandidate
-                && (event.severity === "WARNING" || event.severity === "CRITICAL");
+                && event.severity === "CRITICAL";
             const material = requiresReasoning(event) || candidateWorthy;
 
             this.narrate(event.type === "NEWS_EVENT" ? KIND.NEWS_EVENT : KIND.MARKET_EVENT, {
