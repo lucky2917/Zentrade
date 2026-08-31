@@ -3,7 +3,8 @@ import useCockpit from "../hooks/useCockpit.js";
 import { StatusBar, StandbyBanner } from "../components/cockpit/StatusBar.jsx";
 import ReasoningStream from "../components/cockpit/ReasoningStream.jsx";
 import { CurrentThought, MarketWorld, Positions, OrderLifecycle, EventStream,
-         SystemHealth, DecisionCards } from "../components/cockpit/Panels.jsx";
+         SystemHealth, DecisionCards, Account, DecisionHistory }
+    from "../components/cockpit/Panels.jsx";
 import "./TraderCockpit.css";
 
 // The AI trader cockpit.
@@ -49,6 +50,7 @@ const TraderCockpit = () => {
 
             <div className="ck-layout">
                 <aside className="ck-col ck-col-left">
+                    <Account account={snapshot.account} />
                     <CurrentThought narration={snapshot.narration} />
                     <MarketWorld world={snapshot.world} />
                     <SystemHealth snapshot={snapshot} />
@@ -72,6 +74,7 @@ const TraderCockpit = () => {
                                     todaysOrders={snapshot.todaysOrders} />
                     <EventStream events={events} />
                     <DecisionCards cards={snapshot.narration?.decisionCards} />
+                    <DecisionHistory />
                 </aside>
             </div>
 

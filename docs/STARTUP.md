@@ -180,6 +180,42 @@ Postgres and Redis. The preflight and the agent both check them and fail with
 the reason rather than starting degraded. Migrations run automatically on
 backend start — there is nothing to run by hand.
 
+## The account is not reset in the morning
+
+There is one paper account. It was opened once at Rs 10,00,000 and it continues
+from wherever it was: the starting capital is written at opening and never
+updated, and cash only moves when an order fills. A trading day is a reporting
+boundary, not an accounting one, so yesterday's closing cash is today's opening
+cash by virtue of being the same row. Nothing in the codebase assigns a balance
+at startup.
+
+What survives a restart, a crash and a day boundary, all in Postgres:
+
+| | |
+|---|---|
+| cash, positions, average entry, margin committed | `users.balance_paise`, `portfolio` |
+| orders and fills, realised P&L, costs | `orders`, `order_fills` |
+| entry theses and every reassessment | `trade_thesis`, `position_reassessments` |
+| every decision and its reasoning, traded or not | `decision_records` |
+| per-day summaries | `session_summaries` |
+| starts, stops, failed reconciliations | `agent_events` |
+
+Each agent start reconciles before it trades:
+
+    cash = starting capital + opening adjustment + realised P&L - costs
+           - margin committed to open positions
+
+A mismatch is reported and recorded, never repaired. The balance is the record;
+a startup that quietly rewrites it to match its own arithmetic destroys the
+evidence of whatever caused the drift. Duplicate orders are impossible across a
+restart by construction: `client_order_id` is unique in the database, so a
+replayed intent lands on the row that already exists.
+
+The cockpit's Account panel shows equity, cash, both sides of P&L, what is
+committed to positions, and whether the account reconciled. The Decision record
+panel below it reads back from the database, which is why it is still populated
+after a restart.
+
 ## Shutdown
 
 `Ctrl-C` in terminal 3. In order: the trader stops taking new work, drains,

@@ -1,6 +1,6 @@
 import { pool } from "../../config/db.js";
 import redis from "../../config/redis.js";
-import { openPositions, portfolioState, maxAgeForTick } from "./positionState.js";
+import { openPositions, portfolioState, maxAgeForTick, readTick } from "./positionState.js";
 import { openThesisFor, recordThesis, recordReassessment } from "./thesis.js";
 import { reassessPosition } from "./reassess.js";
 import { evaluate as evaluateRisk } from "./riskGate.js";
@@ -8,6 +8,7 @@ import { intentFrom } from "./loop.js";
 import { eventsForReasoning } from "../news/ingest.js";
 import { toPaise } from "../../utils/paise.js";
 import { MAX_RETRIEVAL } from "../memory/repository.js";
+import { recordDecision, sessionDateOf } from "../account/paperAccount.js";
 
 // The live ports.
 //
@@ -30,12 +31,6 @@ const readBars = async (symbol, granularity) => {
         } catch { /* skip malformed */ }
     }
     return bars;
-};
-
-const readTick = async (symbol) => {
-    const raw = await redis.get(`stock:${symbol}`);
-    if (!raw) return null;
-    try { return JSON.parse(raw); } catch { return null; }
 };
 
 // A cached tick has no expiry in Redis, so presence is not freshness: Friday's
@@ -338,13 +333,78 @@ export const buildLivePorts = ({
 
         recordReassessment,
 
+        // Every decision the runtime reaches, durable and auditable — including
+        // the ones that produced no order, which are most of them. A rejected
+        // candidate whose reasoning is gone is indistinguishable afterwards
+        // from a candidate that was never considered.
+        //
+        // What is stored is the structured reasoning the pipeline already
+        // exposes: evidence, thesis, the challenge and its verdict, the
+        // alternatives, the synthesis, the risk outcome and what happened. No
+        // model chain-of-thought is requested or written.
         journal: async (entry) => {
+            const symbol = entry.symbol ?? entry.event?.symbol;
+            const decision = entry.decision ?? {};
             logger?.info?.("Autonomous", "decision", {
-                correlationId: entry.correlationId, symbol: entry.symbol ?? entry.event?.symbol,
-                action: entry.decision?.action, risk: entry.risk?.decision ?? null,
+                correlationId: entry.correlationId, symbol,
+                action: decision.action, risk: entry.risk?.decision ?? null,
                 riskCode: entry.risk?.code ?? null, executed: entry.executed,
                 blocked: entry.blocked ?? null, route: entry.route ?? "POSITION",
             });
+
+            // A journal write must never cost a decision. The decision has
+            // already been taken by the time we get here; losing the record is
+            // bad, and failing the trade because of it is worse.
+            try {
+                await recordDecision({ userId, record: {
+                    correlationId: entry.correlationId,
+                    sessionDate: sessionDateOf(now(entry.asOf)),
+                    symbol, route: entry.route ?? "POSITION",
+                    triggerType: entry.event?.type ?? (entry.reasons?.length ? "screen" : null),
+                    triggerSeverity: entry.event?.severity ?? null,
+                    triggerReason: entry.reasons?.length
+                        ? entry.reasons.join("; ") : (entry.event?.reason ?? null),
+                    action: decision.action ?? "NONE",
+                    confidence: decision.confidence ?? null,
+                    evidence: decision.evidence ?? [],
+                    thesis: decision.reasoning ?? null,
+                    supporting: decision.supportingEvidence ?? [],
+                    contradicting: decision.contradictingEvidence ?? [],
+                    counterThesis: decision.challenge?.counterThesis ?? null,
+                    alternatives: decision.alternativeHypotheses ?? [],
+                    whatWouldChange: decision.whatWouldChangeMyMind ?? [],
+                    challengeVerdict: decision.challenge?.verdict ?? null,
+                    synthesis: {
+                        setupType: decision.setupType ?? null,
+                        horizon: decision.horizon ?? null,
+                        quantity: decision.quantity ?? null,
+                        stopPaise: decision.stopPaise ?? null,
+                        targetPaise: decision.targetPaise ?? null,
+                        riskReward: decision.riskReward ?? null,
+                        edge: decision.edge ?? null,
+                        expectedValue: decision.expectedValue ?? null,
+                        opportunityCost: decision.opportunityCost ?? null,
+                        uncertainty: decision.uncertainty ?? null,
+                        marketRegime: decision.marketRegime ?? null,
+                        downgraded: decision.downgraded ?? null,
+                        fallback: Boolean(decision.fallback),
+                    },
+                    riskDecision: entry.risk?.decision ?? null,
+                    riskCode: entry.risk?.code ?? null,
+                    riskReason: entry.risk?.reason ?? null,
+                    executed: Boolean(entry.executed),
+                    blockedReason: entry.blocked ?? null,
+                    thesisId: entry.thesisId ?? null,
+                    pricePaise: entry.intent?.pricePaise
+                        ?? (Number.isFinite(entry.context?.price)
+                            ? Math.round(entry.context.price * 100) : null),
+                    quantity: entry.intent?.quantity ?? decision.quantity ?? null,
+                    decidedAt: now(entry.asOf),
+                }});
+            } catch (err) {
+                logger?.error?.("Autonomous", "decision journal write failed",
+                                { correlationId: entry.correlationId, error: err.message });
+            }
             return entry;
         },
     };

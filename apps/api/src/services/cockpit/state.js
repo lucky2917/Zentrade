@@ -1,6 +1,8 @@
 import { pool } from "../../config/db.js";
 import { openPositions, portfolioState } from "../autonomous/positionState.js";
 import { OPEN_STATES } from "../execution/engine.js";
+import { accountState, reconcileAccount, recentDecisions, sessionHistory }
+    from "../account/paperAccount.js";
 
 // What a freshly connected cockpit needs to render the whole screen.
 //
@@ -159,6 +161,13 @@ export const buildSnapshot = async ({
         readTodaysOrders(userId, db).catch(() => []),
     ]);
 
+    // Valued from the prices this snapshot already read, so the account panel
+    // and the position rows cannot disagree about what a symbol is worth.
+    const marks = new Map(positions.map((p) => [p.symbol, p.currentPricePaise]));
+    const account = await accountState({
+        userId, db, priceFor: async (symbol) => marks.get(symbol) ?? null,
+    }).catch(() => null);
+
     // The agent's heartbeat carries the runtime's own view: its world, its
     // reflex, its fast-plane bridge. An absent heartbeat means the trader is
     // not running, which the cockpit must show as exactly that rather than as
@@ -180,8 +189,50 @@ export const buildSnapshot = async ({
         runtime: running ? runtimeHealth : null,
         fastPlane: running ? (runtimeHealth.planeHealth ?? null) : null,
         positions,
+        // The persistent account: one continuous paper account that survives
+        // restarts and trading days. `portfolio` below is the exposure view the
+        // risk gate reasons over; this is the money.
+        account,
         portfolio,
         openOrders,
         todaysOrders,
     };
+};
+
+export const readAccount = async (userId, db = pool) => {
+    const now = new Date();
+    const positions = await openPositions(now, userId).catch(() => []);
+    const marks = new Map(positions.map((p) => [p.symbol, p.currentPricePaise]));
+    const [state, reconciliation, sessions] = await Promise.all([
+        accountState({ userId, db, priceFor: async (s) => marks.get(s) ?? null }),
+        reconcileAccount({ userId, db }),
+        sessionHistory({ userId, db }),
+    ]);
+    if (!state) return null;
+    return { ...state, reconciliation, sessions };
+};
+
+// The decision record, including every candidate that was reasoned about and
+// rejected. Stored reasoning artifacts only: evidence, thesis, challenge,
+// alternatives, synthesis, risk and outcome.
+export const readDecisions = async (userId, { limit = 50, symbol = null } = {}, db = pool) => {
+    const rows = await recentDecisions({ userId, limit, symbol, db });
+    return rows.map((r) => ({
+        id: r.id, correlationId: r.correlation_id, sessionDate: r.session_date,
+        symbol: r.symbol, route: r.route, action: r.action, confidence: r.confidence,
+        trigger: r.trigger_type
+            ? { type: r.trigger_type, severity: r.trigger_severity, reason: r.trigger_reason }
+            : null,
+        evidence: r.evidence, thesis: r.thesis,
+        supporting: r.supporting, contradicting: r.contradicting,
+        counterThesis: r.counter_thesis, alternatives: r.alternatives,
+        whatWouldChange: r.what_would_change, challengeVerdict: r.challenge_verdict,
+        synthesis: r.synthesis,
+        risk: r.risk_decision
+            ? { decision: r.risk_decision, code: r.risk_code, reason: r.risk_reason }
+            : null,
+        executed: r.executed, blockedReason: r.blocked_reason,
+        thesisId: r.thesis_id, pricePaise: number(r.price_paise),
+        quantity: number(r.quantity), decidedAt: r.decided_at,
+    }));
 };

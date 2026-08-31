@@ -6,7 +6,7 @@ import {
 import { STATES, assertTransition, isTerminal, stateAfterFill, InvalidTransition } from "./states.js";
 import {
     BROKERAGE_PAISE, buyMarginPaise, buyDebitPaise, buyObligationPaise, sellCreditPaise,
-    remainingMarginPaise,
+    remainingMarginPaise, realisedPnlPaise,
 } from "./ledger.js";
 
 // The Postgres execution engine.
@@ -201,6 +201,12 @@ export const applyFill = async ({
         // partially filled order is not billed twice.
         const chargeBrokerage = Number(order.filled_quantity) === 0;
 
+        // What this fill booked. A buy books none; a sell books the difference
+        // against the average entry, which is the same arithmetic the cash
+        // credit uses. Recorded on the order because it is the only durable
+        // place realised P&L exists once the position row is gone.
+        let bookedPnlPaise = null;
+
         if (order.type === "BUY") {
             const margin = buyMarginPaise({ quantity, pricePaise, mode: order.order_mode });
             const debit = buyDebitPaise({
@@ -221,6 +227,7 @@ export const applyFill = async ({
                     `sell fill of ${quantity} exceeds holding of ${have}; would create a negative position`);
 
             const { avgPricePaise, marginUsedPaise } = held;
+            bookedPnlPaise = realisedPnlPaise({ quantity, avgPricePaise, pricePaise });
             const credit = sellCreditPaise({
                 quantity, heldQuantity: have, marginUsedPaise, avgPricePaise, pricePaise,
                 mode: order.order_mode, chargeBrokerage });
@@ -234,7 +241,8 @@ export const applyFill = async ({
         }
 
         const updated = await updateOrderProgress(client, {
-            orderId, state: nextState, filledQuantity: filled, reservedPaise: reserved });
+            orderId, state: nextState, filledQuantity: filled, reservedPaise: reserved,
+            realisedPnlPaise: bookedPnlPaise });
 
         return { order: updated, duplicate: false };
     });

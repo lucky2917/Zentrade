@@ -224,3 +224,37 @@
 
 .ck-footer { padding: 14px 16px; color: var(--ck-muted); font-size: 11px;
              border-top: 1px solid var(--ck-line); }
+
+/* account */
+.ck-money-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ck-money { display: flex; flex-direction: column; background: #0e1218;
+    border: 1px solid var(--ck-line); border-radius: 4px; padding: 6px 8px; }
+.ck-money-label { color: var(--ck-muted); font-size: 10px; text-transform: uppercase;
+                  letter-spacing: 0.04em; }
+.ck-money-value { font-size: 14px; font-variant-numeric: tabular-nums; }
+.ck-money-hint { color: var(--ck-muted); font-size: 10px; }
+.ck-account-meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px;
+                   margin: 10px 0 0; font-size: 11px; }
+.ck-account-meta dt { color: var(--ck-muted); }
+.ck-account-meta dd { margin: 0; }
+.ck-reconciled { font-size: 10px; margin: 8px 0 0; }
+.ck-sessions { list-style: none; margin: 8px 0 0; padding: 8px 0 0; font-size: 11px;
+    border-top: 1px solid var(--ck-line); display: flex; flex-direction: column; gap: 2px; }
+.ck-sessions li { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px;
+                  font-variant-numeric: tabular-nums; }
+.ck-sessions time { color: var(--ck-muted); }
+
+/* decision record */
+.ck-decisions { list-style: none; margin: 0; padding: 0; display: flex;
+                flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; }
+.ck-decisions button { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px;
+    width: 100%; text-align: left; background: none; border: none; color: inherit;
+    font: inherit; font-size: 11px; padding: 2px 0 2px 6px; cursor: pointer;
+    border-left: 2px solid var(--ck-line); }
+.ck-decisions button:hover { border-left-color: var(--ck-accent); }
+.ck-decisions time { color: var(--ck-muted); }
+.ck-decision { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+.ck-decision dt { color: var(--ck-muted); }
+.ck-decision dd { margin: 0; }
+.ck-evidence { list-style: none; margin: 0; padding: 0; }
+.ck-evidence li { font-size: 11px; }

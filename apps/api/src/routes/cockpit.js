@@ -1,7 +1,8 @@
 import express from "express";
 import auth from "../middleware/auth.js";
 import { narrator } from "../services/cockpit/narrator.js";
-import { buildSnapshot, readPositionTimeline } from "../services/cockpit/state.js";
+import { buildSnapshot, readPositionTimeline, readAccount, readDecisions }
+    from "../services/cockpit/state.js";
 
 // The cockpit's HTTP surface.
 //
@@ -39,6 +40,28 @@ export const buildCockpitRouter = ({ runtimeHealth = async () => null,
             oldestSeq: narrator.log.length ? narrator.log[0].seq : narrator.seq,
             events: narrator.since(since, limit),
         });
+    });
+
+    // The persistent account, its reconciliation status and its session history.
+    router.get("/account", auth, async (_req, res) => {
+        try {
+            const state = await readAccount(account());
+            if (!state) return res.status(404).json({ error: "no paper account" });
+            res.json(state);
+        } catch (err) {
+            res.status(503).json({ error: "account unavailable", detail: err.message });
+        }
+    });
+
+    // The decision record. Survives restarts, which is the point of it.
+    router.get("/decisions", auth, async (req, res) => {
+        try {
+            const symbol = typeof req.query.symbol === "string" ? req.query.symbol : null;
+            res.json({ decisions: await readDecisions(account(), {
+                limit: Number(req.query.limit) || 50, symbol }) });
+        } catch (err) {
+            res.status(503).json({ error: "decisions unavailable", detail: err.message });
+        }
     });
 
     router.get("/position/:symbol", auth, async (req, res) => {

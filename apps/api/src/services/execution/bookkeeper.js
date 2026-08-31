@@ -158,15 +158,21 @@ export const insertCompletedOrder = async (client, params) => {
 };
 
 // Advancing an order the state machine already validated.
+//
+// `realisedPnlPaise` is the P&L THIS fill booked, accumulated onto the order so
+// a partially filled exit ends up carrying the whole of it. Null for anything
+// that books none, which leaves the column untouched rather than zeroing it.
 export const updateOrderProgress = async (client, {
-    orderId, state, filledQuantity, reservedPaise,
+    orderId, state, filledQuantity, reservedPaise, realisedPnlPaise = null,
 }) => {
     const { rows } = await client.query(
         `UPDATE orders SET state=$2::varchar, filled_quantity=$3, reserved_paise=$4,
+                pnl_paise = CASE WHEN $5::bigint IS NULL THEN pnl_paise
+                                 ELSE COALESCE(pnl_paise, 0) + $5::bigint END,
                 last_update_at=NOW(),
                 completed_at = CASE WHEN $2::varchar = 'FILLED' THEN NOW()
                                     ELSE completed_at END
          WHERE id=$1 RETURNING *`,
-        [orderId, state, filledQuantity, reservedPaise]);
+        [orderId, state, filledQuantity, reservedPaise, realisedPnlPaise]);
     return rows[0];
 };

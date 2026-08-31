@@ -6,25 +6,30 @@
 
 export const UNKNOWN = "UNKNOWN";
 
+// The one definition of "we have this value". Number(null) is 0, so a bare
+// isFinite check quietly turns an absent figure into a real-looking zero.
+export const isKnown = (value) =>
+    value !== null && value !== undefined && Number.isFinite(Number(value));
+
 export const rupees = (paise) => {
-    if (paise === null || paise === undefined || !Number.isFinite(Number(paise))) return UNKNOWN;
+    if (!isKnown(paise)) return UNKNOWN;
     return `₹${(Number(paise) / 100).toLocaleString("en-IN", {
         minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 export const signedRupees = (paise) => {
-    if (paise === null || paise === undefined || !Number.isFinite(Number(paise))) return UNKNOWN;
+    if (!isKnown(paise)) return UNKNOWN;
     const value = Number(paise);
     return `${value >= 0 ? "+" : "−"}${rupees(Math.abs(value))}`;
 };
 
 export const percent = (value, digits = 2) => {
-    if (value === null || value === undefined || !Number.isFinite(Number(value))) return UNKNOWN;
+    if (!isKnown(value)) return UNKNOWN;
     return `${Number(value) >= 0 ? "+" : "−"}${Math.abs(Number(value)).toFixed(digits)}%`;
 };
 
 export const ratio = (value, digits = 2) => {
-    if (value === null || value === undefined || !Number.isFinite(Number(value))) return UNKNOWN;
+    if (!isKnown(value)) return UNKNOWN;
     return Number(value).toFixed(digits);
 };
 

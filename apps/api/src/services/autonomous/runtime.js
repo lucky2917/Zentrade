@@ -785,6 +785,12 @@ export class AutonomousRuntime {
         const correlationId = `cand-${randomUUID()}`;
         this.metrics.candidateReasoning += 1;
 
+        // One journal entry per outcome, every outcome. The identity of the
+        // decision and the world it was taken in are the same for all of them,
+        // so they are bound once here rather than repeated at each exit.
+        const record = (fields) => this.sourcePorts.journal?.({
+            correlationId, symbol, route: "CANDIDATE", event, context, reasons, asOf, ...fields });
+
         // G4. One instant for this decision. Every read below is bound to it,
         // except the Tier 4 revalidation, which must be fresh by definition.
         const decision = await this.sourcePorts.analyseCandidate({
@@ -793,16 +799,14 @@ export class AutonomousRuntime {
         });
 
         if (!decision || decision.action !== "BUY") {
-            await this.sourcePorts.journal?.({
-                correlationId, symbol, decision, risk: null, executed: false, route: "CANDIDATE" });
+            await record({ decision, risk: null, executed: false });
             return { action: decision?.action ?? null, executed: false, journaled: true };
         }
 
         const price = context?.price ?? null;
         if (!Number.isFinite(price)) {
-            await this.sourcePorts.journal?.({
-                correlationId, symbol, decision, risk: null, executed: false,
-                blocked: "no usable price for sizing" });
+            await record({ decision, risk: null, executed: false,
+                           blocked: "no usable price for sizing" });
             return { action: "BUY", executed: false, blocked: "no price", journaled: true };
         }
 
@@ -836,9 +840,8 @@ export class AutonomousRuntime {
         const check = revalidate({ intent: proposed, observation, world });
         if (check.verdict === VERDICT.REJECT) {
             this.metrics.revalidationRejections += 1;
-            await this.sourcePorts.journal?.({
-                correlationId, symbol, decision, risk: null, executed: false,
-                blocked: `revalidation ${check.code}: ${check.reason}` });
+            await record({ decision, risk: null, executed: false,
+                           blocked: `revalidation ${check.code}: ${check.reason}` });
             return { action: "BUY", executed: false, blocked: check.code, journaled: true };
         }
         const intent = check.intent;
@@ -852,8 +855,7 @@ export class AutonomousRuntime {
         });
 
         if (risk.decision !== DECISION.ALLOW) {
-            await this.sourcePorts.journal?.({
-                correlationId, symbol, decision, risk, executed: false });
+            await record({ decision, risk, executed: false, intent });
             return { action: "BUY", executed: false, risk: risk.code, journaled: true };
         }
 
@@ -891,8 +893,8 @@ export class AutonomousRuntime {
                 thesisId: String(thesis.id), correlationId, direction: DIRECTION.LONG });
         }
 
-        await this.sourcePorts.journal?.({
-            correlationId, symbol, decision, risk, executed: true, thesisId: thesis?.id ?? null });
+        await record({ decision, risk, executed: true, intent,
+                       thesisId: thesis?.id ?? null });
         return { action: "BUY", executed: true, thesisId: thesis?.id ?? null, journaled: true };
     }
 

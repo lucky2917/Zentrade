@@ -32,7 +32,7 @@ export const SESSION_PHASES = INTELLIGENCE_PHASES;
 export const sessionPhase = phaseAtMinutes;
 export { istMinutesOf };
 
-const readTick = async (symbol) => {
+export const readTick = async (symbol) => {
     const raw = await redis.get(`stock:${symbol}`);
     if (!raw) return null;
     try {

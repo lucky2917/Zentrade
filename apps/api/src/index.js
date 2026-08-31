@@ -461,9 +461,14 @@ const start = async () => {
             redis: async () => { await redis.ping(); return true; },
             recovery: async () => {
                 const { openOrders } = await import("./services/execution/engine.js");
+                const { ensureAccount } = await import("./services/account/paperAccount.js");
+                // Idempotent, and deliberately here rather than only in the
+                // agent: the cockpit can be opened without the agent running,
+                // and it must show a real account either way.
+                const account = await ensureAccount({ userId: DEFAULT_USER_ID });
                 const open = await openOrders(DEFAULT_USER_ID);
                 logger.info("Server", `recovered ${open.length} open order(s)`);
-                return { openOrders: open.length };
+                return { openOrders: open.length, accountOpenedAt: account.opened_at };
             },
             reconciliation: async () => {
                 const { hasUnresolvedAmbiguity } = await import("./services/execution/reconcile.js");

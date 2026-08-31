@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../../services/api.js";
-import { clockTime, duration, percent, rupees, signedRupees, ratio,
+import { clockTime, duration, percent, rupees, signedRupees, ratio, isKnown,
          titleCase, severityClass, UNKNOWN } from "./format.js";
 
 // ---- current thought -------------------------------------------------------
@@ -180,6 +180,203 @@ const Timeline = ({ symbol, onClose }) => {
                 ) : null}
             </div>
         </div>
+    );
+};
+
+// ---- the persistent account ------------------------------------------------
+//
+// One continuous paper account. It was opened once, and every figure here was
+// read back from the database, not accumulated in this process: what is on the
+// screen is what survives a restart.
+
+// A figure the account does not have is not coloured as a gain: UNKNOWN in
+// green reads as good news, which is the one thing it never is.
+const moneyClass = (paise, signed) => {
+    if (!signed || !isKnown(paise)) return "ck-money-value";
+    return Number(paise) >= 0 ? "ck-money-value ck-up" : "ck-money-value ck-down";
+};
+
+const Money = ({ label, paise, signed = false, hint = null }) => (
+    <div className="ck-money">
+        <span className="ck-money-label">{label}</span>
+        <span className={moneyClass(paise, signed)}>
+            {signed ? signedRupees(paise) : rupees(paise)}
+        </span>
+        {hint ? <span className="ck-money-hint">{hint}</span> : null}
+    </div>
+);
+
+export const Account = ({ account }) => {
+    if (!account) {
+        return <section className="ck-panel"><h2>Account</h2>
+            <p className="ck-muted">Account state {UNKNOWN}.</p></section>;
+    }
+
+    const day = account.sessions?.[0] ?? null;
+    const failed = account.reconciliation?.checks?.filter((c) => !c.ok) ?? [];
+
+    return (
+        <section className="ck-panel">
+            <h2>Account <span className="ck-muted">· paper · persistent</span></h2>
+            <div className="ck-money-grid">
+                <Money label="Equity" paise={account.equityPaise}
+                       hint={account.fullyPriced ? null : "some positions unpriced"} />
+                <Money label="Cash" paise={account.cashPaise} />
+                <Money label="Realised P&L" paise={account.realisedPnlPaise} signed
+                       hint={account.openingAdjustmentPaise
+                           ? `${signedRupees(account.openingAdjustmentPaise)} realised before this record`
+                           : null} />
+                <Money label="Unrealised P&L" paise={account.unrealisedPnlPaise} signed />
+                <Money label="Since opening" paise={account.totalPnlPaise} signed
+                       hint={`from ${rupees(account.startingCapitalPaise)}`} />
+                <Money label="Costs paid" paise={account.costsPaise} />
+            </div>
+
+            <dl className="ck-account-meta">
+                <dt>Committed to positions</dt>
+                <dd>{rupees(account.marginUsedPaise)} · {account.positions?.length ?? 0} open</dd>
+                <dt>Opened</dt>
+                <dd>{account.openedAt ? new Date(account.openedAt).toLocaleDateString("en-IN")
+                                      : UNKNOWN}</dd>
+                {day ? (<>
+                    <dt>Today</dt>
+                    <dd>
+                        opened {rupees(day.opening_cash_paise)} ·
+                        {" "}{day.orders_placed} order(s) ·
+                        {" "}{day.decisions_made} decision(s)
+                    </dd>
+                </>) : null}
+            </dl>
+
+            {failed.length ? (
+                <p className="ck-bad">
+                    DID NOT RECONCILE: {failed.map((c) => c.name).join(", ")}
+                    {account.reconciliation.driftPaise
+                        ? ` · drift ${signedRupees(account.reconciliation.driftPaise)}` : ""}
+                </p>
+            ) : (
+                <p className="ck-muted ck-reconciled">
+                    Reconciled: cash equals starting capital plus realised P&L, less costs
+                    and margin committed.
+                </p>
+            )}
+
+            {account.sessions?.length > 1 ? (
+                <ol className="ck-sessions">
+                    {account.sessions.slice(0, 8).map((sn) => (
+                        <li key={sn.session_date}>
+                            <time>{String(sn.session_date).slice(0, 10)}</time>
+                            <span>{rupees(sn.closing_cash_paise)}</span>
+                            <span className={Number(sn.realised_pnl_paise) >= 0
+                                             ? "ck-up" : "ck-down"}>
+                                {signedRupees(sn.realised_pnl_paise)}
+                            </span>
+                        </li>
+                    ))}
+                </ol>
+            ) : null}
+        </section>
+    );
+};
+
+// ---- the decision record ---------------------------------------------------
+//
+// Every decision, including the ones that produced no trade. Read from the
+// database on demand, which is why it is still here after a restart.
+
+export const DecisionHistory = () => {
+    const [decisions, setDecisions] = useState(null);
+    const [error, setError] = useState(null);
+    const [openId, setOpenId] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        api.get("/internal/cockpit/decisions?limit=40", { baseURL: "/" })
+            .then(({ data }) => { if (!cancelled) setDecisions(data.decisions ?? []); })
+            .catch(() => { if (!cancelled) setError("Decision history unavailable."); });
+        return () => { cancelled = true; };
+    }, []);
+
+    if (error) return <section className="ck-panel"><h2>Decision record</h2>
+        <p className="ck-muted">{error}</p></section>;
+    if (!decisions) return <section className="ck-panel"><h2>Decision record</h2>
+        <p className="ck-muted">loading…</p></section>;
+    if (!decisions.length) return <section className="ck-panel"><h2>Decision record</h2>
+        <p className="ck-muted">No decision has been recorded yet.</p></section>;
+
+    const open = decisions.find((d) => d.id === openId) ?? null;
+
+    return (
+        <section className="ck-panel">
+            <h2>Decision record <span className="ck-muted">({decisions.length})</span></h2>
+            <ul className="ck-decisions">
+                {decisions.map((d) => (
+                    <li key={d.id}>
+                        <button type="button" onClick={() => setOpenId(d.id)}>
+                            <time>{clockTime(d.decidedAt)}</time>
+                            <span className="ck-symbol">{d.symbol}</span>
+                            <span>{d.action}</span>
+                            <span className={d.executed ? "ck-up" : "ck-muted"}>
+                                {d.executed ? "traded" : (d.blockedReason ? "blocked" : "no trade")}
+                            </span>
+                        </button>
+                    </li>
+                ))}
+            </ul>
+            {open ? (
+                <div className="ck-modal" role="dialog"
+                     aria-label={`${open.symbol} decision`}>
+                    <div className="ck-modal-body">
+                        <div className="ck-modal-head">
+                            <h3>{open.symbol} · {open.action} · {clockTime(open.decidedAt)}</h3>
+                            <button type="button" onClick={() => setOpenId(null)}>close</button>
+                        </div>
+                        <dl className="ck-decision">
+                            <dt>Triggered by</dt>
+                            <dd>{open.trigger
+                                ? `${titleCase(open.trigger.type)}${open.trigger.reason
+                                    ? ` — ${open.trigger.reason}` : ""}`
+                                : UNKNOWN}</dd>
+                            <dt>Thesis</dt>
+                            <dd>{open.thesis ?? UNKNOWN}</dd>
+                            <dt>Supporting</dt>
+                            <dd>{open.supporting?.join("; ") || UNKNOWN}</dd>
+                            <dt>Contradicting</dt>
+                            <dd>{open.contradicting?.join("; ") || UNKNOWN}</dd>
+                            <dt>Challenge</dt>
+                            <dd>{open.challengeVerdict ?? UNKNOWN}
+                                {open.counterThesis ? ` — ${open.counterThesis}` : ""}</dd>
+                            <dt>Alternatives considered</dt>
+                            <dd>{open.alternatives?.join("; ") || UNKNOWN}</dd>
+                            <dt>What would change its mind</dt>
+                            <dd>{open.whatWouldChange?.join("; ") || UNKNOWN}</dd>
+                            <dt>Evidence</dt>
+                            <dd>
+                                {open.evidence?.length ? (
+                                    <ul className="ck-evidence">
+                                        {open.evidence.map((e, i) => (
+                                            <li key={i}>
+                                                <span className="ck-muted">{e.tier}</span>
+                                                {" "}{e.statement}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : UNKNOWN}
+                            </dd>
+                            <dt>Risk gate</dt>
+                            <dd>{open.risk
+                                ? `${open.risk.decision}${open.risk.code
+                                    ? ` (${open.risk.code})` : ""}`
+                                : "not reached"}</dd>
+                            <dt>Outcome</dt>
+                            <dd>{open.executed
+                                ? `executed ${open.quantity ?? UNKNOWN} at ${rupees(open.pricePaise)}`
+                                : (open.blockedReason ?? "no order")}</dd>
+                        </dl>
+                    </div>
+                </div>
+            ) : null}
+        </section>
     );
 };
 

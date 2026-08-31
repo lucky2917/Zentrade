@@ -111,6 +111,18 @@ const start = async () => {
     connectionTracker.onConnecting();
     connectionTracker.onConnected();
 
+    // The account is opened (once, ever) and its opening state recorded before
+    // the runtime starts. If this process resumed a day that already had cash,
+    // positions and P&L, that is what it continues from.
+    const { openAccountSession } = await import("./services/account/session.js");
+    const accountSession = await openAccountSession({ userId: USER_ID, logger });
+    logger.info("Agent", "paper account resumed", {
+        sessionDate: accountSession.sessionDate,
+        cashPaise: accountSession.opening?.cashPaise ?? null,
+        equityPaise: accountSession.opening?.equityPaise ?? null,
+        openPositions: accountSession.opening?.positions?.length ?? 0,
+    });
+
     await runtime.start();
     // The cockpit this stack serves is the local one. FRONTEND_URL names the
     // deployed frontend, which talks to the deployed backend — a different
@@ -149,9 +161,11 @@ const start = async () => {
         logger.info("Agent", `${signal} received, stopping the trader`);
         clearInterval(heartbeat);
         try {
-            // Order matters: stop taking new work, drain and reconcile, then
-            // let go of the connections that reconciliation needs.
+            // Order matters: stop taking new work, drain and reconcile, close
+            // the day's account record, then let go of the connections that all
+            // of that needs.
             await runtime.stop();
+            await accountSession.close(signal);
             await redis.del(RUNTIME_HEALTH_KEY);
             await ticks.quit().catch(() => {});
             await pool.end().catch(() => {});

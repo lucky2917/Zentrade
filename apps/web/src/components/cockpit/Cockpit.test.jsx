@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import { StatusBar, StandbyBanner } from "./StatusBar.jsx";
 import ReasoningStream from "./ReasoningStream.jsx";
-import { CurrentThought, Positions, OrderLifecycle, SystemHealth, MarketWorld }
+import { CurrentThought, Positions, OrderLifecycle, SystemHealth, MarketWorld, Account }
     from "./Panels.jsx";
 import { rupees, percent, duration, clockTime, UNKNOWN } from "./format.js";
 
@@ -283,5 +283,68 @@ describe("the world panel", () => {
     it("says no observation has completed rather than showing an empty table", () => {
         render(<MarketWorld world={{ session: "PRE_MARKET", symbols: [] }} />);
         expect(screen.getByText(/No observation pass has completed/)).toBeTruthy();
+    });
+});
+
+// ---- the persistent account -------------------------------------------------
+
+const accountState = (over = {}) => ({
+    mode: "PAPER", startingCapitalPaise: 100_000_000,
+    openedAt: "2026-08-24T03:45:00.000Z",
+    cashPaise: 98_320_400, marginUsedPaise: 1_675_600, positionValuePaise: 8_478_000,
+    equityPaise: 101_200_000, realisedPnlPaise: 1_250_000, unrealisedPnlPaise: 54_000,
+    costsPaise: 6_000, totalPnlPaise: 1_200_000, filledOrders: 6,
+    openingAdjustmentPaise: 0,
+    positions: [{ symbol: "OLAELEC", quantity: 2000, avgPricePaise: 4189,
+                  lastPricePaise: 4216, priced: true }],
+    fullyPriced: true,
+    reconciliation: { ok: true, driftPaise: 0, checks: [
+        { name: "ledger", ok: true }, { name: "no duplicate orders", ok: true }] },
+    sessions: [{ session_date: "2026-08-31", opening_cash_paise: 98_320_400,
+                 closing_cash_paise: 98_320_400, realised_pnl_paise: 0,
+                 orders_placed: 1, decisions_made: 12 }],
+    ...over,
+});
+
+describe("the persistent account", () => {
+    it("shows equity, cash and both sides of P&L against the starting capital", () => {
+        render(<Account account={accountState()} />);
+        expect(screen.getByText("₹10,12,000.00")).toBeTruthy();          // equity
+        expect(screen.getByText("₹9,83,204.00")).toBeTruthy();           // cash
+        expect(screen.getByText("+₹12,500.00")).toBeTruthy();            // realised
+        expect(screen.getByText("+₹540.00")).toBeTruthy();               // unrealised
+        expect(screen.getByText(/from ₹10,00,000.00/)).toBeTruthy();
+    });
+
+    it("says the account did not reconcile rather than showing a tidy number", () => {
+        render(<Account account={accountState({
+            reconciliation: { ok: false, driftPaise: -5000, checks: [
+                { name: "ledger", ok: false }] } })} />);
+        expect(screen.getByText(/DID NOT RECONCILE: ledger/)).toBeTruthy();
+        expect(screen.getByText(/drift −₹50.00/)).toBeTruthy();
+    });
+
+    it("flags an unpriced position instead of valuing it at nothing", () => {
+        render(<Account account={accountState({ fullyPriced: false })} />);
+        expect(screen.getByText("some positions unpriced")).toBeTruthy();
+    });
+
+    it("says how much of the realised P&L predates the record", () => {
+        render(<Account account={accountState({ openingAdjustmentPaise: -89_700 })} />);
+        expect(screen.getByText("−₹897.00 realised before this record")).toBeTruthy();
+    });
+
+    it("does not colour an unknown figure as a gain", () => {
+        const { container } = render(
+            <Account account={accountState({ unrealisedPnlPaise: null })} />);
+        const unknown = [...container.querySelectorAll(".ck-money-value")]
+            .find((el) => el.textContent === UNKNOWN);
+        expect(unknown).toBeTruthy();
+        expect(unknown.className).toBe("ck-money-value");
+    });
+
+    it("reports an absent account as absent", () => {
+        render(<Account account={null} />);
+        expect(screen.getByText(`Account state ${UNKNOWN}.`)).toBeTruthy();
     });
 });
