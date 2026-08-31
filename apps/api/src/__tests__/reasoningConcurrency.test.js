@@ -48,9 +48,14 @@ const instrument = (orchestrator, { delayMs = 10 } = {}) => {
 };
 
 describe("bounded parallel reasoning", () => {
-    it("defaults to a batch larger than one worker can carry", () => {
+    // Concurrency is now bounded by the MODEL, not by workers: each decision
+    // costs two sequential model calls against a rate-limited provider, so
+    // running more chains in parallel only deepens a queue that then times out.
+    // The batch still exceeds it, so a burst is drained across cycles rather
+    // than one item at a time.
+    it("defaults to a batch larger than the concurrency it runs at", () => {
         expect(DEFAULT_REASONING.batch).toBeGreaterThan(DEFAULT_REASONING.concurrency);
-        expect(DEFAULT_REASONING.concurrency).toBeGreaterThan(1);
+        expect(DEFAULT_REASONING.concurrency).toBeGreaterThanOrEqual(1);
     });
 
     it("reasons about different symbols at the same time", async () => {

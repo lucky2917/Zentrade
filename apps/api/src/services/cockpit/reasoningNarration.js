@@ -103,7 +103,11 @@ export const makeStageNarrator = ({ narrator, symbol, trigger = null,
                     invalidationConditions: list(formed.invalidationConditions),
                     catalyst: formed.catalyst ?? null,
                     uncertainty: list(formed.uncertainty),
-                    proposedAction: formed.action ?? null,
+                    // validateThesis returns proposedAction; reading .action
+                    // showed null in the cockpit for every thesis ever formed.
+                    proposedAction: formed.proposedAction ?? null,
+                    forcedHoldReason: formed.forcedHoldReason ?? null,
+                    falsifiable: formed.falsifiable ?? null,
                     quantity: formed.quantity ?? null,
                     stopPaise: formed.stopPaise ?? null,
                     targetPaise: formed.targetPaise ?? null,

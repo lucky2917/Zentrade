@@ -86,6 +86,11 @@ export const deriveConfidence = ({ thesis, challenge, synthesis }) => {
     return { level, reasons };
 };
 
+// The timeout has to cover queue time, not just network time. The model
+// transport is rate limited, so a call waits its turn before it is even sent;
+// a 20-second bound killed challenges while they were still queued, and an
+// unreadable challenge is treated as the most adverse outcome — so every one
+// of those became a forced HOLD that looked like a considered judgement.
 const callWithTimeout = async (fn, timeoutMs, label) => Promise.race([
     fn(),
     new Promise((_, reject) =>
@@ -96,7 +101,7 @@ export const reason = async ({
     symbol, context, event = null, position = null, thesis: entryThesis = null,
     portfolio = null, news = [], dailyRegimeTag = null, riskState = null,
     previousAssessment = null, screenReasons = [], market = null, memories = [], asOf,
-    formModel, challengeModel, limits = {}, timeoutMs = 20_000, logger = null,
+    formModel, challengeModel, limits = {}, timeoutMs = 45_000, logger = null,
     // Called as each stage COMPLETES, so an operator watching the cockpit sees
     // the reasoning arrive in the order it actually happened rather than all at
     // once at the end. Pure by contract: the pipeline hands over a value and

@@ -43,7 +43,13 @@ export const DEFAULT_INTERVALS = {
 // Concurrency is deliberately small. Each chain issues two sequential model
 // calls, so this is also the ceiling on simultaneous requests to the model
 // provider, and exceeding its rate limit turns a burst into a retry storm.
-export const DEFAULT_REASONING = { batch: 6, concurrency: 2 };
+// Sized to the MODEL budget, not picked. Each decision costs two sequential
+// model calls, so a batch of 3 is 6 calls a cycle; against a 20/minute model
+// ceiling that is roughly a cycle every 18 seconds, and the scheduler skips the
+// intervening ticks because a job never overlaps itself. Demand therefore
+// matches supply instead of queueing 140 calls a minute at a provider that
+// answers 429.
+export const DEFAULT_REASONING = { batch: 2, concurrency: 1 };
 
 export class Orchestrator {
     constructor({ ports, intervals = {}, reasoning = {},

@@ -108,6 +108,17 @@ export const StandbyBanner = ({ snapshot, events }) => {
             FEED STALE — new exposure blocked
         </div>;
     }
+    // A trader that cannot reach its model produces safe HOLDs, and a safe HOLD
+    // is indistinguishable from a considered one on screen. Say it plainly.
+    if (snapshot?.runtime?.model?.exhausted) {
+        const mins = Math.ceil((snapshot.runtime.model.resumesInSeconds ?? 0) / 60);
+        return <div className="ck-banner ck-banner-bad">
+            REASONING UNAVAILABLE — the model budget is exhausted
+            <span className="ck-banner-sub">
+                {" "}· protection and risk still active · retry in ~{mins}m
+            </span>
+        </div>;
+    }
     if (world?.session === "CLOSED") {
         return <div className="ck-banner ck-banner-quiet">
             MARKET CLOSED — autonomous trader on standby

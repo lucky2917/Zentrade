@@ -64,10 +64,13 @@ const thesisRow = {
 };
 
 const transportFor = (challengeVerdict = CHALLENGE_RESPONSE) =>
+    // Discriminate on a heading only the challenge prompt carries. Matching the
+    // word "challenge" anywhere broke the moment the formation prompt mentioned
+    // that a challenger would review the proposal — the formation call then got
+    // the challenge response and every thesis came back unarticulated.
     vi.fn(async (_model, prompt) =>
-        (String(prompt).toLowerCase().includes("challenge")
-         || String(prompt).toLowerCase().includes("objection"))
-            ? challengeVerdict : THESIS_RESPONSE);
+        (String(prompt).includes("THE THESIS UNDER EXAMINATION")
+            ? challengeVerdict : THESIS_RESPONSE));
 
 const buildOrchestrator = ({ narrator, transport, riskDecision = "ALLOW",
                              executed = [] } = {}) => {

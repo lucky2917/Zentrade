@@ -1,5 +1,6 @@
 import { STOCK_MAP } from "../config/stocks.js";
 import redis from "../config/redis.js";
+import Bottleneck from "bottleneck";
 import logger from "../utils/logger.js";
 import { computeIndicators, computeIntradayContext } from "./technicalIndicators.js";
 import { fetchStockNews } from "./newsService.js";
@@ -27,6 +28,85 @@ export const MODELS = {
     synthesizer: "openai/gpt-oss-120b",
 };
 
+// ─── Model rate limiting ─────────────────────────────────────────────────────
+//
+// The Fyers REST path has had a limiter since the beginning; the model path had
+// none. With the autonomous loop running, reasoning issued roughly 140 model
+// calls a minute and the provider answered 91 of them with 429.
+//
+// The damage was not the failed calls. `callGroqSafe` retries once and then
+// throws, and the pipeline treats an unreadable challenge as the MOST ADVERSE
+// outcome — correctly, because an unchallenged thesis must never be traded. So
+// every rate-limited challenge became THESIS_WEAK, every thesis was downgraded,
+// and the system produced HOLD 160 times in a row while looking healthy. The
+// adversarial pass never actually ran.
+//
+// Calls now queue rather than fail. A slower decision is a decision; a
+// rate-limited one is a forced HOLD wearing a decision's clothes.
+//
+// The ceiling is deliberately below the provider's advertised request rate.
+// The binding constraint is tokens a minute, not requests: these prompts carry
+// the full evidence block, so a request budget that looks safe still trips the
+// token budget. Measured at 20/minute the provider still refused 39 times;
+// at 12 it does not.
+const MODEL_RPM = Number(process.env.GROQ_MAX_RPM) || 12;
+const MODEL_MAX_CONCURRENT = Number(process.env.GROQ_MAX_CONCURRENT) || 1;
+const MODEL_REFRESH_MS = 60_000;
+// Longer than this and waiting is worse than failing: the caller is a
+// scheduled job, and a job that sleeps is a loop that stops.
+const MAX_RETRY_WAIT_MS = Number(process.env.GROQ_MAX_RETRY_WAIT_MS) || 15_000;
+
+const modelLimiter = new Bottleneck({
+    reservoir: MODEL_RPM,
+    reservoirRefreshAmount: MODEL_RPM,
+    reservoirRefreshInterval: MODEL_REFRESH_MS,
+    maxConcurrent: MODEL_MAX_CONCURRENT,
+    minTime: Math.ceil(MODEL_REFRESH_MS / MODEL_RPM),
+});
+
+// Bottleneck cancels its own refresh timer the first time updateSettings runs,
+// and the Fyers limiter was bitten by exactly that. Refilling on our own timer
+// restores the intended ceiling without raising it.
+const refillModelReservoir = async () => {
+    const current = await modelLimiter.currentReservoir();
+    if (current !== null && current < MODEL_RPM) {
+        await modelLimiter.incrementReservoir(MODEL_RPM - current);
+    }
+};
+const modelRefillTimer = setInterval(() => {
+    refillModelReservoir().catch(() => {});
+}, MODEL_REFRESH_MS);
+modelRefillTimer.unref();
+
+// When the provider asks for a wait far longer than any burst window, the
+// per-minute budget is not the constraint — the daily one is spent. Measured:
+// a retry-after of 538 seconds, repeated on every call.
+//
+// This matters beyond wasted calls. A pipeline that cannot reach the model
+// produces a safe HOLD, and a safe HOLD looks exactly like a considered one on
+// the cockpit. Recording exhaustion is what lets the system say "I could not
+// think" instead of quietly appearing to have thought.
+const EXHAUSTED_THRESHOLD_MS = 60_000;
+let exhaustedUntil = 0;
+
+export const noteModelRefusal = (askedMs, now = Date.now()) => {
+    if (askedMs >= EXHAUSTED_THRESHOLD_MS) exhaustedUntil = now + askedMs;
+};
+
+export const modelExhausted = (now = Date.now()) => now < exhaustedUntil;
+
+export const modelBudget = (now = Date.now()) => ({
+    rpm: MODEL_RPM, maxConcurrent: MODEL_MAX_CONCURRENT,
+    // queued() is synchronous; running() returns a Promise and serialised as
+    // an empty object on the wire, so it is not reported at all rather than
+    // reported as nothing.
+    queued: modelLimiter.queued(),
+    exhausted: modelExhausted(now),
+    // Seconds until the provider says it will serve again, when it has said so.
+    resumesInSeconds: modelExhausted(now)
+        ? Math.ceil((exhaustedUntil - now) / 1000) : 0,
+});
+
 // ─── Groq caller ─────────────────────────────────────────────────────────────
 
 // M7: version stamped on every journaled run; bump when prompts/pipeline change
@@ -39,7 +119,7 @@ async function callGroq(model, prompt, temperature = 0.15, maxTokens = 400) {
     if (!apiKey) throw new Error("Add GROQ_API_KEY to server/.env");
 
     const started = performance.now();
-    const res = await fetch(GROQ_URL, {
+    const res = await modelLimiter.schedule(() => fetch(GROQ_URL, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -60,10 +140,25 @@ async function callGroq(model, prompt, temperature = 0.15, maxTokens = 400) {
             reasoning_effort: "low",
         }),
         signal: AbortSignal.timeout(20000),
-    });
+    }));
 
     if (!res.ok) {
-        throw new Error(`Groq API error ${res.status}`);
+        const err = new Error(`Groq API error ${res.status}`);
+        err.status = res.status;
+        // The provider tells us how long to wait. Retrying immediately, which
+        // is what happened before, turns one 429 into two.
+        // Honour the provider's ask, but bounded. It has replied with waits of
+        // 105 seconds, and sleeping that long inside a scheduler job stalls the
+        // whole loop — the candidate scan was observed in-flight for nearly
+        // four minutes. Past the cap the call fails instead, which the pipeline
+        // already treats as the most adverse outcome, and the work returns to
+        // the queue rather than holding the runtime hostage.
+        const asked = Number(res.headers.get("retry-after") || 2) * 1000;
+        err.retryAfterMs = res.status === 429
+            ? (asked > MAX_RETRY_WAIT_MS ? 0 : Math.max(1000, asked))
+            : 0;
+        err.askedMs = res.status === 429 ? asked : 0;
+        throw err;
     }
 
     const data = await res.json();
@@ -101,12 +196,36 @@ export async function callGroqSafe(model, prompt, temperature, maxTokens, sink, 
             costUsd: modelCostUsd(model, meta?.usage ?? null),
         });
 
+    if (modelExhausted()) {
+        const err = new Error("model budget exhausted");
+        err.exhausted = true;
+        record("failed", { error: err.message }, null);
+        throw err;
+    }
+
     try {
         const { result, meta } = await callGroq(model, prompt, temperature, maxTokens);
         record("ok", result, meta);
         return result;
     } catch (firstErr) {
-        logger.error("AIEngine", `${model} failed: ${firstErr.message} — retrying`);
+        // A rate limit is not a transient glitch to retry through; it is the
+        // provider asking for room. Waiting is what makes the second attempt
+        // worth making.
+        if (!firstErr.retryAfterMs && firstErr.askedMs > MAX_RETRY_WAIT_MS) {
+            noteModelRefusal(firstErr.askedMs);
+            logger.warn("AIEngine", `${model} rate limited beyond the wait cap, failing fast`,
+                        { askedMs: firstErr.askedMs, capMs: MAX_RETRY_WAIT_MS,
+                          budgetExhausted: modelExhausted() });
+            record("failed", { error: "rate limited beyond the wait cap" }, null);
+            throw firstErr;
+        }
+        if (firstErr.retryAfterMs) {
+            logger.warn("AIEngine", `${model} rate limited, waiting`,
+                        { waitMs: firstErr.retryAfterMs });
+            await new Promise((r) => setTimeout(r, firstErr.retryAfterMs));
+        } else {
+            logger.error("AIEngine", `${model} failed: ${firstErr.message} — retrying`);
+        }
         try {
             const { result, meta } = await callGroq(model, prompt, temperature, maxTokens);
             record("ok", result, meta);

@@ -13,6 +13,7 @@ import { makeEvent, EVENT_TYPES, SEVERITY } from "./events.js";
 import { THRESHOLDS } from "../intelligence/anomaly.js";
 import { FastPlaneBridge, PLANE_MODE } from "../tick/fastPlane.js";
 import { KIND } from "../cockpit/narrator.js";
+import { modelBudget } from "../aiEngine.js";
 
 // The autonomous runtime.
 //
@@ -31,6 +32,11 @@ export const MODE = { PAPER: "PAPER", LIVE: "LIVE" };
 
 // How many unreconciled crossings the brain will hold for shadow comparison.
 const MAX_COMPARISON_BUFFER = 2_000;
+
+// How many candidates one discovery pass will reason about. The scan runs every
+// minute; anything beyond this waits for the next one rather than blocking the
+// scheduler behind a rate-limited model.
+const MAX_SCAN_REASONING = 2;
 
 // The contract's kind vocabulary maps onto the reflex's one-to-one, so a plane
 // event and a local crossing reach the same protect() and cannot diverge in
@@ -130,6 +136,7 @@ export class AutonomousRuntime {
             protectiveActions: 0, protectiveExits: 0, barsClosed: 0, materialSignals: 0,
             staleSweeps: 0, blindSymbols: 0,
             planeEvents: 0, planeRejected: 0, localCrossingsSuppressed: 0,
+            candidatesDeferred: 0,
         };
 
         // Optional throughout: the runtime behaves identically without one,
@@ -655,11 +662,24 @@ export class AutonomousRuntime {
         this.metrics.candidatesPassed += result.candidates.length;
         this.metrics.candidatesSuppressed += result.suppressed;
 
-        for (const candidate of result.candidates) {
+        // Bounded, and sequential only within that bound.
+        //
+        // This used to reason about every passing candidate in one pass. With a
+        // rate-limited model that made the scan job run for minutes — measured
+        // at 235 seconds and still in flight — while the event-driven reasoning
+        // cycle competed for the same budget. Two paths spending one budget is
+        // how both starve.
+        //
+        // The scan is discovery: it takes the few strongest and lets the next
+        // pass, or the event path, pick up the rest.
+        const take = result.candidates.slice(0, MAX_SCAN_REASONING);
+        for (const candidate of take) {
             await this.handleCandidate({ symbol: candidate.symbol, context: candidate.context,
                                          reasons: candidate.reasons, asOf: now });
         }
-        return { candidates: result.candidates.length, examined: result.examined.length };
+        this.metrics.candidatesDeferred += result.candidates.length - take.length;
+        return { candidates: result.candidates.length, reasoned: take.length,
+                 examined: result.examined.length };
     }
 
     // A candidate is a different question from a position: "is there enough
@@ -847,6 +867,9 @@ export class AutonomousRuntime {
             reflex: this.reflex.health(),
             gate: this.gate.health(),
             fastPlane: this.fastPlane.health(),
+            // Reported so a session that cannot reason says so, rather than
+            // emitting safe HOLDs that read as judgements.
+            model: modelBudget(),
             runtime: { ...this.metrics },
         };
     }

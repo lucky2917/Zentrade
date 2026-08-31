@@ -125,9 +125,14 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("two paths cannot open the same symbol 
                      reasoning: "x", setupType: "breakout", invalidationConditions: ["z"] };
         });
 
+        // The ports must read the world at the fixture's instant, not at the
+        // wall clock. Without this the pre-execution revalidation compares a
+        // tick stamped 11:59 IST against real now, so the test passed in the
+        // morning and failed in the afternoon for no reason it was testing.
         const ports = buildLivePorts({
             userId: USER, newsStore: new NewsStore(), connectionTracker: tracker,
-            universe: [SYMBOL], analyseCandidate: analyse });
+            universe: [SYMBOL], analyseCandidate: analyse,
+            clock: () => new Date(at(12, 0)) });
         const runtime = new AutonomousRuntime({
             engine, reconciler: reconcile, userId: USER,
             clock: () => new Date(at(12, 0)), ports });

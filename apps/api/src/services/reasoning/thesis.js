@@ -31,7 +31,37 @@ ${describeEvidence(s.evidence)}
 ${s.news.length ? `NEWS\n${s.news.map((n) =>
     `  [${n.materiality}] ${n.category}: ${n.subject} (${n.disseminatedAt})`).join("\n")}`
     : "NEWS\n  none retrieved in this window. This is NOT evidence that nothing happened."}
-`;
+${capitalBlock(s)}`;
+
+// What the account can actually deploy.
+//
+// This was missing, and its absence made an entry impossible rather than
+// unlikely: asked for a quantity with no idea how much capital existed, the
+// model correctly answered null every time, and a BUY with no usable size is
+// degraded to HOLD by design. Every candidate died there, so the system could
+// reason perfectly and never trade.
+//
+// Supplying it does NOT move risk to the model. It proposes a size; the
+// deterministic risk gate still decides whether that size is permitted, and
+// revalidation still re-checks it against the world at execution time.
+const capitalBlock = (s) => {
+    const rupees = (paise) => (Number.isFinite(paise)
+        ? `Rs ${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
+        : "unknown");
+    if (s.risk.cashPaise === null || s.risk.cashPaise === undefined) {
+        return `\nACCOUNT\n  available capital unknown — do not propose a quantity`;
+    }
+    return `
+ACCOUNT
+  available capital: ${rupees(s.risk.cashPaise)}
+  open positions: ${s.risk.positionCount ?? "unknown"}
+  gross exposure: ${rupees(s.risk.grossExposurePaise)}
+  unrealised P&L: ${rupees(s.risk.unrealisedPnlPaise)}
+
+  Size any proposal against the available capital. A risk gate will
+  independently re-check whatever you propose, so propose the size the thesis
+  actually justifies rather than the largest one that would fit.`;
+};
 
 const positionBlock = (s) => !s.position ? "" : `
 POSITION HELD
@@ -70,8 +100,20 @@ Rules:
   inference as a fact.
 - If evidence is thin, incomplete or conflicting, say so. NO TRADE is a
   legitimate and often correct conclusion.
+- Declining every setup is also a failure. A trader who never finds sufficient
+  evidence is not being disciplined, they are not doing the job. Where the
+  measured evidence does converge — multi-timeframe alignment, volume expansion
+  against its own baseline, position relative to VWAP — that is a basis for a
+  position, and saying so is the point of the exercise.
 - Do not invent probabilities, prices, volumes or news you were not given.
 - If you cannot name what would prove you wrong, you do not have a thesis.
+
+If you propose BUY it must carry stopRupees, targetRupees and quantity, sized
+against the available capital above. A BUY without all three is not actionable
+and will be treated as HOLD, so either supply them or say HOLD and say why.
+Your proposal is not the final word: an independent challenger will try to
+break it, deterministic arithmetic will test it against a ${"73.55"} bps round-trip
+cost hurdle, and a risk gate decides whether anything executes.
 
 Respond with JSON only:
 {

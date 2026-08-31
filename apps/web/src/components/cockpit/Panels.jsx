@@ -368,6 +368,13 @@ export const SystemHealth = ({ snapshot }) => {
             `depth ${runtime?.orchestrator?.queue?.depth ?? 0}`],
         ["Risk", health.newExposurePermitted ? "healthy" : "degraded",
             health.exposureBlockedBecause ?? "new exposure permitted"],
+        ["Reasoning model", running
+            ? (runtime?.model?.exhausted ? "failed" : "healthy") : "failed",
+            runtime?.model
+                ? (runtime.model.exhausted
+                    ? `budget exhausted — retries in ${runtime.model.resumesInSeconds}s`
+                    : `${runtime.model.rpm}/min · ${runtime.model.queued} queued`)
+                : UNKNOWN],
         ["Reflex lane", running && runtime?.reflex ? "healthy" : "failed",
             runtime?.reflex ? `${runtime.reflex.armedSymbols ?? 0} armed` : UNKNOWN],
     ];
