@@ -189,3 +189,45 @@ describe("unresolved ambiguity blocks new exposure", () => {
         expect(result.code).toBe("UNRESOLVED_AMBIGUITY");
     });
 });
+
+// ---- candidate ranking must agree with candidate screening ------------------
+//
+// The screen admits a symbol on its five-minute move when there is one and its
+// one-minute move otherwise. The ranking read change5m alone, so every
+// candidate that qualified on a one-minute move sorted as zero: the strongest
+// of them lost to the weakest five-minute mover, and with only the top few
+// reasoned about it was never looked at.
+
+describe("candidates are ranked on the move they were screened on", () => {
+    const context = (mtf) => ({ mtf: { complete: true, aligned: true, ...mtf } });
+
+    it("ranks a strong one-minute mover above a weak five-minute mover", async () => {
+        const { rankCandidates } = await import("../services/autonomous/candidates.js");
+        const ranked = rankCandidates([
+            { symbol: "SLOW", context: context({ change5m: 0.012 }) },
+            // Qualifies on its one-minute move; has no five-minute move at all.
+            { symbol: "FAST", context: context({ change1m: 0.05 }) },
+        ]);
+        expect(ranked.map((c) => c.symbol)).toEqual(["FAST", "SLOW"]);
+    });
+
+    it("breaks ties deterministically so the same scan picks the same names",
+       async () => {
+        const { rankCandidates } = await import("../services/autonomous/candidates.js");
+        const ranked = rankCandidates([
+            { symbol: "WIPRO", context: context({ change5m: 0.02 }) },
+            { symbol: "INFY", context: context({ change5m: -0.02 }) },
+            { symbol: "TCS", context: context({ change5m: 0.02 }) },
+        ]);
+        // Direction does not rank; size of the move does.
+        expect(ranked.map((c) => c.symbol)).toEqual(["INFY", "TCS", "WIPRO"]);
+    });
+
+    it("screens and ranks on the same quantity", async () => {
+        const { screenedMove } = await import("../services/autonomous/candidates.js");
+        expect(screenedMove(context({ change5m: 0.02, change1m: 0.05 }))).toBe(0.02);
+        expect(screenedMove(context({ change1m: 0.05 }))).toBe(0.05);
+        expect(screenedMove(context({}))).toBeNull();
+        expect(screenedMove(null)).toBeNull();
+    });
+});

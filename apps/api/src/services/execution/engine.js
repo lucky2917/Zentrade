@@ -274,11 +274,12 @@ export const openOrders = async (userId) => {
 // Orders past their expiry that are still resting. Expiry releases the
 // reservation; it never fabricates a rejection, because the venue did not
 // refuse anything.
-export const expireStaleOrders = async (now = new Date()) => {
+export const expireStaleOrders = async (now = new Date(), userId = null) => {
     const { rows } = await pool.query(
         `SELECT id FROM orders
          WHERE expires_at IS NOT NULL AND expires_at <= $1
-           AND state IN ('ACCEPTED','WORKING','PARTIALLY_FILLED')`, [now]);
+           AND ($2::int IS NULL OR user_id = $2)
+           AND state IN ('ACCEPTED','WORKING','PARTIALLY_FILLED')`, [now, userId]);
     const expired = [];
     for (const row of rows) { expired.push(await expireOrder(row.id)); }
     return expired;

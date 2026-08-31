@@ -18,10 +18,15 @@ export const DEFAULT_SCREEN = {
     excludeHeld: true,           // a held symbol goes to reassessment instead
 };
 
+// The move the screen judges on. Five minutes when it is available, one minute
+// otherwise — and whichever was used is what the ranking below must also use.
+export const screenedMove = (context) =>
+    context?.mtf?.change5m ?? context?.mtf?.change1m ?? null;
+
 export const screenSymbol = (observation, context, screen = DEFAULT_SCREEN) => {
     const reasons = [];
 
-    const change = context.mtf?.change5m ?? context.mtf?.change1m ?? null;
+    const change = screenedMove(context);
     if (change === null) return { passed: false, reasons: ["no usable price change"] };
 
     const movePercent = Math.abs(change) * 100;
@@ -46,6 +51,20 @@ export const screenSymbol = (observation, context, screen = DEFAULT_SCREEN) => {
     return { passed: true, reasons };
 };
 
+// Strongest first, ties broken by symbol so the order is deterministic.
+//
+// Ranked on the SAME move the screen admitted the candidate on. Ranking on
+// change5m alone sorted every candidate that qualified on its one-minute move
+// as zero, so the strongest of them lost to the weakest five-minute mover —
+// and since only the first few are reasoned about, it was never looked at.
+//
+// Sorts in place and returns the same array.
+export const rankCandidates = (candidates) => candidates.sort((a, b) => {
+    const byMove = Math.abs(screenedMove(b.context) ?? 0)
+        - Math.abs(screenedMove(a.context) ?? 0);
+    return byMove !== 0 ? byMove : a.symbol.localeCompare(b.symbol);
+});
+
 // One screening pass. Held symbols are excluded: an anomaly on something we
 // own is a reassessment question, not a discovery question.
 export const scanUniverse = ({
@@ -65,12 +84,7 @@ export const scanUniverse = ({
         if (verdict.passed) candidates.push({ symbol: observation.symbol, context, reasons: verdict.reasons });
     }
 
-    // Deterministic ordering, then a hard cap so a volatile session cannot
-    // turn one scan into an unbounded number of LLM calls.
-    candidates.sort((a, b) => {
-        const byMove = Math.abs(b.context.mtf?.change5m ?? 0) - Math.abs(a.context.mtf?.change5m ?? 0);
-        return byMove !== 0 ? byMove : a.symbol.localeCompare(b.symbol);
-    });
+    rankCandidates(candidates);
 
     return {
         candidates: candidates.slice(0, screen.maxCandidatesPerCycle),

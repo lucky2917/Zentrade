@@ -355,13 +355,23 @@ export const buildLivePorts = ({
         },
 
         // Session budgets from today's real orders.
+        // The session's budgets, counted from what actually happened.
+        //
+        // These were built from every order row regardless of outcome, so an
+        // order the venue rejected — not a trade, no cost, nothing turned over
+        // — spent a slot in the twenty-trade budget and its full notional in
+        // the turnover allowance. Twenty rejections in a volatile open would
+        // have closed the book for the day with nothing having traded.
+        //
+        // Turnover is the value that filled, not the value that was asked for.
         sessionCounters: async () => {
             const { rows } = await pool.query(
                 `SELECT COUNT(*)::int AS trades,
-                        COALESCE(SUM(total_value_paise), 0) AS turnover,
+                        COALESCE(SUM(price_paise * filled_quantity), 0) AS turnover,
                         COALESCE(SUM(CASE WHEN pnl_paise < 0 THEN -pnl_paise ELSE 0 END), 0) AS loss
                  FROM orders
-                 WHERE user_id = $1 AND created_at >= date_trunc('day', NOW())`, [userId]);
+                 WHERE user_id = $1 AND filled_quantity > 0
+                   AND created_at >= date_trunc('day', NOW())`, [userId]);
             return {
                 trades: rows[0].trades,
                 turnoverPaise: Number(rows[0].turnover),

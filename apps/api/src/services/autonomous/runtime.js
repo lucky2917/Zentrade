@@ -161,6 +161,9 @@ export class AutonomousRuntime {
         // When each symbol was last reasoned about as a CANDIDATE, so the same
         // name is not re-priced every scan while nothing has changed.
         this.lastCandidateReasoningAt = new Map();
+        // Open positions no level is protecting, refreshed every time the
+        // commitments are rebuilt. Empty until the first pass has run.
+        this.unprotected = [];
 
         // Tier 0. Levels recorded at entry are tested on every tick, and a
         // crossing acts immediately. Reasoning runs afterwards to decide what
@@ -190,6 +193,7 @@ export class AutonomousRuntime {
             planeEvents: 0, planeRejected: 0, localCrossingsSuppressed: 0,
             candidatesDeferred: 0, candidatesCooledDown: 0, candidatesBudgetSkipped: 0,
             candidatesPaced: 0, protectiveRetries: 0, ordersAdopted: 0, haltChanges: 0,
+            planeAuthorityChanges: 0, unprotectedPositions: 0,
         };
 
         // Optional throughout: the runtime behaves identically without one,
@@ -216,7 +220,9 @@ export class AutonomousRuntime {
                 ? async (input) => this.handleCandidate(input) : undefined,
             openOrders: () => this.engine.openOrders(this.userId),
             reconcileAll: () => this.reconcile(),
-            expireStaleOrders: (now) => this.engine.expireStaleOrders(now),
+            // Scoped to this account. Unscoped, one runtime would expire another
+            // account's resting orders, which is not its business.
+            expireStaleOrders: (now) => this.engine.expireStaleOrders(now, this.userId),
         };
     }
 
@@ -258,6 +264,17 @@ export class AutonomousRuntime {
             run: () => this.staleSweep(),
         });
 
+        // Protection drifts. A position can lose its cover mid-session — a
+        // thesis closed while the holding remains, an entry whose arming failed
+        // — and the answer at start is not the answer an hour later. Picks up
+        // anything uncovered and leaves everything already armed alone.
+        scheduler.register({
+            name: "protection-audit",
+            intervalMs: 30_000,
+            shouldRun: () => permits(this.orchestrator.session(), "positionMonitor"),
+            run: () => this.armOpenPositions(),
+        });
+
         scheduler.register({
             name: "venue-tick",
             intervalMs: 5_000,
@@ -287,6 +304,15 @@ export class AutonomousRuntime {
                 intervalMs: 5_000,
                 shouldRun: () => true,
                 run: () => this.reconcileFastPlane(),
+            });
+            // Who is protecting the position. A plane configured LIVE that has
+            // died must hand detection back to the local lane rather than leave
+            // nobody watching, and that can only be noticed by asking.
+            scheduler.register({
+                name: "plane-authority",
+                intervalMs: 2_000,
+                shouldRun: () => true,
+                run: () => this.checkPlaneAuthority(),
             });
         }
 
@@ -471,6 +497,36 @@ export class AutonomousRuntime {
         });
     }
 
+    // Who owns detection right now, and what changes when that moves.
+    //
+    // A level that broke while the plane was authoritative latched the local
+    // lane and was deliberately not acted on. If authority comes back here,
+    // that latch would stop the local lane ever firing a level it has already
+    // seen, so every armed level is re-opened and judged again on the next
+    // tick. Re-arming is safe: the protective exit's client order id is the
+    // same from either path, so the engine absorbs a repeat.
+    async checkPlaneAuthority() {
+        const before = this.fastPlane.authoritative;
+        await this.fastPlane.checkAlive();
+        const after = this.fastPlane.authoritative;
+        if (before === after) return { authoritative: after, changed: false };
+
+        this.metrics.planeAuthorityChanges += 1;
+        if (!after) {
+            const reopened = this.reflex.rearmAll();
+            this.logger?.error?.("FastPlane",
+                "the plane stopped answering; protection is back on the local lane",
+                { reopenedLevels: reopened });
+            this.narrate(KIND.STALE_DATA, {
+                symbols: [], count: 0, armed: reopened,
+                because: "the fast plane stopped answering; the local reflex is protecting again",
+            });
+        } else {
+            this.logger?.info?.("FastPlane", "the plane is answering and now owns detection");
+        }
+        return { authoritative: after, changed: true };
+    }
+
     // Bounded. A brain that stopped reconciling must not accumulate crossings
     // until it runs out of memory; the oldest are dropped and the loss shows up
     // as divergence rather than as a leak.
@@ -589,13 +645,30 @@ export class AutonomousRuntime {
         });
     }
 
-    // Load the pre-commitments of everything currently held. Called on start
-    // and after every entry, so a restart does not leave a position unprotected.
+    // Load the pre-commitments of everything currently held.
+    //
+    // Idempotent, and safe to run repeatedly: a symbol already armed is left
+    // exactly as it is, because re-arming would clear its latches and re-fire
+    // a level it has already acted on. Only a holding nothing is watching is
+    // picked up. That makes this both the recovery path at start and the
+    // periodic audit that catches a position which lost its cover mid-session.
     async armOpenPositions() {
         const positions = (await this.sourcePorts.loadPositions?.(this.clock())) ?? [];
         let armed = 0;
+        // Real capital with nothing watching it is the most dangerous state
+        // this system can be in. It was inferable — `armed` came back smaller
+        // than `positions` — and inferable is not reported.
+        const unprotected = [];
         for (const position of positions) {
-            if (!position.thesisId) continue;
+            // Already covered. Touching it would reset the latches on levels it
+            // has already crossed.
+            if (this.reflex.isArmed(position.symbol)) { armed += 1; continue; }
+
+            if (!position.thesisId) {
+                unprotected.push({ symbol: position.symbol, quantity: position.quantity,
+                                   reason: "no open thesis" });
+                continue;
+            }
             const ok = this.reflex.arm(position.symbol, {
                 thesisId: position.thesisId,
                 direction: position.side === "SELL" ? DIRECTION.SHORT : DIRECTION.LONG,
@@ -628,9 +701,26 @@ export class AutonomousRuntime {
                     correlationId: position.correlationId ?? "",
                     direction: watch.direction });
                 armed += 1;
+            } else {
+                // The lane refuses a commitment with nothing to test, which is
+                // right: you cannot protect a level that does not exist.
+                unprotected.push({ symbol: position.symbol, quantity: position.quantity,
+                                   reason: "the thesis records no stop or target" });
             }
         }
-        return { armed, positions: positions.length };
+
+        this.unprotected = unprotected;
+        this.metrics.unprotectedPositions = unprotected.length;
+        if (unprotected.length) {
+            this.logger?.error?.("Runtime", "open positions that nothing is protecting",
+                                 { positions: unprotected });
+            this.narrate(KIND.STALE_DATA, {
+                symbols: unprotected.map((p) => p.symbol),
+                count: unprotected.length, armed: 0,
+                because: "these positions carry capital with no level protecting them",
+            });
+        }
+        return { armed, positions: positions.length, unprotected };
     }
 
     // The pre-committed action. No model, no queue, no poll: the decision was
@@ -996,6 +1086,7 @@ export class AutonomousRuntime {
             mode: this.mode,
             armedPositions: armed.armed,
             positions: armed.positions,
+            unprotectedPositions: armed.unprotected,
             adoptedOrders: adopted,
             recovery: this.orchestrator.recovery,
             fastPlane: this.fastPlane.mode,
@@ -1019,6 +1110,10 @@ export class AutonomousRuntime {
             // Reported so a session that cannot reason says so, rather than
             // emitting safe HOLDs that read as judgements.
             model: modelBudget(),
+            // Named, not counted: an operator needs to know WHICH position is
+            // uncovered, and needs to see it on every heartbeat rather than
+            // only in the line printed at recovery.
+            unprotectedPositions: this.unprotected,
             reasoning: {
                 cooldownMs: CANDIDATE_COOLDOWN_MS,
                 sessionProgress: Number(sessionProgress(this.clock()).toFixed(3)),

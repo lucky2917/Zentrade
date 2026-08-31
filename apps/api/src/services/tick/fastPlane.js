@@ -91,6 +91,8 @@ export class FastPlaneBridge {
         // restarted plane can replay it instead of protecting nothing until the
         // next entry.
         this.commitments = new Map();
+        // Earned, not assumed. See `authoritative`.
+        this.alive = false;
         // The publish chain. Every command joins it, so the wire order is the
         // issue order.
         this.chain = Promise.resolve();
@@ -98,9 +100,29 @@ export class FastPlaneBridge {
     }
 
     get enabled() { return this.mode !== PLANE_MODE.OFF; }
+
     // In LIVE the plane OWNS detection: its events drive protection and the
     // Node reflex stops dispatching, so exactly one actor reacts to a crossing.
-    get authoritative() { return this.mode === PLANE_MODE.LIVE; }
+    //
+    // Only while it is actually there. This used to be the mode alone, so a
+    // plane that died left the local lane suppressed and the plane silent —
+    // no detector at all, with nothing but an `alive: false` line in a
+    // heartbeat to say so. It starts false and is earned: the local lane
+    // protects until the plane has proved it is running.
+    //
+    // Handing protection back is safe because both paths mint the same client
+    // order id for a protective exit, so the engine absorbs a second one.
+    get authoritative() { return this.mode === PLANE_MODE.LIVE && this.alive; }
+
+    // Polled, because liveness cannot be read from the tick path. Returns
+    // whether the plane is there, and never throws: an unreachable Redis is a
+    // plane we cannot see, which is treated the same as a plane that is gone.
+    async checkAlive() {
+        if (!this.enabled) { this.alive = false; return false; }
+        const health = await this.planeHealth();
+        this.alive = Boolean(health?.alive);
+        return this.alive;
+    }
     get stream() { return this.mode === PLANE_MODE.LIVE ? LIVE_STREAM : SHADOW_STREAM; }
     get channel() { return this.mode === PLANE_MODE.LIVE ? LIVE_CHANNEL : SHADOW_CHANNEL; }
     get healthKey() { return this.mode === PLANE_MODE.LIVE ? LIVE_HEALTH : SHADOW_HEALTH; }
@@ -283,6 +305,11 @@ export class FastPlaneBridge {
         return {
             mode: this.mode,
             authoritative: this.authoritative,
+            // Stated separately from `authoritative` so the cockpit can show
+            // "configured LIVE but the plane is gone" rather than only the
+            // consequence of it.
+            alive: this.alive,
+            protectedBy: this.authoritative ? "go_fast_plane" : "node_reflex",
             trackedSymbols: this.commitments.size,
             listening: Boolean(this.subscriber),
             ...this.stats,

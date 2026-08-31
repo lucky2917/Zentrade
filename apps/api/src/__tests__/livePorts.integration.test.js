@@ -124,10 +124,27 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("live ports (integration)", () => {
                 userId: USER, symbol: "RELIANCE", side: "BUY", quantity: 100,
                 pricePaise: 100000, clientOrderId: "sc-1", correlationId: "c" });
             await engine.acceptOrder(order.id);
+            await engine.workOrder(order.id);
+            await engine.applyFill({ orderId: order.id, executionRef: "sc-1-f",
+                                     quantity: 100, pricePaise: 100000 });
 
             const counters = await makePorts().sessionCounters();
-            expect(counters.trades).toBeGreaterThanOrEqual(1);
-            expect(counters.turnoverPaise).toBeGreaterThan(0);
+            expect(counters.trades).toBe(1);
+            expect(counters.turnoverPaise).toBe(100 * 100000);
+        });
+
+        // This used to assert the opposite, and the opposite was the bug: an
+        // order sitting on the book had already spent a slot in the session's
+        // twenty-trade budget and its whole notional in the turnover ceiling.
+        it("does not count an order that has not traded", async () => {
+            const { order } = await engine.submitOrder({
+                userId: USER, symbol: "RELIANCE", side: "BUY", quantity: 100,
+                pricePaise: 100000, clientOrderId: "sc-2", correlationId: "c" });
+            await engine.acceptOrder(order.id);
+
+            const counters = await makePorts().sessionCounters();
+            expect(counters.trades).toBe(0);
+            expect(counters.turnoverPaise).toBe(0);
         });
 
         it("lists open client order ids for duplicate protection", async () => {
@@ -192,7 +209,7 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("live ports (integration)", () => {
             expect(health.liveExecutionEnabled).toBe(false);
             // The base set plus halt-watch, which only registers when the ports
             // can actually read the operator's stop.
-            expect(health.orchestrator.scheduler.jobCount).toBe(11);
+            expect(health.orchestrator.scheduler.jobCount).toBe(12);
             expect(await runtime.stop()).toBe(true);
         });
 

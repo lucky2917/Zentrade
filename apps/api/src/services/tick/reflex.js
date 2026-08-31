@@ -104,6 +104,22 @@ export class ReflexLane {
         return false;
     }
 
+    // Re-open every latched level on every armed symbol.
+    //
+    // Used when protection changes hands: a level that broke while another
+    // detector was authoritative was seen here and deliberately not acted on,
+    // and its latch would otherwise stop this lane ever firing it.
+    rearmAll() {
+        let reopened = 0;
+        for (const commitment of this.armed.values()) {
+            if (commitment.fired.size) { reopened += commitment.fired.size; }
+            commitment.fired.clear();
+        }
+        for (const watch of this.watches.values()) watch.fired.clear();
+        if (reopened) this.stats.rearmed += reopened;
+        return reopened;
+    }
+
     // Clear one latch so the level fires again on the next tick.
     //
     // The latch is set when the crossing is DETECTED, which is before anything
