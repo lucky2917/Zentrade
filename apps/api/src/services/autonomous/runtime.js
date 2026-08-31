@@ -13,7 +13,7 @@ import { makeEvent, EVENT_TYPES, SEVERITY } from "./events.js";
 import { THRESHOLDS } from "../intelligence/anomaly.js";
 import { FastPlaneBridge, PLANE_MODE } from "../tick/fastPlane.js";
 import { KIND } from "../cockpit/narrator.js";
-import { modelBudget } from "../aiEngine.js";
+import { modelBudget, tokenBudget } from "../aiEngine.js";
 
 // The autonomous runtime.
 //
@@ -37,6 +37,55 @@ const MAX_COMPARISON_BUFFER = 2_000;
 // minute; anything beyond this waits for the next one rather than blocking the
 // scheduler behind a rate-limited model.
 const MAX_SCAN_REASONING = 2;
+
+// How long before the same symbol is worth reasoning about again.
+//
+// Measured live: OLAELEC was reasoned about four times and KPRMILL three times
+// inside ten minutes, each a fresh pair of model calls costing roughly 3,270
+// tokens. Nothing material had changed between them — the scanner simply kept
+// surfacing the same name, and every pass paid full price to reach the same
+// conclusion. A quota that buys sixty decisions a day cannot afford to spend
+// four of them on one symbol in ten minutes.
+//
+// This throttles DISCOVERY only. A position already carrying capital is never
+// throttled: a material event on something we own is exactly the question worth
+// paying for.
+const CANDIDATE_COOLDOWN_MS = Number(process.env.ZENTRADE_CANDIDATE_COOLDOWN_MS) || 15 * 60_000;
+
+// The trading session, in IST minutes since midnight, used to pace the
+// reasoning budget across it.
+const SESSION_OPEN_MINUTE = 9 * 60 + 15;
+const SESSION_CLOSE_MINUTE = 15 * 60 + 30;
+const SESSION_MINUTES = SESSION_CLOSE_MINUTE - SESSION_OPEN_MINUTE;
+
+// How far through the trading session we are, 0 to 1.
+export const sessionProgress = (now) => {
+    const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+    const minute = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+    if (minute <= SESSION_OPEN_MINUTE) return 0;
+    if (minute >= SESSION_CLOSE_MINUTE) return 1;
+    return (minute - SESSION_OPEN_MINUTE) / SESSION_MINUTES;
+};
+
+// Is discovery spending faster than the session can afford?
+//
+// Measured live: 9 decisions in 3.3 minutes at 2,565 tokens each is about
+// 6,900 tokens a minute, which spends a 200,000 allowance in 29 minutes of a
+// 375-minute session. A per-symbol cooldown alone does not fix that — the
+// scanner simply moves to the next symbol.
+//
+// So discovery is paced against the clock: at any moment it may have spent at
+// most the fraction of the budget matching the fraction of the session
+// elapsed, plus a small head start so the open is not starved. Being ahead of
+// pace pauses discovery until the session catches up. Position reassessment is
+// never paced — capital already at risk is not a budgeting question.
+const PACE_HEAD_START = 0.15;
+
+export const discoveryAheadOfPace = (tokens, now) => {
+    if (!tokens || tokens.budget <= 0) return false;
+    const allowedFraction = Math.min(1, sessionProgress(now) + PACE_HEAD_START);
+    return (tokens.used / tokens.budget) > allowedFraction;
+};
 
 // The contract's kind vocabulary maps onto the reflex's one-to-one, so a plane
 // event and a local crossing reach the same protect() and cannot diverge in
@@ -109,6 +158,9 @@ export class AutonomousRuntime {
         // One symbol, one decision in flight. Both entry paths and the
         // reassessment path pass through this.
         this.gate = new SymbolGate({ clock: () => this.clock().getTime(), logger });
+        // When each symbol was last reasoned about as a CANDIDATE, so the same
+        // name is not re-priced every scan while nothing has changed.
+        this.lastCandidateReasoningAt = new Map();
 
         // Tier 0. Levels recorded at entry are tested on every tick, and a
         // crossing acts immediately. Reasoning runs afterwards to decide what
@@ -136,7 +188,8 @@ export class AutonomousRuntime {
             protectiveActions: 0, protectiveExits: 0, barsClosed: 0, materialSignals: 0,
             staleSweeps: 0, blindSymbols: 0,
             planeEvents: 0, planeRejected: 0, localCrossingsSuppressed: 0,
-            candidatesDeferred: 0,
+            candidatesDeferred: 0, candidatesCooledDown: 0, candidatesBudgetSkipped: 0,
+            candidatesPaced: 0,
         };
 
         // Optional throughout: the runtime behaves identically without one,
@@ -690,6 +743,26 @@ export class AutonomousRuntime {
         const session = this.orchestrator.session();
         if (!permits(session, "discovery")) return { skipped: `session ${session}` };
 
+        // Reasoning is a metered resource. Discovery stops before the budget is
+        // gone so that positions already carrying capital can still be
+        // reassessed for the rest of the session.
+        const tokens = tokenBudget();
+        if (!tokens.discoveryPermitted) {
+            this.metrics.candidatesBudgetSkipped += 1;
+            return { skipped: "reasoning budget reserved for open positions" };
+        }
+        if (discoveryAheadOfPace(tokens, this.clock())) {
+            this.metrics.candidatesPaced += 1;
+            return { skipped: "spending ahead of the session's reasoning pace" };
+        }
+
+        const now = (asOf ?? this.clock()).getTime();
+        const last = this.lastCandidateReasoningAt.get(symbol);
+        if (last !== undefined && now - last < CANDIDATE_COOLDOWN_MS) {
+            this.metrics.candidatesCooledDown += 1;
+            return { skipped: "reasoned about recently; nothing new to price" };
+        }
+
         // The scan job and the reasoning job can both arrive here for the same
         // symbol within seconds of each other.
         const release = this.gate.acquire(symbol, "candidate");
@@ -698,6 +771,9 @@ export class AutonomousRuntime {
             return { skipped: "symbol already being reasoned about" };
         }
         try {
+            // Stamped before the decision, not after: two passes must not both
+            // pay because the first had not finished.
+            this.lastCandidateReasoningAt.set(symbol, now);
             return await this.decideCandidate({ symbol, context, event, reasons, session,
                                                 asOf: asOf ?? this.clock(), market });
         } finally {
@@ -870,6 +946,11 @@ export class AutonomousRuntime {
             // Reported so a session that cannot reason says so, rather than
             // emitting safe HOLDs that read as judgements.
             model: modelBudget(),
+            reasoning: {
+                cooldownMs: CANDIDATE_COOLDOWN_MS,
+                sessionProgress: Number(sessionProgress(this.clock()).toFixed(3)),
+                aheadOfPace: discoveryAheadOfPace(tokenBudget(), this.clock()),
+            },
             runtime: { ...this.metrics },
         };
     }

@@ -95,6 +95,50 @@ export const noteModelRefusal = (askedMs, now = Date.now()) => {
 
 export const modelExhausted = (now = Date.now()) => now < exhaustedUntil;
 
+// ─── Token accounting ────────────────────────────────────────────────────────
+//
+// A requests-per-minute ceiling does not protect a TOKEN quota. Measured, one
+// decision costs about 3,270 tokens across its two calls, so a 200,000 token
+// allowance buys roughly sixty decisions — and an RPM limiter will happily
+// spend all of them in an hour and then report 429 for the rest of the day.
+//
+// The budget is counted from what the provider actually reports, not estimated,
+// and it is counted per IST session day so "today" means today.
+const DAILY_TOKEN_BUDGET = Number(process.env.GROQ_DAILY_TOKEN_BUDGET) || 200_000;
+// Below this fraction remaining, discovery stops and the remainder is held for
+// positions already carrying capital.
+const RESERVE_FRACTION = Number(process.env.GROQ_RESERVE_FRACTION) || 0.2;
+
+let tokensUsed = 0;
+let tokenDay = null;
+
+const istDay = (now) => new Date(now + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+const rollTokenDay = (now) => {
+    const day = istDay(now);
+    if (tokenDay !== day) { tokenDay = day; tokensUsed = 0; }
+};
+
+export const recordTokens = (usage, now = Date.now()) => {
+    rollTokenDay(now);
+    tokensUsed += (usage?.promptTokens ?? 0) + (usage?.completionTokens ?? 0);
+};
+
+export const tokenBudget = (now = Date.now()) => {
+    rollTokenDay(now);
+    const remaining = Math.max(0, DAILY_TOKEN_BUDGET - tokensUsed);
+    return {
+        budget: DAILY_TOKEN_BUDGET,
+        used: tokensUsed,
+        remaining,
+        fractionRemaining: DAILY_TOKEN_BUDGET > 0 ? remaining / DAILY_TOKEN_BUDGET : 0,
+        // Discovery is the first thing to stop: a new idea is worth less than a
+        // question about capital already at risk.
+        discoveryPermitted: remaining > DAILY_TOKEN_BUDGET * RESERVE_FRACTION,
+        exhausted: remaining <= 0,
+    };
+};
+
 export const modelBudget = (now = Date.now()) => ({
     rpm: MODEL_RPM, maxConcurrent: MODEL_MAX_CONCURRENT,
     // queued() is synchronous; running() returns a Promise and serialised as
@@ -105,6 +149,7 @@ export const modelBudget = (now = Date.now()) => ({
     // Seconds until the provider says it will serve again, when it has said so.
     resumesInSeconds: modelExhausted(now)
         ? Math.ceil((exhaustedUntil - now) / 1000) : 0,
+    tokens: tokenBudget(now),
 });
 
 // ─── Groq caller ─────────────────────────────────────────────────────────────
@@ -205,6 +250,7 @@ export async function callGroqSafe(model, prompt, temperature, maxTokens, sink, 
 
     try {
         const { result, meta } = await callGroq(model, prompt, temperature, maxTokens);
+        recordTokens(meta?.usage);
         record("ok", result, meta);
         return result;
     } catch (firstErr) {
@@ -228,6 +274,7 @@ export async function callGroqSafe(model, prompt, temperature, maxTokens, sink, 
         }
         try {
             const { result, meta } = await callGroq(model, prompt, temperature, maxTokens);
+            recordTokens(meta?.usage);
             record("ok", result, meta);
             return result;
         } catch (secondErr) {

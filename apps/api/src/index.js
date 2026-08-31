@@ -670,7 +670,20 @@ const shutdown = async (signal) => {
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
+// Transient socket errors from the Postgres and Redis pools are survivable:
+// both reconnect, and exiting on one drops the market feed with them. Anything
+// else stays fatal, because a process in an unknown state must not keep serving.
+const TRANSIENT_CONNECTION_ERRORS = new Set([
+    "ETIMEDOUT", "ECONNRESET", "EPIPE", "ECONNREFUSED", "ENOTFOUND",
+    "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH", "ENETDOWN",
+]);
+
 process.on("uncaughtException", (err) => {
+    if (TRANSIENT_CONNECTION_ERRORS.has(err?.code)) {
+        logger.warn("Server", "transient connection error; the pool will reconnect",
+                    { error: err.message, code: err.code });
+        return;
+    }
     logger.error("Server", "Uncaught exception", { error: err.message, stack: err.stack });
     process.exit(1);
 });

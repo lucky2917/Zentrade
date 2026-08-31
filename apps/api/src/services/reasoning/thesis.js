@@ -15,11 +15,12 @@ export const REASSESSMENT_CODES = [
     "THESIS_INVALIDATION", "RISK_CHANGE", "TIME_DECAY", "POSITION_LOSS", "POSITION_GAIN",
 ];
 
-const stateBlock = (s, { withCapital = true } = {}) => `
+const stateBlock = (s, { withCapital = true, withScreen = true } = {}) => `
 AS OF: ${s.asOf}
 SYMBOL: ${s.symbol}
 
-${s.screenReasons?.length ? `WHY THIS SYMBOL SURFACED\n  ${s.screenReasons.join("; ")}\n` : ""}
+${withScreen && s.screenReasons?.length
+    ? `WHY THIS SYMBOL SURFACED\n  ${s.screenReasons.join("; ")}\n` : ""}
 MARKET
   session phase: ${s.market.sessionPhase} (${s.market.minutesIntoSession} min in)
   regime: ${s.market.regime} (basis: ${s.market.regimeBasis})
@@ -139,7 +140,7 @@ You are a senior risk-minded trader whose job is to BREAK the following thesis.
 You are not being asked to be balanced. You are being asked to find what is
 wrong with it.
 
-${stateBlock(state, { withCapital: false })}
+${stateBlock(state, { withCapital: false, withScreen: false })}
 ${positionBlock(state)}
 
 THE THESIS UNDER EXAMINATION
@@ -159,42 +160,26 @@ Your tasks:
 6. Say what evidence would change the decision.
 7. Judge whether the author was only looking for confirming evidence.
 
-VERDICT — these are not interchangeable, and finding an objection is not by
-itself a verdict. You are expected to find objections; that is the job. What
-the verdict records is how much the objections actually damage the thesis.
+VERDICT. Finding objections is the job, not the verdict. The verdict records
+how much they damage the thesis, and returning the same one every time tells
+the reader nothing.
 
-  THESIS_BROKEN  the evidence CONTRADICTS the thesis, or its stated
-                 invalidation condition has already occurred. Not "I found
-                 something to criticise" — the case is affirmatively wrong.
-  THESIS_WEAK    the evidence is genuinely thin or conflicting. This one
-                 PREVENTS ANY NEW POSITION, so it is a real judgement about
-                 the evidence, not a hedge between the other two.
-  THESIS_HOLDS   objections exist, as they always do for every trade, and the
-                 measured evidence still supports the position. This is the
-                 correct verdict when the named evidence converges — for
-                 example multi-timeframe alignment with volume expansion
-                 against its own baseline and price on the right side of VWAP
-                 — even though a more perfect setup could always be imagined.
+  THESIS_BROKEN  evidence CONTRADICTS the thesis, or its invalidation has
+                 already occurred. Not "I found something to criticise".
+  THESIS_WEAK    evidence genuinely thin or conflicting. Blocks any new
+                 position, so it is a judgement, not a hedge.
+  THESIS_HOLDS   objections exist as always, and the measured evidence still
+                 supports the position — e.g. multi-timeframe alignment with
+                 volume expansion and price on the right side of VWAP.
 
-A challenger that returns the same verdict every time has told the reader
-nothing. Discriminate.
+Not flaws: this is INTRADAY Indian equities, where a 0.3-1.5% move IS the
+opportunity, so "the move is small" is never grounds for BROKEN; transaction
+costs are already tested by deterministic arithmetic against a 73.55 bps
+hurdle; sizing and portfolio risk are enforced by a risk gate after you; and a
+technical setup needs no named catalyst.
 
-CONTEXT you must not mistake for a flaw:
-
-- This is INTRADAY trading in Indian equities. A 0.3% to 1.5% move IS the
-  opportunity being traded. "The move is small in percentage terms" is not an
-  objection here, and is never grounds for THESIS_BROKEN.
-- Whether the expected move clears transaction costs is computed separately by
-  deterministic arithmetic against a measured 73.55 bps round-trip hurdle. That
-  check already exists and is not yours to duplicate or pre-empt.
-- Position sizing and portfolio risk are enforced by a deterministic risk gate
-  after you. Do not reject a thesis on sizing.
-- Absence of a named catalyst is normal for a technical intraday setup and is
-  not by itself disqualifying.
-
-Judge the thesis on whether the evidence supports it, not on whether a more
-perfect setup could be imagined. Do not soften your assessment to be agreeable:
-if it is genuinely broken, say so plainly.
+Judge whether the evidence supports the thesis, not whether a more perfect
+setup could be imagined. If it is genuinely broken, say so plainly.
 
 Respond with JSON only:
 {

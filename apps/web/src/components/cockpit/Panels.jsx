@@ -323,6 +323,21 @@ const statusOf = (ok, degraded) => (ok ? "healthy" : degraded ? "degraded" : "fa
 
 // A plane that is ON and not answering is not the same as a plane that is off.
 // Reporting both as "off" would hide the one that matters.
+// Tokens are the binding constraint, not requests: a day's allowance buys tens
+// of decisions, so the operator needs to see it draining.
+const modelDetail = (runtime) => {
+    const m = runtime?.model;
+    if (!m) return UNKNOWN;
+    if (m.exhausted) return `budget exhausted — retries in ${m.resumesInSeconds}s`;
+    const t = m.tokens;
+    if (!t) return `${m.rpm}/min · ${m.queued} queued`;
+    const pct = Math.round(t.fractionRemaining * 100);
+    const reserved = t.discoveryPermitted
+        ? "" : " · discovery paused, reserve held for open positions";
+    return `${t.used.toLocaleString()}/${t.budget.toLocaleString()} tokens `
+        + `(${pct}% left)${reserved}`;
+};
+
 const planeStatus = (runtime, plane) => {
     if (!runtime) return "failed";
     const mode = runtime?.fastPlane?.mode;
@@ -369,12 +384,11 @@ export const SystemHealth = ({ snapshot }) => {
         ["Risk", health.newExposurePermitted ? "healthy" : "degraded",
             health.exposureBlockedBecause ?? "new exposure permitted"],
         ["Reasoning model", running
-            ? (runtime?.model?.exhausted ? "failed" : "healthy") : "failed",
-            runtime?.model
-                ? (runtime.model.exhausted
-                    ? `budget exhausted — retries in ${runtime.model.resumesInSeconds}s`
-                    : `${runtime.model.rpm}/min · ${runtime.model.queued} queued`)
-                : UNKNOWN],
+            ? (runtime?.model?.exhausted ? "failed"
+                : runtime?.model?.tokens && !runtime.model.tokens.discoveryPermitted
+                    ? "degraded" : "healthy")
+            : "failed",
+            modelDetail(runtime)],
         ["Reflex lane", running && runtime?.reflex ? "healthy" : "failed",
             runtime?.reflex ? `${runtime.reflex.armedSymbols ?? 0} armed` : UNKNOWN],
     ];

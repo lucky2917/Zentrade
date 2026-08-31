@@ -163,7 +163,25 @@ const start = async () => {
     };
     process.on("SIGTERM", () => shutdown("SIGTERM"));
     process.on("SIGINT", () => shutdown("SIGINT"));
+    // A dropped socket is not a reason to stop trading.
+    //
+    // Postgres and Redis both sit behind TLS connections that idle out, and
+    // both pools reconnect on their own. Treating `read ETIMEDOUT` as fatal
+    // killed the trader mid-session with an open position — the pools would
+    // have recovered in seconds, and the exit lost the whole session instead.
+    //
+    // Anything NOT in this list is still fatal. A genuine programming fault
+    // must not be swallowed and left running in an unknown state.
+    const TRANSIENT = new Set([
+        "ETIMEDOUT", "ECONNRESET", "EPIPE", "ECONNREFUSED", "ENOTFOUND",
+        "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH", "ENETDOWN",
+    ]);
     process.on("uncaughtException", (err) => {
+        if (TRANSIENT.has(err?.code)) {
+            logger.warn("Agent", "transient connection error; the pool will reconnect",
+                        { error: err.message, code: err.code });
+            return;
+        }
         logger.error("Agent", "uncaught exception", { error: err.message, stack: err.stack });
         shutdown("uncaughtException");
     });
