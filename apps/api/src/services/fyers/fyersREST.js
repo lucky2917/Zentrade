@@ -1,5 +1,6 @@
 import { fyers, getAccessToken } from "./fyersAuth.js";
 import { getRateLimiter, isRestAllowed, trackCall } from "./rateLimiter.js";
+import { feedIsTrusted } from "./feedStatus.js";
 import logger from "../../utils/logger.js";
 
 const ensureAuthenticated = async () => {
@@ -8,7 +9,16 @@ const ensureAuthenticated = async () => {
     fyers.setAccessToken(token);
 };
 
-const call = async (fn) => {
+// `essential` marks a call that must run even while the socket is healthy —
+// history, and anything the socket cannot supply. Everything else is a
+// backstop for data the websocket is already streaming, and running it anyway
+// spends the budget that makes the backstop possible.
+const call = async (fn, { essential = false } = {}) => {
+    if (!essential && feedIsTrusted()) {
+        logger.debug?.("FyersREST", "skipped: the websocket is delivering this");
+        return null;
+    }
+
     const allowed = await isRestAllowed();
     if (!allowed) {
         logger.error("FyersREST", "Call blocked, REST budget exhausted");
@@ -22,12 +32,22 @@ const call = async (fn) => {
     // grows unbounded while token-less and starves real requests behind it.
     await ensureAuthenticated();
 
-    return getRateLimiter().schedule(async () => {
-        const result = await fn();
-        await trackCall();
-        return result;
-    });
+    // A network failure must not escape into a cron callback. These run on
+    // timers with no caller to catch them, so a single ETIMEDOUT became an
+    // uncaught exception and took the process down.
+    try {
+        return await getRateLimiter().schedule(async () => {
+            const result = await fn();
+            await trackCall();
+            return result;
+        });
+    } catch (err) {
+        logger.error("FyersREST", "call failed", { error: err.message, code: err.code });
+        return null;
+    }
 };
+
+const callEssential = (fn) => call(fn, { essential: true });
 
 const getQuotes = async (symbols) => {
     if (symbols.length > 50) {
@@ -43,7 +63,9 @@ const getQuotes = async (symbols) => {
 
 const getMarketDepth = async (symbol) => {
     try {
-        return await call(() => fyers.getMarketDepth({ symbol: [symbol], ohlcv_flag: 1 }));
+        // The socket carries last price and volume, not the order book, so
+        // depth is genuinely REST-only and runs regardless of the feed.
+        return await callEssential(() => fyers.getMarketDepth({ symbol: [symbol], ohlcv_flag: 1 }));
     } catch (err) {
         logger.error("FyersREST", "getMarketDepth failed", { error: err.message, symbol });
         return null;
@@ -52,7 +74,9 @@ const getMarketDepth = async (symbol) => {
 
 const getHistoricalData = async (symbol, resolution, fromDate, toDate) => {
     try {
-        return await call(() => fyers.getHistory({
+        // History has no websocket equivalent, so it runs regardless of the
+        // feed's health. It is also low frequency.
+        return await callEssential(() => fyers.getHistory({
             symbol,
             resolution,
             date_format: "1",

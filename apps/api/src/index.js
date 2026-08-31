@@ -28,6 +28,7 @@ import startMarketWorker, { stopMarketWorker } from "./services/marketWorker.js"
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setFeedTracker } from "./services/fyers/feedStatus.js";
 import startWebSocketBroadcaster from "./services/websocket.js";
 import { narrator, NARRATION_CHANNEL, RUNTIME_HEALTH_KEY }
     from "./services/cockpit/narrator.js";
@@ -427,6 +428,9 @@ const start = async () => {
     // M5: instrument registry + calendar exceptions (idempotent, transactional)
     await seedReferenceData();
 
+    // One tracker answers "is the feed delivering" for the pollers too, so REST
+    // stands down while the websocket is healthy instead of racing it.
+    setFeedTracker(connectionTracker);
     startMarketWorker();
     startWebSocketBroadcaster(io);
     // Narration rides the socket that already exists rather than a second one.

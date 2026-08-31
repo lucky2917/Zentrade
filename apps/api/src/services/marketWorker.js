@@ -3,6 +3,7 @@ import { STOCKS } from "../config/stocks.js";
 import logger from "../utils/logger.js";
 import { isMarketOpen } from "../utils/marketHours.js";
 import { getQuotes } from "./fyers/fyersREST.js";
+import { feedIsTrusted } from "./fyers/feedStatus.js";
 import { isRestAllowed } from "./fyers/rateLimiter.js";
 import { sanitiseTick, toFyersStockSymbol, FYERS_INDEX_SYMBOLS, INDICES } from "./fyers/smartWall.js";
 
@@ -32,6 +33,9 @@ const cacheQuoteEntries = async (entries, keyPrefix) => {
 };
 
 const fetchAndCacheStockPrices = async () => {
+    // The websocket already streams every one of these. This is the
+    // backstop for when it is not delivering, not a second feed.
+    if (feedIsTrusted()) return;
     if (!isMarketOpen()) return;
 
     try {
@@ -60,6 +64,7 @@ const fetchAndCacheStockPrices = async () => {
 };
 
 const fetchAndCacheIndices = async () => {
+    if (feedIsTrusted()) return;
     if (!isMarketOpen()) return;
 
     try {

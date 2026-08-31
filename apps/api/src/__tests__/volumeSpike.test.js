@@ -211,3 +211,48 @@ describe("runtime baseline sync", () => {
         expect(runtime.metrics.protectiveActions).toBe(0);
     });
 });
+
+// A price EXTENDED above VWAP is not a technical breakdown. Labelling it one
+// taught the operator to distrust the word, which is worse than saying nothing.
+describe("VWAP deviation is labelled by direction", () => {
+    const routeFor = async (pricePaise, levelPaise) => {
+        const { AutonomousRuntime } = await import("../services/autonomous/runtime.js");
+        const recorded = [];
+        const runtime = new AutonomousRuntime({
+            engine: {}, reconciler: null,
+            ports: { recordEvent: async (e) => { recorded.push(e); return { id: 1 }; } },
+        });
+        await runtime.protect({
+            kind: CROSSING.VWAP_DEVIATION, symbol: SYMBOL,
+            pricePaise, levelPaise, thesisId: null, correlationId: "c",
+            at: Date.now(), reason: "deviation",
+        });
+        return recorded[0];
+    };
+
+    it("calls a price below VWAP a technical breakdown", async () => {
+        const event = await routeFor(97_500, 100_000);
+        expect(event.type).toBe("TECHNICAL_BREAKDOWN");
+        expect(event.severity).toBe("WARNING");
+    });
+
+    it("does NOT call a price above VWAP a breakdown", async () => {
+        const event = await routeFor(102_500, 100_000);
+        expect(event.type).not.toBe("TECHNICAL_BREAKDOWN");
+        expect(event.type).toBe("PRICE_JUMP");
+        expect(event.severity).toBe("WARNING");
+    });
+
+    it("still moves no position either way", async () => {
+        const { AutonomousRuntime } = await import("../services/autonomous/runtime.js");
+        const executed = [];
+        const runtime = new AutonomousRuntime({
+            engine: {}, reconciler: null, ports: { recordEvent: async () => ({ id: 1 }) },
+        });
+        runtime.executeIntent = async (i) => { executed.push(i); };
+        await runtime.protect({ kind: CROSSING.VWAP_DEVIATION, symbol: SYMBOL,
+            pricePaise: 97_000, levelPaise: 100_000, at: Date.now() });
+        expect(executed).toEqual([]);
+        expect(runtime.metrics.protectiveActions).toBe(0);
+    });
+});

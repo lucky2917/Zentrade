@@ -14,10 +14,39 @@ export const COST_HURDLE_BPS = 73.55;
 
 const MAX_ITEMS = 6;
 
-const list = (value) => {
+// These arrays do not hold strings.
+//
+// `supportingEvidence` holds evidence records ({tier, statement, source}) built
+// by fromModel, and `alternativeHypotheses` holds ({explanation, supportedBy,
+// plausibility}). String() on either produces "[object Object]", which is what
+// the cockpit was rendering where the reasoning should have been.
+export const readable = (item) => {
+    if (item === null || item === undefined) return null;
+    if (typeof item === "string") return item.trim() || null;
+    if (typeof item !== "object") return String(item);
+
+    // An evidence record: show the claim, and its tier, because the tier is
+    // the part that says how much weight it carries.
+    if (typeof item.statement === "string") {
+        return item.tier ? `[${item.tier}] ${item.statement}` : item.statement;
+    }
+    // An alternative hypothesis: the explanation, with what supports it.
+    if (typeof item.explanation === "string") {
+        const support = typeof item.supportedBy === "string" && item.supportedBy
+            ? ` — supported by ${item.supportedBy}` : "";
+        const odds = item.plausibility ? ` (${item.plausibility})` : "";
+        return `${item.explanation}${support}${odds}`;
+    }
+    if (typeof item.reason === "string") return item.reason;
+    // Something with no readable field is reported as unreadable rather than
+    // rendered as "[object Object]", which tells the operator nothing.
+    return null;
+};
+
+export const list = (value) => {
     if (!value) return [];
     const items = Array.isArray(value) ? value : [value];
-    return items.filter(Boolean).map(String).slice(0, MAX_ITEMS);
+    return items.map(readable).filter(Boolean).slice(0, MAX_ITEMS);
 };
 
 // The strongest deterministic evidence, which is what an operator should read

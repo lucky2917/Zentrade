@@ -5,6 +5,7 @@ import { isMarketOpen } from "../../utils/marketHours.js";
 import { getQuotes, getMarketDepth } from "./fyersREST.js";
 import { sanitiseTick } from "./smartWall.js";
 import { isRestAllowed, getCurrentMode } from "./rateLimiter.js";
+import { feedIsTrusted } from "./feedStatus.js";
 import { getCurrentTier1 } from "./symbolManager.js";
 import { screenSymbol } from "../screener.js";
 import { sendTradeAlert, passesAlertThreshold } from "../alertService.js";
@@ -12,10 +13,22 @@ import { analyseStock } from "../aiEngine.js";
 import { ALL_SYMBOLS } from "../../config/watchlist.js";
 
 const SLOW_LANE_BATCH_SIZE = 50;
-const DEPTH_LANE_INTERVAL_MS = 15000;
+// Derived from the declared budget rather than picked. DEPTH_BUDGET is 9,600
+// calls a day; a session is roughly 375 minutes; the lane makes 20 calls a
+// cycle. A 50-second cycle is 450 cycles a session, so 9,000 calls — inside
+// the budget with room for a restart mid-session.
+//
+// At the previous 15 seconds it was 80 calls a minute, which spends a 9,600
+// budget in two hours and then leaves nothing for quotes — the "request limit
+// reached" that started this. The interval and the budget now agree, and a
+// test fails if they stop agreeing.
+const DEPTH_LANE_INTERVAL_MS = 50000;
 const DEPTH_BATCH_SIZE = 10;
 const DEPTH_INTER_BATCH_DELAY_MS = 2500;
 const DEPTH_TTL = 10;
+// Two failures in a row means the venue or the budget is refusing, not that
+// this batch was unlucky. Continuing past that is a retry storm.
+const MAX_CONSECUTIVE_FAILURES = 2;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -30,6 +43,7 @@ const toRootSymbol = (fyersSymbol) => fyersSymbol.replace(/^(NSE|BSE):/, "").rep
 
 const fetchAllQuotesInBatches = async (symbols) => {
     const results = [];
+    let consecutiveFailures = 0;
     for (let i = 0; i < symbols.length; i += SLOW_LANE_BATCH_SIZE) {
         const batch = symbols.slice(i, i + SLOW_LANE_BATCH_SIZE);
 
@@ -40,8 +54,20 @@ const fetchAllQuotesInBatches = async (symbols) => {
         }
 
         const response = await getQuotes(batch);
-        if (!response || response.s !== "ok" || !Array.isArray(response.d)) continue;
+        if (!response || response.s !== "ok" || !Array.isArray(response.d)) {
+            // Grinding through twenty more batches after the venue has started
+            // refusing is how a failure becomes a retry storm. Stop, and let
+            // the next scheduled pass try again.
+            consecutiveFailures += 1;
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                logger.warn("LaneManager", "slow lane stopped early after repeated failures",
+                            { batchesDone: i / SLOW_LANE_BATCH_SIZE });
+                break;
+            }
+            continue;
+        }
 
+        consecutiveFailures = 0;
         results.push(...response.d);
     }
     return results;
@@ -49,6 +75,12 @@ const fetchAllQuotesInBatches = async (symbols) => {
 
 const runSlowLane = async () => {
     if (!isMarketOpen()) return;
+    // The websocket already carries every one of these symbols. Polling them
+    // anyway is what exhausts the budget that makes this a useful backstop.
+    if (feedIsTrusted()) {
+        laneStatus.slowLane = "standing by (websocket healthy)";
+        return;
+    }
 
     const quoteEntries = await fetchAllQuotesInBatches(ALL_SYMBOLS);
     let screened = 0;

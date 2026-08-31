@@ -54,7 +54,12 @@ const SIGNAL_ROUTING = {
     [CROSSING.STOP_APPROACH]: { type: EVENT_TYPES.STOP_APPROACHING, severity: SEVERITY.WARNING },
     [CROSSING.TARGET_APPROACH]: { type: EVENT_TYPES.TARGET_APPROACHING, severity: SEVERITY.INFO },
     [CROSSING.PRICE_JUMP]: { type: EVENT_TYPES.PRICE_JUMP, severity: SEVERITY.WARNING },
-    [CROSSING.VWAP_DEVIATION]: { type: EVENT_TYPES.TECHNICAL_BREAKDOWN, severity: SEVERITY.WARNING },
+    // Direction decides the label. A price EXTENDED above VWAP is not a
+    // breakdown, and calling it one taught the operator to distrust the word.
+    [CROSSING.VWAP_DEVIATION]: (crossing) => (
+        crossing.pricePaise < crossing.levelPaise
+            ? { type: EVENT_TYPES.TECHNICAL_BREAKDOWN, severity: SEVERITY.WARNING }
+            : { type: EVENT_TYPES.PRICE_JUMP, severity: SEVERITY.WARNING }),
     [CROSSING.VOLUME_SPIKE]: { type: EVENT_TYPES.VOLUME_SPIKE, severity: SEVERITY.WARNING },
 };
 
@@ -542,7 +547,8 @@ export class AutonomousRuntime {
         // does not move the position by itself.
         if (!isProtective(kind)) {
             this.metrics.materialSignals += 1;
-            const routed = SIGNAL_ROUTING[kind];
+            const route = SIGNAL_ROUTING[kind];
+            const routed = typeof route === "function" ? route(crossing) : route;
             if (routed) {
                 await this.raiseCrossingEvent(crossing, routed.severity, routed.type);
             }
