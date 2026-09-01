@@ -3,7 +3,7 @@ import { Orchestrator } from "../orchestrator/orchestrator.js";
 import { PaperVenue } from "../execution/paperVenue.js";
 import { scanUniverse, DEFAULT_SCREEN, clearsCostHurdle, tradeableDirection }
     from "./candidates.js";
-import { evaluate as evaluateRisk, DECISION } from "./riskGate.js";
+import { evaluate as evaluateRisk, DECISION, DEFAULT_LIMITS } from "./riskGate.js";
 import { intentFrom } from "./loop.js";
 import { permits } from "../orchestrator/session.js";
 import { revalidate, VERDICT } from "../execution/revalidate.js";
@@ -211,7 +211,7 @@ export class AutonomousRuntime {
             candidatesPaced: 0, protectiveRetries: 0, ordersAdopted: 0, haltChanges: 0,
             planeAuthorityChanges: 0, unprotectedPositions: 0,
             candidatesBelowCostHurdle: 0, candidatesDeferredForBudget: 0,
-            candidatesNotTradeable: 0,
+            candidatesNotTradeable: 0, candidatesResized: 0,
         };
 
         // Optional throughout: the runtime behaves identically without one,
@@ -1023,10 +1023,33 @@ export class AutonomousRuntime {
         // buy the same symbol in the same position state now collide at the
         // engine instead of producing two orders.
         const epoch = (await this.sourcePorts.entryEpoch?.(symbol)) ?? 0;
+
+        // Size to the ceiling rather than be refused for exceeding it.
+        //
+        // The prompt states the per-symbol cap and the model still proposes
+        // past it: ZENSARTECH came through at 2.02 risk/reward clearing the
+        // cost hurdle, past the challenger and past the entry gates, and the
+        // risk gate refused the whole thing on POSITION_LIMIT because the
+        // quantity was worth more than the limit allows. The thesis was sound;
+        // only the size was wrong, and a size is arithmetic.
+        //
+        // This does not raise the limit or weaken the gate. The gate still
+        // evaluates the intent and still refuses it for any other reason, and
+        // it still refuses this one if existing exposure leaves no room.
+        const pricePaise = Math.round(price * 100);
+        const proposedQuantity = decision.quantity ?? 1;
+        const affordable = Math.floor(DEFAULT_LIMITS.positionValuePaise / pricePaise);
+        const quantity = Math.max(1, Math.min(proposedQuantity, affordable));
+        if (quantity < proposedQuantity) {
+            this.metrics.candidatesResized += 1;
+            this.logger?.info?.("Runtime", "sized the proposal down to the position limit",
+                                { symbol, proposed: proposedQuantity, sized: quantity });
+        }
+
         const proposed = {
             action: "BUY", side: "BUY", symbol,
-            quantity: decision.quantity ?? 1,
-            pricePaise: Math.round(price * 100),
+            quantity,
+            pricePaise,
             referencePricePaise: Math.round(price * 100),
             correlationId,
             clientOrderId: entryIntentKey({ symbol, action: "BUY", at: asOf, epoch }),

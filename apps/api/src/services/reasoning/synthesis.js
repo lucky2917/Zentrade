@@ -177,12 +177,31 @@ export const synthesise = ({ proposal, traderState, limits = {} }) => {
         // one case the count was catching that genuinely should refuse, and
         // now it refuses on the measurement instead of on how many caveats the
         // model happened to type.
-        if (traderState.symbolState?.mtf?.conflict) {
+        // A conflict between the LONGER frames refuses; the one-minute bar
+        // disagreeing does not.
+        //
+        // `conflict` is raised when any timeframe disagrees, and the shortest
+        // one disagrees constantly — that is what an intraday pullback looks
+        // like, and buying into 5m and 15m strength while the 1m dips is the
+        // entry, not the objection. Refusing on it treated the best long setup
+        // there is as a reason to stand aside.
+        //
+        // 5m against 15m is a real disagreement about where this is going, and
+        // still refuses. Observed live: RAMCOSYS at 1.93 risk/reward clearing
+        // costs, 1m DOWN, 5m UP, 15m DOWN — genuinely unresolved, correctly
+        // held.
+        const tf = traderState.symbolState?.mtf;
+        const longerFramesDisagree = tf
+            && tf.direction5m && tf.direction15m
+            && tf.direction5m !== "FLAT" && tf.direction15m !== "FLAT"
+            && tf.direction5m !== tf.direction15m;
+        if (longerFramesDisagree) {
             action = "HOLD";
-            reasons.push("no new exposure while the timeframes conflict: "
-                + `1m ${traderState.symbolState.mtf.direction1m}, `
-                + `5m ${traderState.symbolState.mtf.direction5m}, `
-                + `15m ${traderState.symbolState.mtf.direction15m}`);
+            reasons.push("no new exposure while the 5m and 15m disagree: "
+                + `5m ${tf.direction5m}, 15m ${tf.direction15m}`);
+        } else if (tf?.conflict) {
+            reasons.push(`the 1m is ${tf.direction1m} against `
+                + `5m ${tf.direction5m} and 15m ${tf.direction15m}`);
         }
 
         if (edge.verdict === EDGE_VERDICT.BELOW_COSTS) {

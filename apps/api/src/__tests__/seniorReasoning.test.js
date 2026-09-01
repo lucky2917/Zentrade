@@ -342,11 +342,31 @@ describe("senior-trader scenarios", () => {
                       invalidationConditions: ["1m break"], proposedAction: "BUY",
                       stopRupees: 990, targetRupees: 1030, quantity: 100, uncertainty: [] },
             challenged: soundChallenge });
-        // Still refused, and now for the measured reason rather than for the
-        // number of bullet points on each side.
-        expect(d.action).toBe("HOLD");
-        expect(d.reasons.join(" ")).toMatch(/while the timeframes conflict/);
+        // 1m DOWN against 5m and 15m both UP is a pullback into strength,
+        // which is the entry rather than the objection. It is recorded and it
+        // lowers confidence; the measured edge decides.
+        expect(d.action).toBe("BUY");
+        expect(d.reasons.join(" ")).toMatch(/the 1m is DOWN against 5m UP and 15m UP/);
         expect(d.evidenceSnapshot).toMatch(/CONFLICT/);
+        expect(d.confidence).not.toBe("HIGH");
+    });
+
+    // A disagreement between the LONGER frames is a real one: they do not agree
+    // on where this is going, and no measured edge resolves that. Observed live
+    // as RAMCOSYS at 1.93 risk/reward clearing costs, 1m DOWN, 5m UP, 15m DOWN.
+    it("14b. the 5m and 15m disagreeing still refuses", async () => {
+        const conflicted = ctx({ mtf: { complete: true, aligned: false, conflict: true,
+            direction1m: "DOWN", direction5m: "UP", direction15m: "DOWN",
+            volatilityRatio: 1.2, volatilityExpanding: false, timeframesKnown: 3 } });
+        const d = await runScenario({
+            context: conflicted,
+            formed: { thesis: "pullback entry", setup: "pullback", direction: "LONG",
+                      supportingEvidence: ["5m up"], contradictingEvidence: ["15m rolling over"],
+                      invalidationConditions: ["1m break"], proposedAction: "BUY",
+                      stopRupees: 990, targetRupees: 1030, quantity: 100, uncertainty: [] },
+            challenged: soundChallenge });
+        expect(d.action).toBe("HOLD");
+        expect(d.reasons.join(" ")).toMatch(/the 5m and 15m disagree/);
     });
 
     it("15. stale data -> no new exposure", async () => {
