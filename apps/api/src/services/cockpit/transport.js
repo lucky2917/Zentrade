@@ -21,14 +21,19 @@ export const MAX_REPLAY = 500;
 // the HTTP routes use. Not a new authentication system: the same secret, the
 // same claims, the same blocklist semantics minus the Redis round trip, which
 // the HTTP snapshot this client also calls already performs.
+// The cookie, and only the cookie.
+//
+// This also read `handshake.auth.token`, which could never arrive: the
+// connection gate in index.js admits a socket only when a valid token is in the
+// cookie, so a client presenting one any other way is refused before this runs.
+// A second accepted credential that the gate in front of it rejects is not a
+// feature, it is two layers disagreeing about what authentication means.
 export const identify = (socket) => {
     const raw = socket.handshake?.headers?.cookie ?? "";
-    const fromCookie = raw.split(";")
+    const token = raw.split(";")
         .map((part) => part.trim())
         .find((part) => part.startsWith("token="))
         ?.slice("token=".length);
-    const fromAuth = socket.handshake?.auth?.token ?? null;
-    const token = fromCookie ?? fromAuth;
     if (!token) return null;
     try {
         const decoded = jwt.verify(decodeURIComponent(token), process.env.JWT_SECRET);

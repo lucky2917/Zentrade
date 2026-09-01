@@ -1,4 +1,4 @@
-import { clockTime, ago, UNKNOWN } from "./format.js";
+import { clockTime, ago, rupees, signedRupees, isKnown, UNKNOWN } from "./format.js";
 
 // Always visible. Unsafe states must be impossible to miss, and the mode badge
 // must make it impossible to believe real money is involved.
@@ -9,6 +9,11 @@ const Pill = ({ label, value, tone = "neutral" }) => (
         <span className="ck-pill-value">{value}</span>
     </div>
 );
+
+// Money in the header, because it is the thing being watched. Unknown is never
+// coloured as a gain.
+const moneyTone = (paise) => (!isKnown(paise) ? "neutral"
+    : Number(paise) >= 0 ? "good" : "bad");
 
 const sessionTone = (session) => {
     switch (session) {
@@ -41,6 +46,7 @@ export const StatusBar = ({ snapshot, events, connected }) => {
     const narration = snapshot?.narration ?? null;
     const world = snapshot?.world ?? null;
     const runtime = snapshot?.runtime ?? null;
+    const account = snapshot?.account ?? null;
     const last = events[events.length - 1] ?? null;
 
     const running = snapshot?.agentRunning !== false;
@@ -50,8 +56,16 @@ export const StatusBar = ({ snapshot, events, connected }) => {
     const risk = !running ? "STOPPED"
         : halted ? "HALTED"
         : health?.newExposurePermitted === false ? "BLOCKED" : "ARMED";
+    // What the pill must answer is "who is protecting my positions", not "what
+    // was this configured as". A plane set to LIVE that has died is the one
+    // case where those two differ and the difference is everything.
+    const planeHealth = runtime?.fastPlane ?? null;
+    const planeMode = planeHealth?.mode ? planeHealth.mode.toUpperCase() : "OFF";
     const plane = !running ? "STOPPED"
-        : runtime?.fastPlane?.mode ? runtime.fastPlane.mode.toUpperCase() : "OFF";
+        : planeMode === "LIVE" && planeHealth?.alive === false ? "LIVE · GONE"
+        : planeMode;
+    const planeTone = !running || plane === "LIVE · GONE" ? "bad"
+        : plane === "OFF" ? "neutral" : "good";
     const brain = running ? (narration?.brain ?? UNKNOWN) : "STOPPED";
 
     return (
@@ -63,12 +77,17 @@ export const StatusBar = ({ snapshot, events, connected }) => {
                 </span>
             </div>
             <div className="ck-pills">
+                <Pill label="Equity" value={rupees(account?.equityPaise)}
+                      tone="money" />
+                <Pill label="Today" value={signedRupees(account?.todayPnlPaise)}
+                      tone={moneyTone(account?.todayPnlPaise)} />
+                <Pill label="Unrealised" value={signedRupees(account?.unrealisedPnlPaise)}
+                      tone={moneyTone(account?.unrealisedPnlPaise)} />
                 <Pill label="Market" value={world?.session ?? UNKNOWN}
                       tone={sessionTone(world?.session)} />
                 <Pill label="Feed" value={feedLabel(health?.connection)}
                       tone={feedTone(health?.connection)} />
-                <Pill label="Fast plane" value={plane}
-                      tone={plane === "STOPPED" ? "bad" : plane === "OFF" ? "neutral" : "good"} />
+                <Pill label="Fast plane" value={plane} tone={planeTone} />
                 <Pill label="Brain" value={brain}
                       tone={brain === "STOPPED" ? "bad" : brainTone(brain)} />
                 <Pill label="Risk" value={risk}

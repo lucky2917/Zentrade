@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../../services/api.js";
-import { clockTime, duration, percent, rupees, signedRupees, ratio, isKnown,
+import { clockTime, duration, percent, rupees, signedRupees, ratio, isKnown, text,
          titleCase, severityClass, UNKNOWN } from "./format.js";
 
 // ---- current thought -------------------------------------------------------
@@ -185,19 +185,17 @@ const Timeline = ({ symbol, onClose }) => {
 
 // ---- the persistent account ------------------------------------------------
 //
-// One continuous paper account. It was opened once, and every figure here was
-// read back from the database, not accumulated in this process: what is on the
-// screen is what survives a restart.
+// One continuous paper account. Every figure here was read back from the
+// database, not accumulated in this process: what is on the screen is what
+// survives a restart, which is the whole point of it.
 
-// A figure the account does not have is not coloured as a gain: UNKNOWN in
-// green reads as good news, which is the one thing it never is.
 const moneyClass = (paise, signed) => {
     if (!signed || !isKnown(paise)) return "ck-money-value";
     return Number(paise) >= 0 ? "ck-money-value ck-up" : "ck-money-value ck-down";
 };
 
-const Money = ({ label, paise, signed = false, hint = null }) => (
-    <div className="ck-money">
+const Money = ({ label, paise, signed = false, hint = null, big = false }) => (
+    <div className={big ? "ck-money ck-money-big" : "ck-money"}>
         <span className="ck-money-label">{label}</span>
         <span className={moneyClass(paise, signed)}>
             {signed ? signedRupees(paise) : rupees(paise)}
@@ -208,73 +206,84 @@ const Money = ({ label, paise, signed = false, hint = null }) => (
 
 export const Account = ({ account }) => {
     if (!account) {
-        return <section className="ck-panel"><h2>Account</h2>
+        return <section className="ck-panel ck-account"><h2>Account</h2>
             <p className="ck-muted">Account state {UNKNOWN}.</p></section>;
     }
 
     const day = account.sessions?.[0] ?? null;
     const failed = account.reconciliation?.checks?.filter((c) => !c.ok) ?? [];
+    const priorDays = (account.sessions ?? []).slice(1, 7);
 
     return (
-        <section className="ck-panel">
-            <h2>Account <span className="ck-muted">· paper · persistent</span></h2>
+        <section className="ck-panel ck-account">
+            <h2>
+                Account
+                <span className="ck-muted"> · paper · continues across days</span>
+            </h2>
+
+            {/* The two numbers a trader looks at first. */}
+            <div className="ck-money-hero">
+                <Money label="Equity" paise={account.equityPaise} big
+                       hint={account.fullyPriced ? null : "a position could not be priced"} />
+                <Money label="Today" paise={account.todayPnlPaise} signed big
+                       hint={account.todayPnlPaise === null || account.todayPnlPaise === undefined
+                           ? "no opening figure recorded yet"
+                           : `from ${rupees(account.openingEquityPaise)} at the open`} />
+            </div>
+
             <div className="ck-money-grid">
-                <Money label="Equity" paise={account.equityPaise}
-                       hint={account.fullyPriced ? null : "some positions unpriced"} />
                 <Money label="Cash" paise={account.cashPaise} />
+                <Money label="In positions" paise={account.marginUsedPaise}
+                       hint={`${account.positions?.length ?? 0} open`} />
                 <Money label="Realised P&L" paise={account.realisedPnlPaise} signed
                        hint={account.openingAdjustmentPaise
-                           ? `${signedRupees(account.openingAdjustmentPaise)} realised before this record`
+                           ? `${signedRupees(account.openingAdjustmentPaise)} predates this record`
                            : null} />
                 <Money label="Unrealised P&L" paise={account.unrealisedPnlPaise} signed />
                 <Money label="Since opening" paise={account.totalPnlPaise} signed
-                       hint={`from ${rupees(account.startingCapitalPaise)}`} />
+                       hint={`opened at ${rupees(account.startingCapitalPaise)}`} />
                 <Money label="Costs paid" paise={account.costsPaise} />
             </div>
 
-            <dl className="ck-account-meta">
-                <dt>Committed to positions</dt>
-                <dd>{rupees(account.marginUsedPaise)} · {account.positions?.length ?? 0} open</dd>
-                <dt>Opened</dt>
-                <dd>{account.openedAt ? new Date(account.openedAt).toLocaleDateString("en-IN")
-                                      : UNKNOWN}</dd>
-                {day ? (<>
-                    <dt>Today</dt>
-                    <dd>
-                        opened {rupees(day.opening_cash_paise)} ·
-                        {" "}{day.orders_placed} order(s) ·
-                        {" "}{day.decisions_made} decision(s)
-                    </dd>
-                </>) : null}
-            </dl>
-
             {failed.length ? (
-                <p className="ck-bad">
+                <p className="ck-bad ck-account-note">
                     DID NOT RECONCILE: {failed.map((c) => c.name).join(", ")}
                     {account.reconciliation.driftPaise
                         ? ` · drift ${signedRupees(account.reconciliation.driftPaise)}` : ""}
                 </p>
             ) : (
-                <p className="ck-muted ck-reconciled">
-                    Reconciled: cash equals starting capital plus realised P&L, less costs
-                    and margin committed.
+                <p className="ck-muted ck-account-note">
+                    Reconciled · cash = opening capital + realised P&L − costs − margin
                 </p>
             )}
 
-            {account.sessions?.length > 1 ? (
-                <ol className="ck-sessions">
-                    {account.sessions.slice(0, 8).map((sn) => (
-                        <li key={sn.session_date}>
-                            <time>{String(sn.session_date).slice(0, 10)}</time>
-                            <span>{rupees(sn.closing_cash_paise)}</span>
-                            <span className={Number(sn.realised_pnl_paise) >= 0
-                                             ? "ck-up" : "ck-down"}>
-                                {signedRupees(sn.realised_pnl_paise)}
-                            </span>
-                        </li>
-                    ))}
-                </ol>
+            {/* The evidence that this is not a fresh account every morning. */}
+            {priorDays.length ? (
+                <div className="ck-history">
+                    <span className="ck-history-title">Previous sessions</span>
+                    <ol className="ck-sessions">
+                        {priorDays.map((sn) => (
+                            <li key={sn.session_date}>
+                                <time>{String(sn.session_date).slice(0, 10)}</time>
+                                <span>closed {rupees(sn.closing_cash_paise)}</span>
+                                <span className={Number(sn.realised_pnl_paise) >= 0
+                                                 ? "ck-up" : "ck-down"}>
+                                    {signedRupees(sn.realised_pnl_paise)}
+                                </span>
+                            </li>
+                        ))}
+                    </ol>
+                </div>
             ) : null}
+
+            <p className="ck-muted ck-account-since">
+                {day ? `Today: opened ${rupees(day.opening_cash_paise)} cash · `
+                       + `${day.orders_placed} order(s) · ${day.decisions_made} decision(s)`
+                     : "No session recorded today yet."}
+                {account.openedAt
+                    ? ` · account opened ${new Date(account.openedAt)
+                        .toLocaleDateString("en-IN")}` : ""}
+            </p>
         </section>
     );
 };
@@ -384,31 +393,39 @@ export const Positions = ({ positions }) => {
     const [open, setOpen] = useState(null);
 
     if (!positions?.length) {
-        return <section className="ck-panel"><h2>Positions</h2>
+        return <section className="ck-panel"><h2>Open positions</h2>
             <p className="ck-muted">Flat. No open positions.</p></section>;
     }
 
     return (
         <section className="ck-panel">
-            <h2>Positions <span className="ck-muted">({positions.length})</span></h2>
+            <h2>Open positions <span className="ck-muted">({positions.length})</span></h2>
             <div className="ck-positions">
                 {positions.map((p) => (
                     <button type="button" key={p.symbol} className="ck-position"
                             onClick={() => setOpen(p.symbol)}>
                         <div className="ck-pos-head">
                             <span className="ck-symbol">{p.symbol}</span>
-                            <span className={p.unrealisedPnlPaise >= 0 ? "ck-up" : "ck-down"}>
+                            <span className={`ck-pos-pnl ${
+                                !isKnown(p.unrealisedPnlPaise) ? ""
+                                    : p.unrealisedPnlPaise >= 0 ? "ck-up" : "ck-down"}`}>
                                 {signedRupees(p.unrealisedPnlPaise)}
+                                {/* positionState already returns this as a
+                                    percentage, not a fraction. */}
+                                {isKnown(p.pnlPercent)
+                                    ? <em>{percent(p.pnlPercent)}</em> : null}
                             </span>
                         </div>
-                        <div className="ck-pos-grid">
-                            <span>qty {p.quantity ?? UNKNOWN}</span>
-                            <span>entry {rupees(p.entryPricePaise)}</span>
-                            <span>now {rupees(p.currentPricePaise)}</span>
-                            <span>held {duration(p.holdingSeconds)}</span>
-                            <span>stop {ratio(p.stopDistance)}</span>
-                            <span>target {ratio(p.targetDistance)}</span>
-                        </div>
+                        <dl className="ck-pos-grid">
+                            <div><dt>Qty</dt><dd>{text(p.quantity)}</dd></div>
+                            <div><dt>Entry</dt><dd>{rupees(p.entryPricePaise)}</dd></div>
+                            <div><dt>Now</dt><dd>{rupees(p.currentPricePaise)}</dd></div>
+                            <div><dt>Stop</dt>
+                                <dd className="ck-level-stop">{rupees(p.stopPaise)}</dd></div>
+                            <div><dt>Target</dt>
+                                <dd className="ck-level-target">{rupees(p.targetPaise)}</dd></div>
+                            <div><dt>Held</dt><dd>{duration(p.holdingSeconds)}</dd></div>
+                        </dl>
                         {p.stale ? <span className="ck-bad">DATA STALE</span> : null}
                         {!p.hasThesis ? (
                             <span className="ck-bad">

@@ -4,7 +4,8 @@ import { StatusBar, StandbyBanner } from "./StatusBar.jsx";
 import ReasoningStream from "./ReasoningStream.jsx";
 import { CurrentThought, Positions, OrderLifecycle, SystemHealth, MarketWorld, Account }
     from "./Panels.jsx";
-import { rupees, percent, duration, clockTime, UNKNOWN } from "./format.js";
+
+import { rupees, percent, duration, clockTime, text, UNKNOWN } from "./format.js";
 
 // The cockpit's rendering contract.
 //
@@ -177,10 +178,10 @@ describe("the reasoning stream renders the real artifacts", () => {
     it("renders every stage of a real decision", () => {
         render(<ReasoningStream events={sequence} showObservations />);
         for (const title of ["MARKET CHANGE", "MATERIALITY CHECK",
-                             "SENIOR TRADER AWAKENED", "WHAT DO I KNOW?",
-                             "INITIAL THESIS", "CHALLENGING THE THESIS",
+                             "SENIOR TRADER AWAKENED", "THE FACTS",
+                             "THE THESIS", "THE CHALLENGE",
                              "ALTERNATIVE EXPLANATIONS", "WHAT WOULD CHANGE MY MIND?",
-                             "DETERMINISTIC SYNTHESIS", "DECISION", "RISK GATE"]) {
+                             "THE SYNTHESIS", "FINAL ACTION", "RISK GATE"]) {
             expect(screen.getByText(title)).toBeTruthy();
         }
     });
@@ -295,6 +296,7 @@ const accountState = (over = {}) => ({
     equityPaise: 101_200_000, realisedPnlPaise: 1_250_000, unrealisedPnlPaise: 54_000,
     costsPaise: 6_000, totalPnlPaise: 1_200_000, settledOrders: 6,
     openingAdjustmentPaise: 0,
+    openingEquityPaise: 100_900_000, todayPnlPaise: 300_000,
     positions: [{ symbol: "OLAELEC", quantity: 2000, avgPricePaise: 4189,
                   lastPricePaise: 4216, priced: true }],
     fullyPriced: true,
@@ -313,7 +315,7 @@ describe("the persistent account", () => {
         expect(screen.getByText("₹9,83,204.00")).toBeTruthy();           // cash
         expect(screen.getByText("+₹12,500.00")).toBeTruthy();            // realised
         expect(screen.getByText("+₹540.00")).toBeTruthy();               // unrealised
-        expect(screen.getByText(/from ₹10,00,000.00/)).toBeTruthy();
+        expect(screen.getByText(/opened at ₹10,00,000.00/)).toBeTruthy();
     });
 
     it("says the account did not reconcile rather than showing a tidy number", () => {
@@ -326,12 +328,12 @@ describe("the persistent account", () => {
 
     it("flags an unpriced position instead of valuing it at nothing", () => {
         render(<Account account={accountState({ fullyPriced: false })} />);
-        expect(screen.getByText("some positions unpriced")).toBeTruthy();
+        expect(screen.getByText("a position could not be priced")).toBeTruthy();
     });
 
     it("says how much of the realised P&L predates the record", () => {
         render(<Account account={accountState({ openingAdjustmentPaise: -89_700 })} />);
-        expect(screen.getByText("−₹897.00 realised before this record")).toBeTruthy();
+        expect(screen.getByText("−₹897.00 predates this record")).toBeTruthy();
     });
 
     it("does not colour an unknown figure as a gain", () => {
@@ -346,5 +348,146 @@ describe("the persistent account", () => {
     it("reports an absent account as absent", () => {
         render(<Account account={null} />);
         expect(screen.getByText(`Account state ${UNKNOWN}.`)).toBeTruthy();
+    });
+});
+
+// ---- values that are not what the renderer expected -------------------------
+//
+// Every field in the reasoning stream comes from a model response. A shape that
+// drifts by one level — {condition: "..."} where a string was expected — does
+// not print badly in React, it throws, and the whole cockpit goes white in
+// front of whoever is watching.
+
+describe("a value of the wrong shape never breaks the screen", () => {
+    it("reads the sentence out of an object", () => {
+        expect(text({ statement: "price reclaimed VWAP" })).toBe("price reclaimed VWAP");
+        expect(text({ condition: "a close back under" })).toBe("a close back under");
+        expect(text({ verdict: "CLEARS_COSTS", ratio: 1.8 })).toBe("CLEARS_COSTS");
+    });
+
+    it("joins a list of objects rather than rendering one", () => {
+        expect(text([{ statement: "a" }, { statement: "b" }])).toBe("a; b");
+    });
+
+    it("falls back to UNKNOWN rather than printing an object", () => {
+        expect(text({ nested: { deep: 1 } })).toBe(UNKNOWN);
+        expect(text({})).toBe(UNKNOWN);
+        expect(text(null)).toBe(UNKNOWN);
+        expect(text("   ")).toBe(UNKNOWN);
+    });
+
+    it("renders a thesis whose lists arrived as objects", () => {
+        render(<ReasoningStream showObservations events={[event({
+            seq: 1, kind: "THESIS_FORMED", symbol: "TCS",
+            thesis: { statement: "reclaimed VWAP on real volume" },
+            setup: "vwap reclaim",
+            supportingEvidence: [{ statement: "volume 3x baseline" }],
+            contradictingEvidence: ["late in the session"],
+            invalidationConditions: [{ condition: "a close back under VWAP" }],
+        })]} />);
+        expect(screen.getByText("reclaimed VWAP on real volume")).toBeTruthy();
+        expect(screen.getByText("volume 3x baseline")).toBeTruthy();
+        expect(screen.getByText("a close back under VWAP")).toBeTruthy();
+    });
+});
+
+// ---- the phases of the trader's cycle are distinguishable -------------------
+
+describe("each block says where in the cycle it belongs", () => {
+    const stageOf = (over) => {
+        const { container } = render(<ReasoningStream showObservations
+            events={[event(over)]} />);
+        return container.querySelector(".ck-stage")?.textContent;
+    };
+
+    it("labels observation, thinking, decision, risk, order, fill and position", () => {
+        expect(stageOf({ kind: "MARKET_OBSERVATION" })).toBe("OBSERVING");
+        expect(stageOf({ kind: "THESIS_FORMED" })).toBe("THINKING");
+        expect(stageOf({ kind: "DECISION", action: "BUY", confidenceBasis: [] }))
+            .toBe("DECISION");
+        expect(stageOf({ kind: "RISK_DECISION", decision: "ALLOW" })).toBe("RISK");
+        expect(stageOf({ kind: "ORDER_STATE_CHANGED", side: "BUY", state: "WORKING" }))
+            .toBe("ORDER");
+        expect(stageOf({ kind: "FILL", state: "FILLED", filledQuantity: 10, quantity: 10 }))
+            .toBe("FILLED");
+        expect(stageOf({ kind: "REASSESSMENT", action: "HOLD" })).toBe("POSITION");
+        expect(stageOf({ kind: "PROTECTIVE_EVENT", crossing: "STOP" })).toBe("PROTECT");
+    });
+
+    it("shows a BUY decision as its own action, not as prose", () => {
+        render(<ReasoningStream showObservations events={[event({
+            kind: "DECISION", action: "BUY", confidence: "HIGH",
+            quantity: 200, confidenceBasis: ["volume confirms"] })]} />);
+        expect(screen.getByText("BUY")).toBeTruthy();
+        expect(screen.getByText("confidence HIGH")).toBeTruthy();
+        expect(screen.getByText("200 sh")).toBeTruthy();
+    });
+
+    it("does not render a failed protective exit as a successful one", () => {
+        render(<ReasoningStream showObservations events={[event({
+            kind: "PROTECTIVE_EVENT", symbol: "TCS", crossing: "STOP",
+            pricePaise: 297_000, failed: true,
+            because: "the protective exit could not be submitted" })]} />);
+        expect(screen.getByText("PROTECTIVE EXIT FAILED")).toBeTruthy();
+        expect(screen.getByText(/the level stays armed/)).toBeTruthy();
+    });
+
+    it("shows an idempotent repeat as a repeat, not as a new order", () => {
+        render(<ReasoningStream showObservations events={[event({
+            kind: "ORDER_STATE_CHANGED", side: "SELL", quantity: 10,
+            state: "FILLED", duplicate: true })]} />);
+        expect(screen.getByText("ORDER · ALREADY PLACED")).toBeTruthy();
+        expect(screen.getByText(/nothing was sent twice/)).toBeTruthy();
+    });
+
+    // These had no renderer at all and were dropped from the stream in silence.
+    it("renders the events that used to be invisible", () => {
+        render(<ReasoningStream showObservations events={[
+            event({ seq: 1, kind: "HALT", state: "HALTED", because: "operator request",
+                    session: "HALTED" }),
+            event({ seq: 2, kind: "PROTECTION", state: "UNPROTECTED", symbols: ["TCS"],
+                    positions: [{ symbol: "TCS", reason: "no open thesis" }],
+                    because: "these positions carry capital with no level protecting them" }),
+            event({ seq: 3, kind: "POSITION_CHANGED", symbol: "TCS", quantity: 10,
+                    entryPricePaise: 300_000, currentPricePaise: 306_000,
+                    unrealisedPnlPaise: 60_000 }),
+        ]} />);
+        expect(screen.getByText("HALTED BY THE OPERATOR")).toBeTruthy();
+        expect(screen.getByText("POSITIONS WITH NO PROTECTION")).toBeTruthy();
+        expect(screen.getByText("TCS — no open thesis")).toBeTruthy();
+        expect(screen.getByText("+₹600.00")).toBeTruthy();
+    });
+});
+
+// ---- the account is the headline -------------------------------------------
+
+describe("the account is readable at a glance", () => {
+    it("leads with equity and today's P&L", () => {
+        render(<Account account={accountState()} />);
+        expect(screen.getByText("₹10,12,000.00")).toBeTruthy();   // equity
+        expect(screen.getByText("+₹3,000.00")).toBeTruthy();      // today
+        expect(screen.getByText(/from ₹10,09,000.00 at the open/)).toBeTruthy();
+    });
+
+    it("says so when the day has no opening figure yet", () => {
+        render(<Account account={accountState({ todayPnlPaise: null,
+                                                openingEquityPaise: null })} />);
+        expect(screen.getByText("no opening figure recorded yet")).toBeTruthy();
+    });
+
+    it("shows previous sessions, so it is plainly not a fresh account", () => {
+        render(<Account account={accountState({ sessions: [
+            { session_date: "2026-09-01", opening_cash_paise: 98_320_400,
+              closing_cash_paise: 98_320_400, realised_pnl_paise: 0,
+              orders_placed: 1, decisions_made: 12 },
+            { session_date: "2026-08-31", closing_cash_paise: 98_000_000,
+              realised_pnl_paise: -50_000 },
+            { session_date: "2026-08-28", closing_cash_paise: 98_050_000,
+              realised_pnl_paise: 125_000 },
+        ] })} />);
+        expect(screen.getByText("Previous sessions")).toBeTruthy();
+        expect(screen.getByText("2026-08-31")).toBeTruthy();
+        expect(screen.getByText("−₹500.00")).toBeTruthy();
+        expect(screen.getByText("+₹1,250.00")).toBeTruthy();
     });
 });

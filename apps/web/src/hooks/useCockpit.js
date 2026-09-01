@@ -18,6 +18,14 @@ import api from "../services/api.js";
 // quiet, and the screen says the market is quiet.
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "/";
+
+// Narration kinds that mean the money, the positions or the orders on screen
+// are now out of date. MARKET_OBSERVATION is here because unrealised P&L moves
+// with the price and nothing else announces it.
+const CHANGES_STATE = new Set([
+    "FILL", "ORDER_STATE_CHANGED", "POSITION_CHANGED", "REASSESSMENT",
+    "RECOVERY", "MARKET_OBSERVATION", "PROTECTIVE_EVENT", "HALT",
+]);
 const MAX_EVENTS = 600;
 const SNAPSHOT_RETRY_MS = 5000;
 
@@ -31,6 +39,9 @@ export const useCockpit = () => {
     const pendingRef = useRef([]);
     const frameRef = useRef(null);
     const socketRef = useRef(null);
+    // The highest sequence the state refresh has already considered, so a batch
+    // is examined once and every event in it is examined.
+    const refreshedThroughRef = useRef(0);
 
     // Buffered so a burst of narration costs one render, not one per event.
     const flush = useCallback(() => {
@@ -70,6 +81,9 @@ export const useCockpit = () => {
             setSnapshot(data);
             setEvents(data.narration?.events ?? []);
             seqRef.current = data.narration?.seq ?? 0;
+            // The snapshot IS the current state, so nothing already in it needs
+            // refreshing on account of the events it arrived with.
+            refreshedThroughRef.current = seqRef.current;
             setError(null);
             return data.narration?.seq ?? 0;
         } catch (err) {
@@ -123,16 +137,31 @@ export const useCockpit = () => {
 
     // The snapshot's slower-moving parts are refreshed when narration says
     // something changed them, not on a timer.
+    //
+    // Two things this has to get right.
+    //
+    // Every NEW event is examined, not just the last one. Events arrive in
+    // flushed batches, so a FILL followed by an observation in the same batch
+    // left the last event non-material and the cash, positions and P&L on
+    // screen a trade out of date.
+    //
+    // And an observation pass counts. Unrealised P&L moves with the price and
+    // nothing emits an event when it does, so without this the equity figure
+    // froze between fills — which on a demo screen reads as a broken number
+    // rather than a quiet market.
     useEffect(() => {
-        const last = events[events.length - 1];
-        if (!last) return;
-        const CHANGES_STATE = ["FILL", "ORDER_STATE_CHANGED", "POSITION_CHANGED",
-                               "REASSESSMENT", "RECOVERY"];
-        if (!CHANGES_STATE.includes(last.kind)) return;
+        if (!events.length) return;
+        const fresh = events.filter((e) => e.seq > refreshedThroughRef.current);
+        if (!fresh.length) return;
+        refreshedThroughRef.current = events[events.length - 1].seq;
+        if (!fresh.some((e) => CHANGES_STATE.has(e.kind))) return;
+
         let cancelled = false;
         api.get("/internal/cockpit/snapshot", { baseURL: "/", params: { limit: 1 } })
             .then(({ data }) => {
                 if (cancelled) return;
+                // Narration is owned by the live stream; only the state the
+                // snapshot is authoritative for is replaced.
                 setSnapshot((prev) => (prev ? { ...prev, ...data, narration: prev.narration } : data));
             })
             .catch(() => {});

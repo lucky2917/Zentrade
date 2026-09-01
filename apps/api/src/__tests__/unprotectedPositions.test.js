@@ -143,6 +143,7 @@ describe("a position with nothing protecting it is reported as such", () => {
         positions.push(position({ symbol: "INFY", thesisId: null }));
         await runtime.armOpenPositions();
         expect(narrated).toHaveLength(2);
+        expect(narrated[1].kind).toBe("PROTECTION");
         expect(narrated[1].payload.symbols).toEqual(["TCS", "INFY"]);
     });
 

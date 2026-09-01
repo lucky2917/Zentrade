@@ -520,12 +520,16 @@ export class AutonomousRuntime {
             this.logger?.error?.("FastPlane",
                 "the plane stopped answering; protection is back on the local lane",
                 { reopenedLevels: reopened });
-            this.narrate(KIND.STALE_DATA, {
-                symbols: [], count: 0, armed: reopened,
+            this.narrate(KIND.PROTECTION, {
+                state: "HANDOVER", protectedBy: "node_reflex", reopenedLevels: reopened,
                 because: "the fast plane stopped answering; the local reflex is protecting again",
             });
         } else {
             this.logger?.info?.("FastPlane", "the plane is answering and now owns detection");
+            this.narrate(KIND.PROTECTION, {
+                state: "HANDOVER", protectedBy: "go_fast_plane", reopenedLevels: 0,
+                because: "the fast plane is answering and now owns detection",
+            });
         }
         return { authoritative: after, changed: true };
     }
@@ -724,9 +728,10 @@ export class AutonomousRuntime {
         if (changed && unprotected.length) {
             this.logger?.error?.("Runtime", "open positions that nothing is protecting",
                                  { positions: unprotected });
-            this.narrate(KIND.STALE_DATA, {
+            this.narrate(KIND.PROTECTION, {
+                state: "UNPROTECTED",
                 symbols: unprotected.map((p) => p.symbol),
-                count: unprotected.length, armed: 0,
+                positions: unprotected,
                 because: "these positions carry capital with no level protecting them",
             });
         } else if (changed && this.unprotectedSignature !== "") {

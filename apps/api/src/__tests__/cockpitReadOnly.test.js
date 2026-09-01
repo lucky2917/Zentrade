@@ -79,6 +79,11 @@ describe("the live stream is gated by the existing session", () => {
 
     it("refuses a missing, malformed or foreign token", () => {
         expect(identify(socketWith(""))).toBeNull();
+        // The connection gate in index.js admits a socket only on a valid
+        // cookie, so a credential offered any other way must not be honoured
+        // here either: two layers, one answer.
+        expect(identify({ handshake: { headers: {},
+            auth: { token: jwt.sign({ userId: 42 }, process.env.JWT_SECRET) } } })).toBeNull();
         expect(identify(socketWith("token=garbage"))).toBeNull();
         expect(identify(socketWith(
             `token=${jwt.sign({ userId: 1 }, "a-different-secret-entirely-32ch")}`))).toBeNull();

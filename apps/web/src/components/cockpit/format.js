@@ -60,7 +60,37 @@ export const ago = (iso, now = Date.now()) => {
 };
 
 export const titleCase = (value) =>
-    (value ?? UNKNOWN).toString().replaceAll("_", " ");
+    text(value, UNKNOWN).replaceAll("_", " ");
+
+// Anything the backend hands us, rendered as something a person can read.
+//
+// Every field below comes from a model response or an event payload, and a
+// shape that drifts by one level — `{condition: "..."}` where a string was
+// expected — used to reach React as an object. React does not print
+// "[object Object]" for that; it throws, and the whole cockpit goes white in
+// front of whoever is watching. Nothing on this screen is worth that.
+export const text = (value, fallback = UNKNOWN) => {
+    if (value === null || value === undefined) return fallback;
+    if (typeof value === "string") return value.trim() || fallback;
+    if (typeof value === "number") return Number.isFinite(value) ? String(value) : fallback;
+    if (typeof value === "boolean") return value ? "yes" : "no";
+    if (Array.isArray(value)) {
+        const parts = value.map((v) => text(v, "")).filter(Boolean);
+        return parts.length ? parts.join("; ") : fallback;
+    }
+    if (typeof value === "object") {
+        // The common shapes an object arrives in when a string was expected.
+        for (const key of ["statement", "text", "reason", "label", "verdict",
+                           "condition", "description", "message", "name"]) {
+            if (typeof value[key] === "string" && value[key].trim()) return value[key];
+        }
+        const pairs = Object.entries(value)
+            .filter(([, v]) => v !== null && v !== undefined && typeof v !== "object")
+            .map(([k, v]) => `${k} ${v}`);
+        return pairs.length ? pairs.join(", ") : fallback;
+    }
+    return fallback;
+};
 
 // Only three severities exist in the event vocabulary; anything else is a bug
 // and should look like one rather than silently rendering as normal.

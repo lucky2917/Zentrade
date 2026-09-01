@@ -173,8 +173,8 @@
     padding: 8px 10px; color: inherit; font: inherit; cursor: pointer; }
 .ck-position:hover { border-color: var(--ck-accent); }
 .ck-pos-head { display: flex; justify-content: space-between; }
-.ck-pos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 8px;
-               color: var(--ck-muted); font-size: 11px; }
+.ck-pos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 8px;
+               margin: 4px 0 0; }
 .ck-pos-hint { font-size: 10px; }
 
 /* orders */
@@ -226,6 +226,11 @@
              border-top: 1px solid var(--ck-line); }
 
 /* account */
+.ck-account { border-color: #2a3446; }
+.ck-money-hero { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+                 margin-bottom: 8px; }
+.ck-money-big { padding: 10px; background: #10161f; border-color: #2a3446; }
+.ck-money-big .ck-money-value { font-size: 21px; letter-spacing: -0.02em; }
 .ck-money-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ck-money { display: flex; flex-direction: column; background: #0e1218;
     border: 1px solid var(--ck-line); border-radius: 4px; padding: 6px 8px; }
@@ -233,13 +238,13 @@
                   letter-spacing: 0.04em; }
 .ck-money-value { font-size: 14px; font-variant-numeric: tabular-nums; }
 .ck-money-hint { color: var(--ck-muted); font-size: 10px; }
-.ck-account-meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px;
-                   margin: 10px 0 0; font-size: 11px; }
-.ck-account-meta dt { color: var(--ck-muted); }
-.ck-account-meta dd { margin: 0; }
-.ck-reconciled { font-size: 10px; margin: 8px 0 0; }
-.ck-sessions { list-style: none; margin: 8px 0 0; padding: 8px 0 0; font-size: 11px;
-    border-top: 1px solid var(--ck-line); display: flex; flex-direction: column; gap: 2px; }
+.ck-account-note { font-size: 10px; margin: 10px 0 0; }
+.ck-account-since { font-size: 10px; margin: 6px 0 0; line-height: 1.5; }
+.ck-history { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--ck-line); }
+.ck-history-title { color: var(--ck-muted); font-size: 10px; text-transform: uppercase;
+                    letter-spacing: 0.06em; }
+.ck-sessions { list-style: none; margin: 6px 0 0; padding: 0; font-size: 11px;
+    display: flex; flex-direction: column; gap: 2px; }
 .ck-sessions li { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px;
                   font-variant-numeric: tabular-nums; }
 .ck-sessions time { color: var(--ck-muted); }
@@ -258,3 +263,43 @@
 .ck-decision dd { margin: 0; }
 .ck-evidence { list-style: none; margin: 0; padding: 0; }
 .ck-evidence li { font-size: 11px; }
+
+/* stage chips: where in the trader's cycle a block belongs */
+.ck-stage { font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+    padding: 1px 6px; border-radius: 3px; text-transform: uppercase;
+    background: #151b25; color: var(--ck-muted); border: 1px solid var(--ck-line);
+    white-space: nowrap; }
+.ck-stage-observe  { color: #7f8ea3; }
+.ck-stage-think    { color: var(--ck-think); border-color: #3b2f5c; background: #171327; }
+.ck-stage-decide   { color: var(--ck-accent); border-color: #234a68; background: #0e1a25; }
+.ck-stage-risk     { color: var(--ck-warn); border-color: #4a4020; background: #1c1808; }
+.ck-stage-order    { color: #7fd1e8; border-color: #1f4351; background: #0b1a20; }
+.ck-stage-fill     { color: var(--ck-good); border-color: #1f4a31; background: #0c1a12; }
+.ck-stage-position { color: #d6b3f5; border-color: #3b2f5c; background: #171327; }
+.ck-stage-protect  { color: var(--ck-bad); border-color: #5c2f2f; background: #1f0f0f; }
+.ck-stage-system   { color: var(--ck-muted); }
+
+/* positions */
+.ck-pos-pnl { display: flex; align-items: baseline; gap: 6px;
+              font-variant-numeric: tabular-nums; }
+.ck-pos-pnl em { font-style: normal; font-size: 10px; opacity: 0.75; }
+.ck-pos-grid > div { display: flex; flex-direction: column; }
+.ck-pos-grid dt { color: var(--ck-muted); font-size: 9px; text-transform: uppercase;
+                  letter-spacing: 0.05em; }
+.ck-pos-grid dd { margin: 0; font-size: 11px; font-variant-numeric: tabular-nums;
+                  color: var(--ck-text); }
+.ck-level-stop { color: var(--ck-bad); }
+.ck-level-target { color: var(--ck-good); }
+
+/* header money */
+.ck-pill-money .ck-pill-value { font-size: 14px; font-weight: 600;
+                                font-variant-numeric: tabular-nums; }
+.ck-pill-money { border-color: #2a3446; background: #10161f; }
+
+/* execution blocks */
+.ck-block-head { flex-wrap: wrap; }
+.ck-fill-qty { font-variant-numeric: tabular-nums; }
+.ck-position { border-left-color: var(--ck-think); }
+.ck-act-BUY { color: var(--ck-good); }
+.ck-act-SELL, .ck-act-EXIT { color: var(--ck-bad); }
+.ck-act-HOLD { color: var(--ck-muted); }

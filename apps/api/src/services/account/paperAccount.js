@@ -66,8 +66,10 @@ export const ensureAccount = async ({
 // be valued against live prices, a replayed session, or nothing at all — a
 // position whose price is unknown is reported as unknown, never valued at a
 // guess.
-export const accountState = async ({ userId, priceFor = async () => null, db = pool } = {}) => {
-    const [account, user, positions, realised] = await Promise.all([
+export const accountState = async ({
+    userId, priceFor = async () => null, db = pool, at = new Date(),
+} = {}) => {
+    const [account, user, positions, realised, today] = await Promise.all([
         db.query(`SELECT starting_capital_paise, opening_adjustment_paise, opened_at
                   FROM paper_account WHERE user_id=$1`, [userId]),
         db.query("SELECT balance_paise FROM users WHERE id=$1", [userId]),
@@ -77,6 +79,11 @@ export const accountState = async ({ userId, priceFor = async () => null, db = p
                          COALESCE(SUM(brokerage_paise),0) AS costs,
                          COUNT(*)::int AS orders
                   FROM orders WHERE user_id=$1 AND ${SETTLED}`, [userId]),
+        // What the account was worth when the day opened. Written once on the
+        // session's first summary and never updated, so it is the reference
+        // today's movement is measured against.
+        db.query(`SELECT opening_equity_paise FROM session_summaries
+                  WHERE user_id=$1 AND session_date=$2`, [userId, sessionDateOf(at)]),
     ]);
     if (!account.rows.length || !user.rows.length) return null;
 
@@ -124,6 +131,14 @@ export const accountState = async ({ userId, priceFor = async () => null, db = p
         unrealisedPnlPaise,
         costsPaise: Number(realised.rows[0].costs),
         totalPnlPaise: equityPaise - startingCapitalPaise,
+        // Today alone, against the equity the day opened at. Null rather than
+        // zero when the day has no opening figure yet: a day that has not been
+        // recorded has not made nothing, it is simply not known.
+        openingEquityPaise: today.rows.length
+            ? Number(today.rows[0].opening_equity_paise) : null,
+        todayPnlPaise: today.rows.length
+            && today.rows[0].opening_equity_paise !== null
+            ? equityPaise - Number(today.rows[0].opening_equity_paise) : null,
         settledOrders: realised.rows[0].orders,
         positions: held,
         fullyPriced: valued === positions.rows.length,
