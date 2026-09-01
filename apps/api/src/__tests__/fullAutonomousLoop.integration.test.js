@@ -97,6 +97,9 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("full autonomous paper loop", () => {
             universe: [SYMBOL],
             callModel: reassessModel,
             analyseCandidate: candidate,
+            // Shares the runtime's clock, so revalidation is not comparing a
+            // fixed decision instant against real wall time.
+            clock: now,
         });
         return new AutonomousRuntime({
             engine, reconciler: reconcile, userId: USER, clock: now, ports });

@@ -87,6 +87,30 @@ export const clearsCostHurdle = (context, costBps = ROUND_TRIP_COST_BPS) => {
     return { worth: true, movePercent };
 };
 
+// Can this book actually take the trade the evidence points to?
+//
+// Execution is long-only: the risk gate refuses a SELL with no position held,
+// and the ledger has no path to open a short. So a symbol whose timeframes are
+// aligned DOWN cannot produce an executable thesis no matter how clean the
+// setup is.
+//
+// Sending them anyway is what produced the strangest rows in the record. The
+// model is offered "BUY" or "HOLD" and nothing else, so on a falling stock it
+// wrote an honestly bearish thesis — UNITECH "a sharp volume-driven sell-off",
+// M&M "aggressive selling pressure" — proposed BUY because that was the only
+// action available, and left stop and target null because there are no long
+// levels to place under a short thesis. Two model calls each, for a trade the
+// book cannot take.
+//
+// This is not a view on direction and it does not weaken anything. It is the
+// screen knowing what the execution layer is capable of.
+export const tradeableDirection = (context) => {
+    if (context?.mtf?.alignedDirection === "DOWN") {
+        return { worth: false, reason: "aligned down; this book cannot open a short" };
+    }
+    return { worth: true };
+};
+
 // Strongest first, ties broken by symbol so the order is deterministic.
 //
 // Ranked on the SAME move the screen admitted the candidate on. Ranking on

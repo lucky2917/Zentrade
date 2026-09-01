@@ -106,6 +106,10 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("replaying the 2026-09-01 session", () 
             userId: USER, newsStore: new NewsStore(), connectionTracker: connected(),
             universe: [SYMBOL],
             analyseCandidate: makeCandidateAnalyser({ transport }),
+            // The ports must share the runtime's clock. Without it revalidation
+            // compares a decision taken at the fixed test instant against real
+            // wall time, and the test quietly depends on what o'clock it is.
+            clock: () => new Date(at(12, 0)),
         });
         return new AutonomousRuntime({
             engine, reconciler: reconcile, userId: USER,

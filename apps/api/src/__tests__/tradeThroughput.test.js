@@ -121,3 +121,51 @@ describe("the queue serves opportunity, not arrival order", () => {
         expect(q.take().symbol).toBe("REAL");
     });
 });
+
+// ---- the screen has to know what execution can do ---------------------------
+//
+// Execution is long-only: the risk gate refuses a SELL with no position held
+// and the ledger cannot open a short. A falling stock therefore has no
+// executable thesis in it, however clean the setup.
+//
+// Sending them anyway produced the strangest rows in the record. Offered only
+// "BUY" or "HOLD", the model wrote an honestly bearish thesis on a falling
+// stock — UNITECH "a sharp volume-driven sell-off", M&M "aggressive selling
+// pressure" — proposed BUY because nothing else was available, and left stop
+// and target null, because there are no long levels under a short thesis. Two
+// model calls each, at 8,000 tokens a minute, for a trade the book cannot take.
+
+describe("a book that cannot short does not reason about shorts", () => {
+    const ctx = (mtf) => ({ mtf: { complete: true, ...mtf } });
+
+    it("turns away a setup aligned down", async () => {
+        const { tradeableDirection } = await import("../services/autonomous/candidates.js");
+        const v = tradeableDirection(ctx({ aligned: true, alignedDirection: "DOWN",
+                                          change5m: -0.04 }));
+        expect(v.worth).toBe(false);
+        expect(v.reason).toMatch(/cannot open a short/);
+    });
+
+    it("keeps a setup aligned up", async () => {
+        const { tradeableDirection } = await import("../services/autonomous/candidates.js");
+        expect(tradeableDirection(ctx({ aligned: true, alignedDirection: "UP",
+                                        change5m: 0.04 })).worth).toBe(true);
+    });
+
+    // A dip that has not resolved into a downtrend is still a long candidate —
+    // a pullback entry is exactly that shape — so only a settled alignment
+    // turns one away.
+    it("keeps an unaligned pullback, which is a long setup", async () => {
+        const { tradeableDirection } = await import("../services/autonomous/candidates.js");
+        expect(tradeableDirection(ctx({ aligned: false, alignedDirection: null,
+                                        change5m: -0.03 })).worth).toBe(true);
+        expect(tradeableDirection(ctx({ conflict: true, change1m: -0.01,
+                                        change5m: 0.03 })).worth).toBe(true);
+    });
+
+    it("says yes when there is nothing to judge", async () => {
+        const { tradeableDirection } = await import("../services/autonomous/candidates.js");
+        expect(tradeableDirection(null).worth).toBe(true);
+        expect(tradeableDirection(ctx({})).worth).toBe(true);
+    });
+});

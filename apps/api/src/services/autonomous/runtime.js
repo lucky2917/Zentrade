@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Orchestrator } from "../orchestrator/orchestrator.js";
 import { PaperVenue } from "../execution/paperVenue.js";
-import { scanUniverse, DEFAULT_SCREEN, clearsCostHurdle } from "./candidates.js";
+import { scanUniverse, DEFAULT_SCREEN, clearsCostHurdle, tradeableDirection }
+    from "./candidates.js";
 import { evaluate as evaluateRisk, DECISION } from "./riskGate.js";
 import { intentFrom } from "./loop.js";
 import { permits } from "../orchestrator/session.js";
@@ -210,6 +211,7 @@ export class AutonomousRuntime {
             candidatesPaced: 0, protectiveRetries: 0, ordersAdopted: 0, haltChanges: 0,
             planeAuthorityChanges: 0, unprotectedPositions: 0,
             candidatesBelowCostHurdle: 0, candidatesDeferredForBudget: 0,
+            candidatesNotTradeable: 0,
         };
 
         // Optional throughout: the runtime behaves identically without one,
@@ -940,6 +942,14 @@ export class AutonomousRuntime {
         if (!economics.worth) {
             this.metrics.candidatesBelowCostHurdle += 1;
             return { skipped: economics.reason };
+        }
+
+        // And can this book take the trade the evidence points to? Execution is
+        // long-only, so a symbol aligned down has no executable thesis in it.
+        const direction = tradeableDirection(context ?? market ?? null);
+        if (!direction.worth) {
+            this.metrics.candidatesNotTradeable += 1;
+            return { skipped: direction.reason };
         }
 
         // A decision is two sequential model calls. Beginning one when only a

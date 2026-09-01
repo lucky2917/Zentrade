@@ -106,6 +106,8 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("senior trader lifecycles", () => {
             universe: [SYMBOL],
             analyseCandidate: makeCandidateAnalyser({ transport }),
             callModel: makeReassessmentModel({ transport }),
+            // Shares the runtime's clock; see sessionReplay for why.
+            clock: now,
         });
         return new AutonomousRuntime({
             engine, reconciler: reconcile, userId: USER, clock: now, ports });
