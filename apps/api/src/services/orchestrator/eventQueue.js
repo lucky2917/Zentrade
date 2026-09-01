@@ -19,6 +19,26 @@ export const DEFAULT_MAX_AGE_MS = 60_000;
 const RANK = { [SEVERITY.CRITICAL]: 0, [SEVERITY.WARNING]: 1, [SEVERITY.INFO]: 2 };
 const rankOf = (event) => RANK[event.severity] ?? 3;
 
+// How much opportunity the event carries, as a percentage move. Severity alone
+// cannot order this queue: every anomaly the detectors raise is CRITICAL, so
+// they all tie at rank 0 and the tiebreak falls to arrival order. A 7%
+// breakout then waits behind a 0.29% blip that happened to arrive first, and
+// with reasoning slower than arrivals the breakout is what expires.
+//
+// Absent means zero, which sorts last — an event carrying no measured move has
+// no claim on the reasoning budget ahead of one that does.
+const strengthOf = (event) => (Number.isFinite(event.strength) ? Math.abs(event.strength) : 0);
+
+// Highest severity, then most opportunity, then oldest. Returns negative when
+// `a` should be served first.
+const priorityOrder = (a, b) => {
+    const byRank = rankOf(a.event) - rankOf(b.event);
+    if (byRank !== 0) return byRank;
+    const byStrength = strengthOf(b.event) - strengthOf(a.event);
+    if (byStrength !== 0) return byStrength;
+    return a.receivedAt - b.receivedAt;
+};
+
 export class EventQueue {
     constructor({ capacity = DEFAULT_CAPACITY, maxAgeMs = DEFAULT_MAX_AGE_MS,
                   clock = () => Date.now() } = {}) {
@@ -52,7 +72,12 @@ export class EventQueue {
             const kept = rankOf(existing.event) <= rankOf(event)
                 ? existing.event.severity : event.severity;
             if (kept !== event.severity) this.stats.severityPreserved += 1;
-            this.items.set(key, { event: { ...event, severity: kept }, receivedAt });
+            // Strength is kept at its high-water mark for the same reason
+            // severity is: a later, milder look at one condition must not
+            // demote what was already seen.
+            const strength = Math.max(strengthOf(existing.event), strengthOf(event));
+            this.items.set(key, {
+                event: { ...event, severity: kept, strength }, receivedAt });
             this.stats.coalesced += 1;
             return "coalesced";
         }
@@ -76,12 +101,13 @@ export class EventQueue {
         return "admitted";
     }
 
+    // The one to drop when the queue is full: lowest severity, then least
+    // opportunity, then oldest.
     lowestPriorityOldest() {
         let worst = null;
         for (const item of this.items.values()) {
             if (!worst) { worst = item; continue; }
-            const byRank = rankOf(item.event) - rankOf(worst.event);
-            if (byRank > 0 || (byRank === 0 && item.receivedAt < worst.receivedAt)) worst = item;
+            if (priorityOrder(item, worst) > 0) worst = item;
         }
         return worst;
     }
@@ -102,10 +128,7 @@ export class EventQueue {
                 continue;
             }
             if (!best) { best = { key, item }; continue; }
-            const byRank = rankOf(item.event) - rankOf(best.item.event);
-            if (byRank < 0 || (byRank === 0 && item.receivedAt < best.item.receivedAt)) {
-                best = { key, item };
-            }
+            if (priorityOrder(item, best.item) < 0) best = { key, item };
         }
         if (!best) return null;
         this.items.delete(best.key);

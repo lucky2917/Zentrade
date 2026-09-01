@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Orchestrator } from "../orchestrator/orchestrator.js";
 import { PaperVenue } from "../execution/paperVenue.js";
-import { scanUniverse, DEFAULT_SCREEN } from "./candidates.js";
+import { scanUniverse, DEFAULT_SCREEN, clearsCostHurdle } from "./candidates.js";
 import { evaluate as evaluateRisk, DECISION } from "./riskGate.js";
 import { intentFrom } from "./loop.js";
 import { permits } from "../orchestrator/session.js";
@@ -197,6 +197,7 @@ export class AutonomousRuntime {
             candidatesDeferred: 0, candidatesCooledDown: 0, candidatesBudgetSkipped: 0,
             candidatesPaced: 0, protectiveRetries: 0, ordersAdopted: 0, haltChanges: 0,
             planeAuthorityChanges: 0, unprotectedPositions: 0,
+            candidatesBelowCostHurdle: 0,
         };
 
         // Optional throughout: the runtime behaves identically without one,
@@ -916,6 +917,17 @@ export class AutonomousRuntime {
         if (discoveryAheadOfPace(tokens, this.clock())) {
             this.metrics.candidatesPaced += 1;
             return { skipped: "spending ahead of the session's reasoning pace" };
+        }
+
+        // Arithmetic before reasoning. A move that cannot pay for its own round
+        // trip has no executable thesis in it, so asking the model costs two
+        // calls to be told what the cost hurdle already says. This is the same
+        // economic question the scan path has always asked; the event path
+        // never asked it.
+        const economics = clearsCostHurdle(context ?? market ?? null);
+        if (!economics.worth) {
+            this.metrics.candidatesBelowCostHurdle += 1;
+            return { skipped: economics.reason };
         }
 
         const now = (asOf ?? this.clock()).getTime();

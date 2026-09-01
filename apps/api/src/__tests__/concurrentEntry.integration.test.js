@@ -141,7 +141,9 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("two paths cannot open the same symbol 
             clock: () => new Date(at(12, 0)), ports });
         await runtime.start();
 
-        const context = { asOf: new Date(at(12, 0)).toISOString(), price: 1030, stale: false };
+        const context = { asOf: new Date(at(12, 0)).toISOString(), price: 1030, stale: false,
+                          // Worth a decision: the move covers its round trip.
+                          mtf: { complete: true, change5m: 0.03 } };
         await Promise.all([
             runtime.handleCandidate({ symbol: SYMBOL, context, reasons: ["scan"] }),
             runtime.handleCandidate({ symbol: SYMBOL, context, reasons: ["anomaly"] }),

@@ -276,8 +276,15 @@ export class Orchestrator {
             // again, so a condition dropped by the queue is not lost.
             const stored = await this.ports.recordEvent?.(event);
             if (!stored) continue;
+            // How much opportunity this event carries, so the queue can serve
+            // the strongest first rather than the earliest. Every anomaly is
+            // raised CRITICAL, so without this they all tie and arrival order
+            // decides which ones expire.
+            const observed = this.lastContexts?.[event.symbol] ?? null;
+            const move = observed?.mtf?.change5m ?? observed?.mtf?.change1m ?? null;
             const durable = { ...event, storedId: stored.id ?? null,
-                              severity: stored.severity ?? event.severity };
+                              severity: stored.severity ?? event.severity,
+                              strength: Number.isFinite(move) ? Math.abs(move) * 100 : 0 };
             const outcome = this.queue.offer(durable, now.getTime());
             if (outcome === "admitted" || outcome === "coalesced") this.metrics.eventsQueued += 1;
         }

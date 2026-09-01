@@ -1,4 +1,5 @@
 import { observeSymbol } from "../intelligence/observe.js";
+import { ROUND_TRIP_COST_BPS } from "../reasoning/synthesis.js";
 
 // Deterministic candidate screening.
 //
@@ -49,6 +50,41 @@ export const screenSymbol = (observation, context, screen = DEFAULT_SCREEN) => {
     if (observation.stale) return { passed: false, reasons: ["observation stale"] };
 
     return { passed: true, reasons };
+};
+
+// Is this candidate worth a decision at all?
+//
+// The scan path has always applied an economic screen. The EVENT path never
+// did: an anomaly detector fires on statistical significance and hands the
+// symbol straight to the Senior Trader, so a 0.29% move at 6 sigma was
+// reasoned about at the same price as a 7% breakout.
+//
+// Measured on the 2026-09-01 session: of 33 event-driven candidates, 26
+// carried moves of 0.26% to 0.43% against a 73.55 bps round trip, or volume
+// and volatility with no direction at all. Every one came back HOLD, and every
+// one cost two model calls to reach a conclusion arithmetic could have reached
+// for nothing. That is where the session's reasoning budget went, and why the
+// candidates that COULD trade queued behind them.
+//
+// This is not a risk control and it does not decide anything. It asks whether
+// a move exists that could pay for the round trip it would take to capture it.
+// A move smaller than its own costs cannot produce an executable thesis, so
+// there is nothing for a decision to be about.
+export const clearsCostHurdle = (context, costBps = ROUND_TRIP_COST_BPS) => {
+    const move = screenedMove(context);
+    if (move === null) {
+        return { worth: false, reason: "no measurable price move to trade" };
+    }
+    const movePercent = Math.abs(move) * 100;
+    const hurdlePercent = costBps / 100;
+    if (movePercent < hurdlePercent) {
+        return {
+            worth: false,
+            reason: `move ${movePercent.toFixed(2)}% cannot cover the `
+                + `${hurdlePercent.toFixed(2)}% round trip`,
+        };
+    }
+    return { worth: true, movePercent };
 };
 
 // Strongest first, ties broken by symbol so the order is deterministic.

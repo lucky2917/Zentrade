@@ -118,7 +118,10 @@ describe("one instant per decision", () => {
             },
         });
 
-        await runtime.handleCandidate({ symbol: "INFY", context: { price: 1500 } });
+        await runtime.handleCandidate({ symbol: "INFY",
+            // A move large enough to cover the round trip, or there is nothing
+            // for a decision to be about.
+            context: { price: 1500, mtf: { complete: true, change5m: 0.03 } } });
         expect(analyseCandidate).toHaveBeenCalledOnce();
         expect(seen.find(([n]) => n === "analyseCandidate")[1].toISOString())
             .toBe(OPEN_IST.toISOString());
