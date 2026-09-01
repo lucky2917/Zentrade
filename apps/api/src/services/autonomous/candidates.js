@@ -24,6 +24,30 @@ export const DEFAULT_SCREEN = {
 export const screenedMove = (context) =>
     context?.mtf?.change5m ?? context?.mtf?.change1m ?? null;
 
+// Can this book actually take the trade the evidence points to?
+//
+// Execution is long-only: the risk gate refuses a SELL with no position held,
+// and the ledger has no path to open a short. So a symbol whose timeframes are
+// aligned DOWN cannot produce an executable thesis no matter how clean the
+// setup is.
+//
+// Sending them anyway is what produced the strangest rows in the record. The
+// model is offered "BUY" or "HOLD" and nothing else, so on a falling stock it
+// wrote an honestly bearish thesis — UNITECH "a sharp volume-driven sell-off",
+// M&M "aggressive selling pressure" — proposed BUY because that was the only
+// action available, and left stop and target null because there are no long
+// levels to place under a short thesis. Two model calls each, for a trade the
+// book cannot take.
+//
+// This is not a view on direction and it does not weaken anything. It is the
+// screen knowing what the execution layer is capable of.
+export const tradeableDirection = (context) => {
+    if (context?.mtf?.alignedDirection === "DOWN") {
+        return { worth: false, reason: "aligned down; this book cannot open a short" };
+    }
+    return { worth: true };
+};
+
 export const screenSymbol = (observation, context, screen = DEFAULT_SCREEN) => {
     const reasons = [];
 
@@ -48,6 +72,20 @@ export const screenSymbol = (observation, context, screen = DEFAULT_SCREEN) => {
     // A stale observation cannot justify new exposure, so it cannot justify
     // spending a reasoning call on entering one either.
     if (observation.stale) return { passed: false, reasons: ["observation stale"] };
+
+    // The book is long-only, so a settled downtrend is not a candidate.
+    //
+    // This has to happen HERE, in the screen, and not later when the candidate
+    // is picked up. The shortlist is ranked by the SIZE of the move and cut to
+    // the strongest few, so in a falling market the biggest movers are the
+    // biggest falls: the whole shortlist filled with shorts, every one of them
+    // was refused downstream, and the genuine longs behind them were never
+    // reached. Measured live with the market 82 down to 13 up — ZENSARTECH
+    // +3.35% on 6.2x volume, HAVELLS +1.63% on 13.4x, POLICYBZR on 48.4x — the
+    // trader reasoned about none of them and made zero model calls in five
+    // minutes.
+    const tradeable = tradeableDirection(context);
+    if (!tradeable.worth) return { passed: false, reasons: [tradeable.reason] };
 
     return { passed: true, reasons };
 };
@@ -85,30 +123,6 @@ export const clearsCostHurdle = (context, costBps = ROUND_TRIP_COST_BPS) => {
         };
     }
     return { worth: true, movePercent };
-};
-
-// Can this book actually take the trade the evidence points to?
-//
-// Execution is long-only: the risk gate refuses a SELL with no position held,
-// and the ledger has no path to open a short. So a symbol whose timeframes are
-// aligned DOWN cannot produce an executable thesis no matter how clean the
-// setup is.
-//
-// Sending them anyway is what produced the strangest rows in the record. The
-// model is offered "BUY" or "HOLD" and nothing else, so on a falling stock it
-// wrote an honestly bearish thesis — UNITECH "a sharp volume-driven sell-off",
-// M&M "aggressive selling pressure" — proposed BUY because that was the only
-// action available, and left stop and target null because there are no long
-// levels to place under a short thesis. Two model calls each, for a trade the
-// book cannot take.
-//
-// This is not a view on direction and it does not weaken anything. It is the
-// screen knowing what the execution layer is capable of.
-export const tradeableDirection = (context) => {
-    if (context?.mtf?.alignedDirection === "DOWN") {
-        return { worth: false, reason: "aligned down; this book cannot open a short" };
-    }
-    return { worth: true };
 };
 
 // Strongest first, ties broken by symbol so the order is deterministic.

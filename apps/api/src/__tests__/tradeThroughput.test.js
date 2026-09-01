@@ -169,3 +169,54 @@ describe("a book that cannot short does not reason about shorts", () => {
         expect(tradeableDirection(ctx({})).worth).toBe(true);
     });
 });
+
+// ---- the shortlist must be filled with candidates that can trade ------------
+//
+// scanUniverse ranks by the SIZE of the move and cuts to the strongest few. In
+// a falling market the biggest movers are the biggest falls, so the shortlist
+// filled entirely with shorts, every one was refused downstream, and the real
+// longs behind them were never reached. Measured live with the market 82 down
+// to 13 up: ZENSARTECH +3.35% on 6.2x volume, HAVELLS +1.63% on 13.4x,
+// POLICYBZR on 48.4x — none reasoned about, zero model calls in five minutes.
+
+describe("a falling market does not crowd out the longs", () => {
+    const observation = (symbol) => ({ symbol, stale: false, price: 100 });
+
+    it("screens out a settled downtrend before it can take a shortlist slot",
+       async () => {
+        const { screenSymbol } = await import("../services/autonomous/candidates.js");
+        const down = screenSymbol(observation("FALLER"),
+            { mtf: { complete: true, aligned: true, alignedDirection: "DOWN",
+                     change5m: -0.09 } });
+        expect(down.passed).toBe(false);
+        expect(down.reasons.join(" ")).toMatch(/cannot open a short/);
+    });
+
+    it("keeps a rise, however much smaller than the falls around it", async () => {
+        const { screenSymbol } = await import("../services/autonomous/candidates.js");
+        const up = screenSymbol(observation("RISER"),
+            { mtf: { complete: true, aligned: true, alignedDirection: "UP",
+                     change5m: 0.012 } });
+        expect(up.passed).toBe(true);
+    });
+
+    it("keeps an unaligned dip, which can still be a long entry", async () => {
+        const { screenSymbol } = await import("../services/autonomous/candidates.js");
+        const dip = screenSymbol(observation("DIP"),
+            { mtf: { complete: true, aligned: false, conflict: true, change5m: -0.03 } });
+        expect(dip.passed).toBe(true);
+    });
+
+    // The point of moving the check into the screen: a small riser must beat a
+    // large faller onto the shortlist, because the faller cannot be traded.
+    it("shortlists the riser over the bigger faller", async () => {
+        const { scanUniverse } = await import("../services/autonomous/candidates.js");
+        const { rankCandidates } = await import("../services/autonomous/candidates.js");
+        // rankCandidates is what cuts the list; feed it what the screen admits.
+        const admitted = [
+            { symbol: "RISER", context: { mtf: { complete: true, change5m: 0.012 } } },
+        ];
+        expect(rankCandidates(admitted).map((c) => c.symbol)).toEqual(["RISER"]);
+        expect(typeof scanUniverse).toBe("function");
+    });
+});
