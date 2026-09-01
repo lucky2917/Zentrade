@@ -491,3 +491,29 @@ describe("the account is readable at a glance", () => {
         expect(screen.getByText("+₹1,250.00")).toBeTruthy();
     });
 });
+
+// A candidate the analyser declined to reason about.
+//
+// It used to render as a completed pass — "BACK TO OBSERVING · null · no order"
+// — which reads like a decision that concluded nothing, not like a symbol the
+// trader deliberately did not spend a decision on.
+
+describe("a skipped candidate reads as a skip", () => {
+    it("says it was considered and not reasoned about, and why", () => {
+        render(<ReasoningStream showObservations events={[event({
+            kind: "REASONING_FINISHED", symbol: "TATASTEEL", action: null,
+            executed: false, skipped: "reasoned about recently; nothing new to price",
+        })]} />);
+        expect(screen.getByText("CONSIDERED, NOT REASONED ABOUT")).toBeTruthy();
+        expect(screen.getByText("reasoned about recently; nothing new to price")).toBeTruthy();
+    });
+
+    it("still renders a real completed pass as one", () => {
+        render(<ReasoningStream showObservations events={[event({
+            kind: "REASONING_FINISHED", symbol: "TATASTEEL", action: "HOLD",
+            executed: false })]} />);
+        expect(screen.getByText("BACK TO OBSERVING")).toBeTruthy();
+        expect(screen.getByText("HOLD")).toBeTruthy();
+        expect(screen.getByText("no order")).toBeTruthy();
+    });
+});

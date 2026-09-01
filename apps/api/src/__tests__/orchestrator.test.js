@@ -463,3 +463,90 @@ describe("orchestrator lifecycle and decision path", () => {
         expect(ports.execute).toHaveBeenCalledOnce();
     });
 });
+
+// A candidate the analyser declined to reason about is not a decision.
+//
+// runtime.handleCandidate returns {skipped} for a symbol on cooldown, for
+// discovery running ahead of its budget pace, and for a symbol another pass
+// already holds. The orchestrator journalled those as decisions: rows with no
+// thesis, no evidence, no challenge and an action of NONE. In one live session
+// 43 of 65 records were that, the day's decision tally read 53 against 22 real
+// decisions, and the reasoning count read 57 against 18 actual model runs.
+
+describe("a skipped candidate is not recorded as a decision", () => {
+    const candidateEvent = { type: "VOLUME_SPIKE", severity: "CRITICAL",
+                             symbol: "RELIANCE", storedId: "ev-skip" };
+
+    const buildCandidate = (analyseCandidate) => {
+        const ports = {
+            loadPositions: vi.fn(async () => []),
+            loadPortfolio: vi.fn(async () => ({ userId: 1, cashPaise: 100_000_000 })),
+            recordEvent: vi.fn(async (e) => ({ id: `ev-${e.type}` })),
+            analyseCandidate: vi.fn(analyseCandidate),
+            journal: vi.fn(async () => ({})),
+            openOrders: vi.fn(async () => []),
+            reconcileAll: vi.fn(async () => []),
+            expireStaleOrders: vi.fn(async () => []),
+        };
+        return { ports, orch: new Orchestrator({ ports, clock: () => at(12, 0) }) };
+    };
+
+    it("writes no journal entry when the analyser declines", async () => {
+        const { orch, ports } = buildCandidate(
+            async () => ({ skipped: "reasoned about recently; nothing new to price" }));
+        orch.lastContexts = { RELIANCE: { price: 1000 } };
+
+        const outcome = await orch.handleEvent(candidateEvent, "anom-RELIANCE", SESSION.OPEN);
+
+        expect(outcome).toEqual({
+            route: "CANDIDATE", skipped: "reasoned about recently; nothing new to price" });
+        expect(ports.journal).not.toHaveBeenCalled();
+    });
+
+    it("does not count a skip as a reasoning invocation", async () => {
+        const { orch } = buildCandidate(async () => ({ skipped: "spending ahead of pace" }));
+        orch.lastContexts = { RELIANCE: { price: 1000 } };
+
+        await orch.handleEvent(candidateEvent, "anom-RELIANCE", SESSION.OPEN);
+
+        expect(orch.metrics.reasoningInvocations).toBe(0);
+        expect(orch.metrics.reasoningSkipped).toBe(1);
+    });
+
+    it("says the trader went back to watching, and why", async () => {
+        const narrated = [];
+        const { orch } = buildCandidate(async () => ({ skipped: "symbol already being reasoned about" }));
+        orch.narrator = { emit: (kind, payload) => narrated.push({ kind, payload }) };
+        orch.lastContexts = { RELIANCE: { price: 1000 } };
+
+        await orch.handleEvent(candidateEvent, "anom-RELIANCE", SESSION.OPEN);
+
+        const finished = narrated.find((n) => n.kind === "REASONING_FINISHED");
+        expect(finished.payload.skipped).toBe("symbol already being reasoned about");
+        expect(finished.payload.action).toBeNull();
+    });
+
+    it("still records a candidate that was genuinely reasoned about", async () => {
+        const { orch, ports } = buildCandidate(async () => ({
+            action: "HOLD", confidence: "LOW", reasoning: "no edge here", evidence: [] }));
+        orch.lastContexts = { RELIANCE: { price: 1000 } };
+
+        const outcome = await orch.handleEvent(candidateEvent, "anom-RELIANCE", SESSION.OPEN);
+
+        expect(outcome).toMatchObject({ action: "HOLD", executed: false });
+        expect(orch.metrics.reasoningInvocations).toBe(1);
+        expect(orch.metrics.reasoningSkipped).toBe(0);
+        expect(ports.journal).toHaveBeenCalledWith(
+            expect.objectContaining({ decision: expect.objectContaining({ action: "HOLD" }) }));
+    });
+
+    it("does not journal twice when the runtime already did", async () => {
+        const { orch, ports } = buildCandidate(async () => ({
+            action: "BUY", executed: true, journaled: true }));
+        orch.lastContexts = { RELIANCE: { price: 1000 } };
+
+        await orch.handleEvent(candidateEvent, "anom-RELIANCE", SESSION.OPEN);
+        expect(ports.journal).not.toHaveBeenCalled();
+        expect(orch.metrics.reasoningInvocations).toBe(1);
+    });
+});

@@ -353,12 +353,20 @@ const RENDERERS = {
             <Field label="Detail" value={e.message ?? e.reason} />
         </Block>
     ),
+    // A candidate the analyser declined to reason about is not a decision, and
+    // must not read like one: no action was formed and no record was written.
     REASONING_FINISHED: (e) => (
-        <Block event={e} title="BACK TO OBSERVING" tone="ck-quiet" stage={STAGE.OBSERVE}>
-            <div className="ck-inline">
-                <span>{text(e.action)}</span>
-                <span>{e.executed ? "order placed" : "no order"}</span>
-            </div>
+        <Block event={e}
+               title={e.skipped ? "CONSIDERED, NOT REASONED ABOUT" : "BACK TO OBSERVING"}
+               tone="ck-quiet" stage={STAGE.OBSERVE}>
+            {e.skipped ? (
+                <Field label="Why not" value={e.skipped} />
+            ) : (
+                <div className="ck-inline">
+                    <span>{text(e.action)}</span>
+                    <span>{e.executed ? "order placed" : "no order"}</span>
+                </div>
+            )}
         </Block>
     ),
 };

@@ -75,6 +75,7 @@ export class Orchestrator {
         this.metrics = {
             cycles: 0, eventsEmitted: 0, eventsQueued: 0,
             reasoningInvocations: 0, reasoningAvoided: 0, reasoningBatches: 0,
+            reasoningSkipped: 0,
             maxReasoningConcurrency: 0,
             riskRejections: 0, executions: 0, errors: 0, duplicatesSuppressed: 0,
             anomaliesDetected: 0, marketWideAnomalies: 0,
@@ -441,7 +442,6 @@ export class Orchestrator {
                 return { route: ROUTE.CANDIDATE, skipped: "no observed context for symbol" };
             }
 
-            this.metrics.reasoningInvocations += 1;
             this.narrate(KIND.REASONING_STARTED, {
                 symbol: event.symbol, route: ROUTE.CANDIDATE, trigger: event.type,
                 correlationId, severity: event.severity, because: event.reason,
@@ -450,6 +450,25 @@ export class Orchestrator {
                 symbol: event.symbol, event, context, market: this.marketState, asOf,
                 reasons: [`${event.type} (${event.severity}): ${event.reason}`],
             });
+
+            // The analyser may decline to reason at all — the symbol is on
+            // cooldown, discovery is ahead of its budget pace, another pass
+            // holds the symbol. That is not a decision, and writing it as one
+            // filled the record with rows carrying no thesis, no evidence, no
+            // challenge and an action of NONE, while inflating both the
+            // reasoning count and the day's decision tally.
+            if (analysis?.skipped) {
+                this.metrics.reasoningSkipped += 1;
+                this.narrate(KIND.REASONING_FINISHED, {
+                    symbol: event.symbol, route: ROUTE.CANDIDATE, correlationId,
+                    action: null, executed: false,
+                    skipped: analysis.skipped,
+                    holdingPositions: this.previousBySymbol.size > 0,
+                });
+                return { route: ROUTE.CANDIDATE, skipped: analysis.skipped };
+            }
+
+            this.metrics.reasoningInvocations += 1;
             this.narrate(KIND.REASONING_FINISHED, {
                 symbol: event.symbol, route: ROUTE.CANDIDATE, correlationId,
                 action: analysis?.action ?? null,
