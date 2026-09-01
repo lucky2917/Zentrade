@@ -69,6 +69,25 @@ const symbolEvidence = (context) => {
             statement: "session VWAP is unavailable for this symbol" }));
     }
 
+    // Volume, measured against the symbol's own baseline.
+    //
+    // This was absent entirely. The formation prompt names volume expansion as
+    // one of the three things that make measured evidence converge, and the
+    // challenge prompt names it again — while the state handed to both carried
+    // no volume at all. The trader was asked to confirm on evidence it was
+    // never given, and told not to invent any, so it could only decline.
+    if (Number.isFinite(context?.volumeRatio)) {
+        evidence.push(makeEvidence({
+            tier: TIER.FACT, source: "volume",
+            statement: `last minute traded ${context.volumeRatio.toFixed(2)}x its `
+                + `${context.volumeBaselineSamples ?? 0}-bar median volume`,
+            value: context.volumeRatio }));
+    } else {
+        evidence.push(makeEvidence({
+            tier: TIER.FACT, source: "volume",
+            statement: "volume against baseline is not available for this symbol" }));
+    }
+
     const mtf = context?.mtf;
     if (mtf?.complete) {
         evidence.push(makeEvidence({

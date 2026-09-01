@@ -103,3 +103,71 @@ describe("the challenge prompt asks for a verdict, not a reflex", () => {
         }
     });
 });
+
+// ---- the evidence the trader is asked to confirm on --------------------------
+//
+// Both prompts name volume expansion against the symbol's own baseline as one
+// of the three things that make measured evidence converge, and the formation
+// prompt forbids inventing volume it was not given. The state handed to both
+// carried no volume at all: `volumeRatio` was undefined on all 200 observed
+// symbols, because observeSymbol computed the baseline and never compared the
+// current minute to it. The trader was asked to confirm on evidence it did not
+// have, told not to invent any, and could only decline.
+
+describe("the trader is given the volume it is asked to reason about", () => {
+    it("puts the measured ratio in the evidence as a FACT", async () => {
+        const { buildTraderState } = await import("../services/reasoning/traderState.js");
+        const st = buildTraderState({
+            symbol: "TCS",
+            context: { price: 1000, vwap: 990, vwapAvailable: true, vwapDistance: 0.01,
+                       volumeBaseline: 40_000, volumeBaselineSamples: 60, volumeRatio: 10.35,
+                       mtf: { complete: true, aligned: true, alignedDirection: "UP",
+                              direction1m: "UP", direction5m: "UP", direction15m: "UP" } },
+            portfolio: { cashPaise: 100_000_000, positions: [] },
+            market: { regime: "MIXED", breadth: "balanced" }, asOf: new Date(),
+        });
+        const volume = st.evidence.find((e) => e.source === "volume");
+        expect(volume).toBeDefined();
+        expect(volume.tier).toBe("FACT");
+        expect(volume.statement).toMatch(/10\.35x its 60-bar median volume/);
+        expect(volume.value).toBe(10.35);
+    });
+
+    it("says the volume is unavailable rather than staying silent about it", async () => {
+        const { buildTraderState } = await import("../services/reasoning/traderState.js");
+        const st = buildTraderState({
+            symbol: "TCS",
+            context: { price: 1000, vwap: 990, vwapAvailable: true, volumeRatio: null,
+                       mtf: { complete: true, aligned: true, direction1m: "UP",
+                              direction5m: "UP", direction15m: "UP" } },
+            portfolio: { cashPaise: 100_000_000, positions: [] },
+            market: { regime: "MIXED", breadth: "balanced" }, asOf: new Date(),
+        });
+        const volume = st.evidence.find((e) => e.source === "volume");
+        expect(volume.statement).toMatch(/not available/);
+    });
+
+    it("computes the ratio from the last complete minute against the baseline",
+       async () => {
+        const { observeSymbol } = await import("../services/intelligence/observe.js");
+        const bars = Array.from({ length: 60 }, (_, i) => ({
+            ts: new Date(Date.UTC(2026, 8, 1, 5, i)).toISOString(),
+            open: 100, high: 101, low: 99, close: 100, volume: 1000 }));
+        // The last minute traded five times the median.
+        bars[bars.length - 1].volume = 5000;
+        const { context } = observeSymbol({
+            symbol: "TCS", price: 100, bars1m: bars, bars5m: bars, bars15m: bars,
+            asOf: new Date(Date.UTC(2026, 8, 1, 6, 0)) });
+        expect(context.volumeLatest).toBe(5000);
+        expect(context.volumeRatio).toBeCloseTo(5.0, 2);
+    });
+
+    it("reports no ratio rather than a wrong one when the baseline is unusable",
+       async () => {
+        const { observeSymbol } = await import("../services/intelligence/observe.js");
+        const { context } = observeSymbol({
+            symbol: "TCS", price: 100, bars1m: [], bars5m: [], bars15m: [],
+            asOf: new Date() });
+        expect(context.volumeRatio).toBeNull();
+    });
+});

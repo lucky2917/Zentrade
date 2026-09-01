@@ -26,6 +26,16 @@ export const buildObservation = ({
     // before now. The tick path uses this to judge the minute in progress.
     const volume = volumeBaselineOf(bars1m, bars1m.length);
 
+    // The volume the last complete minute actually traded, against that
+    // baseline. The baseline alone answers "what is normal here" and says
+    // nothing about now, so a prompt that asks the trader to confirm on volume
+    // expansion had nothing to confirm with: `volumeRatio` was undefined on
+    // every one of the 200 observed symbols, and the honest conclusion from no
+    // volume evidence is no confirmation.
+    const latestVolume = bars1m.length ? bars1m[bars1m.length - 1]?.volume : null;
+    const volumeRatio = volume && Number.isFinite(latestVolume) && volume.typical > 0
+        ? latestVolume / volume.typical : null;
+
     return {
         symbol,
         asOf: when.toISOString(),
@@ -44,6 +54,8 @@ export const buildObservation = ({
         vwapDistance: vwapDistance(price, vwapResult.vwap),
         volumeBaseline: volume ? volume.typical : null,
         volumeBaselineSamples: volume ? volume.samples : 0,
+        volumeLatest: Number.isFinite(latestVolume) ? latestVolume : null,
+        volumeRatio,
         mtf,
         barsSeen: { m1: bars1m.length, m5: bars5m.length, m15: bars15m.length },
         thesisId,
