@@ -112,8 +112,10 @@ describe("exposure limits", () => {
 
 describe("session budgets", () => {
     it("rejects past the session trade count", () => {
-        rejected(evaluate(buy(), context({ session: { trades: 20, turnoverPaise: 0 } })),
+        rejected(evaluate(buy(), context({ session: { trades: 30, turnoverPaise: 0 } })),
             "TRADE_COUNT_LIMIT");
+        // And one below it is still permitted.
+        allowed(evaluate(buy(), context({ session: { trades: 29, turnoverPaise: 0 } })));
     });
     it("rejects past the session turnover", () => {
         rejected(evaluate(buy(), context({

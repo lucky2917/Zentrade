@@ -433,9 +433,23 @@ export const applyChallenge = (thesis, challenge) => {
     if (challenge.couldBeFalseSignal && ["BUY", "ADD"].includes(action)) {
         reasons.push(`carrying false-signal risk: ${challenge.falseSignalTell}`);
     }
+    // Confirmation bias is REPORTED, not applied, for the same reason
+    // `couldBeFalseSignal` is.
+    //
+    // It is one model's opinion about another model's prose, produced by a
+    // challenger that has been instructed to attack. Observed live: a setup
+    // with three aligned timeframes, five times its baseline volume, a 2.0
+    // risk/reward and an edge clearing the cost hurdle by 126 bps was refused
+    // on this flag alone, with every measured quantity in its favour.
+    //
+    // An unmeasured judgement about the quality of an argument should not
+    // outrank the arithmetic. It lowers confidence and it is recorded. What
+    // still refuses absolutely is THESIS_BROKEN — the evidence contradicting
+    // the thesis — and every deterministic control after this point: the cost
+    // hurdle, both risk/reward floors, the timeframe-conflict rule, stale data,
+    // market-wide shock, fresh-world revalidation and the risk gate.
     if (challenge.confirmationBiasDetected && ["BUY", "ADD"].includes(action)) {
-        action = "HOLD";
-        reasons.push("confirmation bias detected in the supporting argument");
+        reasons.push("confirmation bias reported in the supporting argument");
     }
 
     return { action, weakVerdict, downgraded: action !== thesis.proposedAction, reasons };

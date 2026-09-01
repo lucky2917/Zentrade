@@ -107,7 +107,18 @@ export const deriveConfidence = ({ thesis, challenge, synthesis }) => {
 // The risk/reward a weak thesis must reach before measured arithmetic is
 // allowed to override the challenger's verdict. A trade taken on a thesis the
 // challenger doubted has to be worth appreciably more than it risks.
-export const MIN_RR_ON_WEAK_THESIS = 1.5;
+//
+// Lowered from 1.5 to 1.3 for PAPER trading, deliberately and on request.
+// The evidence: the challenger returned WEAK or BROKEN on 46 of 46 theses and
+// HOLDS on none, so this floor — designed as the exception for a doubted
+// thesis — was in practice the floor for EVERY trade. MPHASIS was refused at
+// 1.456, four hundredths short, on a verdict that carried no information.
+//
+// The challenger prompt has been fixed to discriminate, but until a session
+// proves it does, this keeps a degenerate verdict from silently holding every
+// trade to the strict floor. It stays above MIN_RISK_REWARD, so a doubted
+// thesis is still held to a higher bar than a sound one.
+export const MIN_RR_ON_WEAK_THESIS = 1.3;
 
 // The floor for ANY new entry, whatever the challenger concluded.
 //
@@ -115,6 +126,12 @@ export const MIN_RR_ON_WEAK_THESIS = 1.5;
 // A favourable verdict does not make that a good trade, and the cost hurdle
 // alone does not catch it, because a large enough move clears costs while still
 // risking more than it stands to gain.
+//
+// This one is NOT tuned for aggression and was deliberately left where it is.
+// It is arithmetic rather than caution: against a 73.55 bps round trip, a
+// strategy taking trades below this ratio has negative expectancy even when it
+// is right more often than it is wrong. Loosening it does not buy more good
+// trades, it buys more losing ones.
 export const MIN_RISK_REWARD = 1.2;
 
 const callWithTimeout = async (fn, timeoutMs, label) => Promise.race([

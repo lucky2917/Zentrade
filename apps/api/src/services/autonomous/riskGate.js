@@ -19,7 +19,10 @@ export const DEFAULT_LIMITS = {
     grossExposurePaise: 500_000_000,     // Rs 50,00,000
     netExposurePaise: 400_000_000,       // Rs 40,00,000
     maxSymbols: 25,
-    tradesPerSession: 20,
+    // Raised from 20 for paper trading. Nothing was reaching it, but at two
+    // decisions a minute a session that finally starts trading should not stop
+    // at lunchtime because of a cap set when nothing traded at all.
+    tradesPerSession: 30,
     turnoverPerSessionPaise: 1_000_000_000, // Rs 1,00,00,000
     dailyLossPaise: 25_000_000,          // Rs 2,50,000 -> kill switch
     maxDrawdownPercent: 20,              // -> kill switch

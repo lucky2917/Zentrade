@@ -148,12 +148,41 @@ export const synthesise = ({ proposal, traderState, limits = {} }) => {
     const opening = ["BUY", "ADD"].includes(action);
 
     if (opening) {
-        // Contradictory evidence is a reason not to act, not a reason to act
-        // with lower confidence.
-        if ((proposal.contradictingEvidence?.length ?? 0) >= (proposal.supportingEvidence?.length ?? 0)
-            && (proposal.contradictingEvidence?.length ?? 0) > 0) {
+        // How many bullet points the model wrote on each side is NOT a measure
+        // of which side is stronger.
+        //
+        // This used to veto any entry where the contradicting list was as long
+        // as the supporting one. Observed live: theses reading "contradicting
+        // evidence (3) is not outweighed by support (3)" refused repeatedly,
+        // and one carrying a 2.03 risk/reward that cleared the cost hurdle by
+        // 226 bps was held on a 3-3 tie. A model that lists its caveats
+        // honestly was penalised for the honesty, and the prompt asks it to
+        // list them.
+        //
+        // It informs confidence instead, which deriveConfidence already lowers
+        // for it, and it is recorded. The deciders are the measured ones: the
+        // cost hurdle, the risk/reward floors, fresh-world revalidation and the
+        // risk gate. A preponderance of contradiction with arithmetic that does
+        // NOT clear still refuses below, on the arithmetic.
+        const contradicting = proposal.contradictingEvidence?.length ?? 0;
+        const supporting = proposal.supportingEvidence?.length ?? 0;
+        if (contradicting > 0 && contradicting >= supporting) {
+            reasons.push(`contradicting evidence (${contradicting}) is not outweighed `
+                + `by support (${supporting})`);
+        }
+
+        // What the bullet counting was standing in for, stated properly.
+        //
+        // The timeframes disagreeing is measured data, not prose: it is the
+        // one case the count was catching that genuinely should refuse, and
+        // now it refuses on the measurement instead of on how many caveats the
+        // model happened to type.
+        if (traderState.symbolState?.mtf?.conflict) {
             action = "HOLD";
-            reasons.push("contradicting evidence is at least as strong as supporting evidence");
+            reasons.push("no new exposure while the timeframes conflict: "
+                + `1m ${traderState.symbolState.mtf.direction1m}, `
+                + `5m ${traderState.symbolState.mtf.direction5m}, `
+                + `15m ${traderState.symbolState.mtf.direction15m}`);
         }
 
         if (edge.verdict === EDGE_VERDICT.BELOW_COSTS) {

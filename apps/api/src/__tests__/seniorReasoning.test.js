@@ -165,11 +165,18 @@ describe("the challenger can only make things more conservative", () => {
         expect(r.reasons.join(" ")).toMatch(/false-signal risk: no volume/);
     });
 
-    it("downgrades a BUY when confirmation bias is detected", () => {
+    // Confirmation bias is one model's opinion about another model's prose,
+    // from a challenger instructed to attack. As an absolute veto it refused a
+    // setup with three aligned timeframes, 5x volume, 2.0 risk/reward and an
+    // edge clearing costs by 126 bps. It is reported and lowers confidence;
+    // the measured controls still decide.
+    it("reports confirmation bias without vetoing the action", () => {
         const r = applyChallenge(thesis, validateChallenge({
             verdict: "THESIS_HOLDS", confirmationBiasDetected: true }));
-        expect(r.action).toBe("HOLD");
+        expect(r.action).toBe("BUY");
+        expect(r.reasons.join(" ")).toMatch(/confirmation bias reported/);
     });
+
 
     it("turns a broken thesis on a HELD position into EXIT", () => {
         const r = applyChallenge({ proposedAction: "HOLD", isPosition: true },
@@ -269,7 +276,13 @@ describe("senior-trader scenarios", () => {
                       stopRupees: 990, targetRupees: 1025, quantity: 200, uncertainty: [] },
             challenged: { verdict: "THESIS_HOLDS", couldBeFalseSignal: true,
                           falseSignalTell: "breakouts without volume usually retrace" } });
-        expect(d.action).toBe("HOLD");
+        // Tuned for paper trading: the caveat is carried, not used as a veto.
+        // One support against one caveat is not a measurement of which side is
+        // stronger, and this setup clears the cost hurdle at 2.5 risk/reward
+        // with the challenger holding. The stop is what protects it now.
+        expect(d.action).toBe("BUY");
+        expect(d.reasons.join(" ")).toMatch(/contradicting evidence/);
+        expect(d.confidence).not.toBe("HIGH");
     });
 
     it("5. strong price move with no news -> alternative explanations surface", async () => {
@@ -329,7 +342,10 @@ describe("senior-trader scenarios", () => {
                       invalidationConditions: ["1m break"], proposedAction: "BUY",
                       stopRupees: 990, targetRupees: 1030, quantity: 100, uncertainty: [] },
             challenged: soundChallenge });
-        expect(d.action).toBe("HOLD");   // contradiction >= support
+        // Still refused, and now for the measured reason rather than for the
+        // number of bullet points on each side.
+        expect(d.action).toBe("HOLD");
+        expect(d.reasons.join(" ")).toMatch(/while the timeframes conflict/);
         expect(d.evidenceSnapshot).toMatch(/CONFLICT/);
     });
 
@@ -362,7 +378,13 @@ describe("senior-trader scenarios", () => {
                           alternativeHypotheses: [
                               { explanation: "the result was already priced in",
                                 supportedBy: "no volume expansion", plausibility: "HIGH" }] } });
-        expect(d.action).toBe("HOLD");
+        // Tuned for paper trading. The divergence — good news, no reaction — is
+        // stated in the reasons and lowers confidence; it no longer vetoes on
+        // the count of caveats alone. The trade clears costs at 4.0 risk/reward
+        // and carries a stop seven rupees below entry.
+        expect(d.action).toBe("BUY");
+        expect(d.reasons.join(" ")).toMatch(/contradicting evidence/);
+        expect(d.confidence).not.toBe("HIGH");
         expect(d.state.news).toHaveLength(1);
         expect(d.evidenceSnapshot).toMatch(/EARNINGS/);
     });
@@ -513,8 +535,14 @@ describe("senior-trader scenarios", () => {
                       invalidationConditions: ["x"], proposedAction: "BUY",
                       stopRupees: 990, targetRupees: 1040, quantity: 100, uncertainty: [] },
             challenged: soundChallenge });
-        expect(d.action).toBe("HOLD");
-        expect(d.reasons.join(" ")).toMatch(/contradicting evidence/);
+        // Tuned for paper trading. Three caveats against one support is still
+        // recorded and still lowers confidence, but the deciders are measured:
+        // this clears the cost hurdle at 4.0 risk/reward, and a stop at 990
+        // bounds it. "market weak" and "volume poor" are prose; the market
+        // shock rule and the risk gate act on numbers.
+        expect(d.action).toBe("BUY");
+        expect(d.reasons.join(" ")).toMatch(/contradicting evidence \(3\)/);
+        expect(d.confidence).not.toBe("HIGH");
     });
 });
 
@@ -606,11 +634,22 @@ describe("arithmetic floors on a new position", () => {
     });
 
     it("refuses a weak thesis whose risk/reward is below the weak-thesis floor", async () => {
-        // 1000 entry, 990 stop, 1013 target -> 1.3, under the 1.5 weak floor.
-        const d = await run({ formed: buy({ targetRupees: 1013 }),
+        // 1000 entry, 990 stop, 1012 target -> 1.2, under the 1.3 weak floor
+        // but still at the universal one, so only the weak verdict refuses it.
+        const d = await run({ formed: buy({ targetRupees: 1012 }),
                               challenge: { verdict: "THESIS_WEAK" } });
         expect(d.action).toBe("HOLD");
-        expect(d.reasons.join(" ")).toMatch(/below the 1.5 floor/);
+        expect(d.reasons.join(" ")).toMatch(/below the 1.3 floor/);
+    });
+
+    // The trade the old floor was refusing: sound arithmetic, a verdict that
+    // carried no information. It is allowed now, and still only because the
+    // measured edge clears both costs and the universal floor.
+    it("allows a weak thesis that clears the tuned weak floor", async () => {
+        const d = await run({ formed: buy({ targetRupees: 1014 }),   // 1.4 R:R
+                              challenge: { verdict: "THESIS_WEAK" } });
+        expect(d.action).toBe("BUY");
+        expect(d.reasons.join(" ")).toMatch(/entering on the arithmetic/);
     });
 
     // A favourable verdict does not make a bad trade good, and the cost hurdle
@@ -642,10 +681,12 @@ describe("arithmetic floors on a new position", () => {
         expect(d.action).toBe("HOLD");
     });
 
-    it("still refuses when confirmation bias was detected", async () => {
-        const d = await run({ formed: buy(),
-                              challenge: { verdict: "THESIS_HOLDS",
-                                           confirmationBiasDetected: true } });
+    // The one unmeasured veto that remains absolute: BROKEN means the evidence
+    // contradicts the thesis, and no arithmetic redeems that.
+    it("still refuses a broken thesis even when the arithmetic is excellent", async () => {
+        const d = await run({ formed: buy({ targetRupees: 1080 }),   // 8.0 R:R
+                              challenge: { verdict: "THESIS_BROKEN" } });
         expect(d.action).toBe("HOLD");
+        expect(d.reasons.join(" ")).toMatch(/broken/);
     });
 });

@@ -182,14 +182,16 @@ describe("discovery is paced across the session", () => {
     });
 
     it("pauses discovery when spending runs ahead of the session", () => {
-        // Half the budget an hour into a six-hour session.
-        expect(discoveryAheadOfPace(spent(0.50), ist(10, 0))).toBe(true);
+        // Three quarters of the budget an hour into a six-hour session, which
+        // is ahead of the clock even with the widened head start.
+        expect(discoveryAheadOfPace(spent(0.75), ist(10, 0))).toBe(true);
     });
 
     it("gives the open a head start so it is not starved", () => {
-        // Right at the bell, a little spending is expected.
-        expect(discoveryAheadOfPace(spent(0.10), ist(9, 16))).toBe(false);
-        expect(discoveryAheadOfPace(spent(0.40), ist(9, 16))).toBe(true);
+        // The head start is 0.40 now: the open is where the day's clearest
+        // setups are, and pacing it to the clock starved exactly that window.
+        expect(discoveryAheadOfPace(spent(0.35), ist(9, 16))).toBe(false);
+        expect(discoveryAheadOfPace(spent(0.45), ist(9, 16))).toBe(true);
     });
 
     it("does not divide by a budget of zero", () => {

@@ -36,7 +36,11 @@ const MAX_COMPARISON_BUFFER = 2_000;
 // How many candidates one discovery pass will reason about. The scan runs every
 // minute; anything beyond this waits for the next one rather than blocking the
 // scheduler behind a rate-limited model.
-const MAX_SCAN_REASONING = 2;
+// Raised from 2 for paper trading. The provider ceiling is 8,000 tokens a
+// minute and a decision costs about 4,000, so this is not what limits
+// throughput — it decides how much of a scan's shortlist gets looked at
+// before the next scan replaces it.
+const MAX_SCAN_REASONING = 3;
 
 // How long before the same symbol is worth reasoning about again.
 //
@@ -50,7 +54,11 @@ const MAX_SCAN_REASONING = 2;
 // This throttles DISCOVERY only. A position already carrying capital is never
 // throttled: a material event on something we own is exactly the question worth
 // paying for.
-const CANDIDATE_COOLDOWN_MS = Number(process.env.ZENTRADE_CANDIDATE_COOLDOWN_MS) || 15 * 60_000;
+// Shortened from fifteen minutes to five for paper trading. Fifteen was set
+// when the same names were being re-reasoned within minutes at full price; the
+// cost hurdle now turns most of those away before a model call, so the cooldown
+// no longer has to carry that job alone.
+const CANDIDATE_COOLDOWN_MS = Number(process.env.ZENTRADE_CANDIDATE_COOLDOWN_MS) || 5 * 60_000;
 
 // The trading session, in IST minutes since midnight, used to pace the
 // reasoning budget across it.
@@ -79,7 +87,11 @@ export const sessionProgress = (now) => {
 // elapsed, plus a small head start so the open is not starved. Being ahead of
 // pace pauses discovery until the session catches up. Position reassessment is
 // never paced — capital already at risk is not a budgeting question.
-const PACE_HEAD_START = 0.15;
+// Raised from 0.15 for paper trading. At 0.15 the first forty minutes of the
+// session — the open, where the day's clearest setups are — allowed only about
+// a fifth of the budget, and `candidatesPaced` reached 44 in a single process
+// while the account took no trades at all.
+const PACE_HEAD_START = 0.40;
 
 export const discoveryAheadOfPace = (tokens, now) => {
     if (!tokens || tokens.budget <= 0) return false;
