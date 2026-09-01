@@ -52,9 +52,17 @@ const capitalBlock = (s) => {
     if (s.risk.cashPaise === null || s.risk.cashPaise === undefined) {
         return `\nACCOUNT\n  available capital unknown — do not propose a quantity`;
     }
+    // The per-symbol ceiling, stated. Without it the model sized against the
+    // whole account and the risk gate refused every proposal: PNB came through
+    // at 2.33 risk/reward clearing the cost hurdle, sized at Rs 9,94,000 of a
+    // Rs 5,00,000 limit, and was rejected on POSITION_LIMIT. The limit was
+    // always going to refuse it; the model was simply never told the number.
+    const cap = s.risk.maxPositionValuePaise;
     return `
 ACCOUNT
   available capital: ${rupees(s.risk.cashPaise)}
+  MAXIMUM per symbol: ${rupees(cap)} — a quantity worth more than this is
+    refused outright by the risk gate, so size at or below it
   open positions: ${s.risk.positionCount ?? "unknown"}
   gross exposure: ${rupees(s.risk.grossExposurePaise)}
   unrealised P&L: ${rupees(s.risk.unrealisedPnlPaise)}

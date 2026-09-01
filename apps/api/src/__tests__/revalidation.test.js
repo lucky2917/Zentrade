@@ -59,9 +59,30 @@ describe("a decision cannot execute against a materially different market", () =
 
     it("expires a decision the model took too long to produce", () => {
         const r = revalidate({ intent: entry(),
-                               observation: observation({ atMs: NOW - 45_000 }), world: world() });
+                               observation: observation({ atMs: NOW - 120_000 }), world: world() });
         expect(r.verdict).toBe(VERDICT.REJECT);
         expect(r.code).toBe(CODE.DECISION_EXPIRED);
+    });
+
+    // The window has to fit the work. Reasoning is two sequential calls to a
+    // rate-limited provider and lands at 30-40 seconds, so a 30 second limit
+    // refused decisions for the time they took to make: INFY at 2.25
+    // risk/reward and GNFC at 1.68, both past every gate, refused at 38s.
+    it("admits a decision that took as long as reasoning actually takes", () => {
+        const r = revalidate({ intent: entry(),
+                               observation: observation({ atMs: NOW - 45_000 }), world: world() });
+        expect(r.code).not.toBe(CODE.DECISION_EXPIRED);
+    });
+
+    // What actually protects against a world that moved is drift, and it is
+    // untouched: an old decision whose price has run is still refused.
+    it("still refuses an aged decision whose price has run away", () => {
+        const r = revalidate({
+            intent: entry(),
+            observation: observation({ atMs: NOW - 45_000, pricePaise: 100_000 }),
+            world: world({ pricePaise: 103_000 }) });
+        expect(r.verdict).toBe(VERDICT.REJECT);
+        expect(r.code).toBe(CODE.PRICE_DRIFT);
     });
 
     it("refuses new exposure on stale data but lets an exit through", () => {

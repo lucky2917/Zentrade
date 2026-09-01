@@ -1,3 +1,4 @@
+import { DEFAULT_LIMITS } from "../autonomous/riskGate.js";
 import { TIER, makeEvidence } from "./evidence.js";
 import { memoryEvidence, summariseMemories } from "../memory/repository.js";
 
@@ -228,6 +229,9 @@ export const buildTraderState = ({
 
         risk: {
             cashPaise: portfolio?.cashPaise ?? null,
+            // The ceiling the risk gate will actually enforce, so the proposal
+            // can be sized under it rather than refused for exceeding it.
+            maxPositionValuePaise: DEFAULT_LIMITS.positionValuePaise,
             positionCount: portfolio?.positionCount ?? null,
             grossExposurePaise: portfolio?.grossExposurePaise ?? null,
             unrealisedPnlPaise: portfolio?.unrealisedPnlPaise ?? null,

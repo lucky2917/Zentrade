@@ -33,7 +33,21 @@ export const DEFAULT_TOLERANCE = {
     maxEntryDriftBps: 30,
     // How long a judgement stays actionable. Beyond this the world it described
     // is not the world we would be trading.
-    maxDecisionAgeMs: 30_000,
+    // How old a decision may be when it reaches execution.
+    //
+    // Raised from 30s. Reasoning is two sequential calls to a rate-limited
+    // provider and takes 30-40 seconds end to end, so a 30 second window
+    // refused decisions for the time they took to make rather than for
+    // anything about the market: INFY at 2.25 risk/reward and GNFC at 1.68,
+    // both clearing the cost hurdle and both past every gate, were refused at
+    // 38 seconds.
+    //
+    // The protection against acting on a world that has moved is the PRICE
+    // DRIFT check below, not this clock, and that is untouched: an intent is
+    // still refused if price has moved more than maxDriftBps since the
+    // decision, and still repriced to the fresh quote before it executes. This
+    // bounds how stale a decision may be; drift bounds how wrong it may be.
+    maxDecisionAgeMs: 90_000,
     // Same bound the rest of the system uses for a usable tick.
     maxDataAgeMs: 90_000,
 };
