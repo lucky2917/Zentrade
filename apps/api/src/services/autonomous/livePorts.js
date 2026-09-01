@@ -9,6 +9,7 @@ import { eventsForReasoning } from "../news/ingest.js";
 import { toPaise } from "../../utils/paise.js";
 import { MAX_RETRIEVAL } from "../memory/repository.js";
 import { recordDecision, sessionDateOf } from "../account/paperAccount.js";
+import { recordModelCalls } from "../account/modelCalls.js";
 import { RUNTIME_HALT_KEY } from "../cockpit/narrator.js";
 
 // The live ports.
@@ -379,6 +380,34 @@ export const buildLivePorts = ({
             };
         },
 
+        // When each symbol was last reasoned about as a candidate.
+        //
+        // The runtime holds this in a Map, so a restart forgets it and pays
+        // again for a symbol it priced minutes earlier. Observed on
+        // 2026-09-01: two symbols re-reasoned 442 and 562 seconds apart, both
+        // inside the fifteen minute cooldown, because a restart fell between.
+        loadCandidateCooldowns: async () => {
+            const { rows } = await pool.query(
+                `SELECT symbol, reasoned_at FROM candidate_cooldowns
+                 WHERE user_id=$1 AND reasoned_at > NOW() - INTERVAL '1 hour'`, [userId]);
+            return rows.map((r) => [r.symbol, new Date(r.reasoned_at).getTime()]);
+        },
+
+        markCandidateReasoned: async (symbol, at) => {
+            try {
+                await pool.query(
+                    `INSERT INTO candidate_cooldowns (user_id, symbol, reasoned_at)
+                     VALUES ($1,$2,$3)
+                     ON CONFLICT (user_id, symbol) DO UPDATE SET reasoned_at = EXCLUDED.reasoned_at`,
+                    [userId, symbol, new Date(at)]);
+            } catch (err) {
+                // A cooldown that was not written costs one repeated decision,
+                // never a wrong one.
+                logger?.warn?.("Autonomous", "cooldown not recorded",
+                               { error: err.message, symbol });
+            }
+        },
+
         // Orders whose real outcome could not be established. While any exist
         // the system does not know what it owns, so the risk gate refuses new
         // exposure until reconciliation resolves them.
@@ -491,6 +520,11 @@ export const buildLivePorts = ({
                     whatWouldChange: decision.whatWouldChangeMyMind ?? [],
                     challengeVerdict: decision.challenge?.verdict ?? null,
                     synthesis: {
+                        // The model's own proposal, and the gates that changed
+                        // it. A session that took no trades is diagnosed from
+                        // these two fields and nothing else.
+                        proposedAction: decision.proposedAction ?? null,
+                        entryGates: decision.entryGates ?? [],
                         setupType: decision.setupType ?? null,
                         horizon: decision.horizon ?? null,
                         quantity: decision.quantity ?? null,
@@ -521,6 +555,16 @@ export const buildLivePorts = ({
                 logger?.error?.("Autonomous", "decision journal write failed",
                                 { correlationId: entry.correlationId, error: err.message });
             }
+
+            // What this decision actually asked the model, including the calls
+            // that failed. Separate from the decision write so a rate-limited
+            // call is still recorded when no decision came of it.
+            await recordModelCalls({
+                userId, runs: decision.agentRuns ?? [],
+                decisionId: entry.decisionId ?? entry.correlationId,
+                correlationId: entry.correlationId, symbol,
+                at: now(entry.asOf), logger,
+            });
             return entry;
         },
     };

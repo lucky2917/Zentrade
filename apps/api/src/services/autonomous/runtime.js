@@ -934,8 +934,10 @@ export class AutonomousRuntime {
         }
         try {
             // Stamped before the decision, not after: two passes must not both
-            // pay because the first had not finished.
+            // pay because the first had not finished. Written through to the
+            // store as well, so a restart does not forget what it just paid for.
             this.lastCandidateReasoningAt.set(symbol, now);
+            this.sourcePorts.markCandidateReasoned?.(symbol, now)?.catch?.(() => {});
             return await this.decideCandidate({ symbol, context, event, reasons, session,
                                                 asOf: asOf ?? this.clock(), market });
         } finally {
@@ -1085,6 +1087,15 @@ export class AutonomousRuntime {
                                      { error: err.message, mode: this.fastPlane.mode });
             }
         }
+        // What was already reasoned about recently. Without this a restart
+        // re-pays for every symbol inside the cooldown window.
+        const cooldowns = (await this.sourcePorts.loadCandidateCooldowns?.()) ?? [];
+        for (const [symbol, at] of cooldowns) this.lastCandidateReasoningAt.set(symbol, at);
+        if (cooldowns.length) {
+            this.logger?.info?.("Runtime", "resumed candidate cooldowns",
+                                { symbols: cooldowns.length });
+        }
+
         const started = await this.orchestrator.start();
 
         // Orders the previous process left resting. Without this they are in

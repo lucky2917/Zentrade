@@ -254,6 +254,13 @@ export const reason = async ({
 
     return {
         action,
+        // What the MODEL proposed, before the challenger's veto and the entry
+        // gates had their say. Without it the record cannot distinguish a
+        // model that declined from one that wanted the trade and was stopped,
+        // which is the first question asked of any session that did not trade.
+        proposedAction: formed.proposedAction,
+        // Why the two differ, when they do.
+        entryGates,
         confidence: confidence.level,
         confidenceReason: confidence.reasons,
 

@@ -31,6 +31,9 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous paper runtime", () => {
         ({ scanUniverse, screenSymbol } = await import("../services/autonomous/candidates.js"));
 
         await pool.query("DELETE FROM position_events WHERE user_id=$1", [USER]);
+        // Cooldowns are durable now, so a symbol priced by one test would
+        // otherwise be skipped by the next.
+        await pool.query("DELETE FROM candidate_cooldowns WHERE user_id=$1", [USER]);
         await pool.query("DELETE FROM order_reconciliations WHERE order_id IN (SELECT id FROM orders WHERE user_id=$1)", [USER]);
         await pool.query("DELETE FROM order_fills WHERE order_id IN (SELECT id FROM orders WHERE user_id=$1)", [USER]);
         await pool.query("DELETE FROM orders WHERE user_id=$1", [USER]);

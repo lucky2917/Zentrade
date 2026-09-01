@@ -674,4 +674,57 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("persistent paper account", () => {
             expect(state.totalPnlPaise).toBe(state.equityPaise - START);
         });
     });
+
+    // A session that took no trades is diagnosed from two fields: what the
+    // model proposed, and which gates changed it. Neither was stored, so the
+    // 2026-09-01 review had to infer the answer from free text in the thesis
+    // and got the causation backwards on the first pass.
+    describe("why a decision did not trade", () => {
+        it("records the model's proposal alongside the final action", async () => {
+            const { buildLivePorts } = await import("../services/autonomous/livePorts.js");
+            const ports = buildLivePorts({
+                userId: USER, newsStore: null, connectionTracker: null,
+                clock: () => open(DAY1) });
+
+            await ports.journal({
+                decisionId: "d-gated", correlationId: "c-gated", symbol: SYMBOL,
+                route: "CANDIDATE", asOf: open(DAY1),
+                decision: {
+                    action: "HOLD",              // what survived
+                    proposedAction: "BUY",       // what the model wanted
+                    entryGates: ["risk/reward 0.84 is below the 1.2 floor for a new position"],
+                    confidence: "MEDIUM", reasoning: "breakout holding", evidence: [],
+                },
+                executed: false,
+            });
+
+            const [row] = await account.recentDecisions({ userId: USER });
+            expect(row.action).toBe("HOLD");
+            expect(row.synthesis.proposedAction).toBe("BUY");
+            expect(row.synthesis.entryGates).toEqual([
+                "risk/reward 0.84 is below the 1.2 floor for a new position"]);
+        });
+
+        it("distinguishes a model that declined from one that was blocked",
+           async () => {
+            const { buildLivePorts } = await import("../services/autonomous/livePorts.js");
+            const ports = buildLivePorts({
+                userId: USER, newsStore: null, connectionTracker: null,
+                clock: () => open(DAY1) });
+
+            await ports.journal({
+                decisionId: "d-declined", correlationId: "c-declined", symbol: "INFY",
+                route: "CANDIDATE", asOf: open(DAY1),
+                decision: { action: "HOLD", proposedAction: "HOLD", entryGates: [],
+                            confidence: "LOW", reasoning: "no edge", evidence: [] },
+                executed: false,
+            });
+
+            const [row] = await account.recentDecisions({ userId: USER, symbol: "INFY" });
+            // Same final action as the gated one above, entirely different cause.
+            expect(row.action).toBe("HOLD");
+            expect(row.synthesis.proposedAction).toBe("HOLD");
+            expect(row.synthesis.entryGates).toEqual([]);
+        });
+    });
 });

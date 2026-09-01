@@ -89,9 +89,13 @@ export const makeCandidateAnalyser = ({
         } catch (err) {
             logger?.error?.("SeniorReasoning", "candidate reasoning failed",
                             { error: err.message, symbol });
+            // The sink still holds every call that was made before this
+             // failed, and a call that died on a rate limit is the one most
+             // worth having a record of. Dropping it here is what made the
+             // day's failed calls invisible.
             return { action: "HOLD", confidence: "LOW", fallback: true,
                      reasoning: `Safe fallback: reasoning failed (${err.message})`,
-                     evidence: [], correlationId };
+                     evidence: [], agentRuns: sink, correlationId };
         }
 
         const action = ["BUY", "HOLD"].includes(decision.action) ? decision.action : "HOLD";
@@ -105,14 +109,20 @@ export const makeCandidateAnalyser = ({
         if (action === "BUY" && quantity === null) {
             journal(logger, "candidate downgraded: no size", decision, { symbol });
             return { action: "HOLD", confidence: "LOW", fallback: true,
+                     proposedAction: decision.proposedAction ?? "BUY",
+                     entryGates: ["proposed BUY without a usable quantity"],
                      reasoning: "Safe fallback: thesis proposed BUY without a usable quantity",
-                     evidence: evidenceRecord(decision), correlationId };
+                     evidence: evidenceRecord(decision), agentRuns: sink, correlationId };
         }
 
         journal(logger, "candidate", decision, { symbol, correlationId });
 
         return {
             action, confidence, quantity,
+            // Carried through so the record can say whether the model wanted
+            // this trade and something stopped it, or never wanted it.
+            proposedAction: decision.proposedAction ?? null,
+            entryGates: decision.entryGates ?? [],
             reasoning: narrate(decision),
             setupType: decision.setup ?? "unclassified",
             invalidationConditions: decision.invalidationConditions?.length
@@ -214,6 +224,8 @@ export const makeReassessmentModel = ({
 
         return {
             action: REASSESS_ACTIONS.includes(decision.action) ? decision.action : "HOLD",
+            proposedAction: decision.proposedAction ?? null,
+            entryGates: decision.entryGates ?? [],
             confidence: decision.confidence,
             thesisStillValid: decision.thesisStillValid ?? true,
             whatChanged: decision.whatChanged ?? "unspecified",

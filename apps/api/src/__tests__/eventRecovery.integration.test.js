@@ -28,6 +28,9 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("unfinished event work", () => {
 
     beforeEach(async () => {
         await pool.query("DELETE FROM position_events WHERE user_id=$1", [USER]);
+        // Cooldowns are durable now, so a symbol priced by one test would
+        // otherwise be skipped by the next.
+        await pool.query("DELETE FROM candidate_cooldowns WHERE user_id=$1", [USER]);
         await pool.query(
             `INSERT INTO users (id, email, balance_paise) VALUES ($1,'events@test',100000000)
              ON CONFLICT (id) DO NOTHING`, [USER]);

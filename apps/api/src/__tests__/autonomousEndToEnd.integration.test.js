@@ -31,6 +31,9 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("autonomous loop end to end", () => {
         // Event keys are deterministic under a fixed clock, so they survive
         // between runs and would deduplicate the very event a test needs.
         await pool.query("DELETE FROM position_events WHERE user_id=$1", [USER]);
+        // Cooldowns are durable now, so a symbol priced by one test would
+        // otherwise be skipped by the next.
+        await pool.query("DELETE FROM candidate_cooldowns WHERE user_id=$1", [USER]);
         await pool.query("DELETE FROM order_reconciliations WHERE order_id IN (SELECT id FROM orders WHERE user_id=$1)", [USER]);
         await pool.query("DELETE FROM order_fills WHERE order_id IN (SELECT id FROM orders WHERE user_id=$1)", [USER]);
         await pool.query("DELETE FROM orders WHERE user_id=$1", [USER]);

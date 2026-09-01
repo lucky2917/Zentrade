@@ -29,6 +29,9 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("tick-level protection", () => {
 
         await pool.query("DELETE FROM position_reassessments WHERE thesis_id IN (SELECT id FROM trade_thesis WHERE user_id=$1)", [USER]);
         await pool.query("DELETE FROM position_events WHERE user_id=$1", [USER]);
+        // Cooldowns are durable now, so a symbol priced by one test would
+        // otherwise be skipped by the next.
+        await pool.query("DELETE FROM candidate_cooldowns WHERE user_id=$1", [USER]);
         await pool.query("DELETE FROM order_fills WHERE order_id IN (SELECT id FROM orders WHERE user_id=$1)", [USER]);
         await pool.query("DELETE FROM orders WHERE user_id=$1", [USER]);
         await pool.query("DELETE FROM trade_thesis WHERE user_id=$1", [USER]);
