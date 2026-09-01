@@ -15,7 +15,7 @@ if (TEST_DB) process.env.DATABASE_URL = TEST_DB;
 // reservation, which permanently reduced available cash.
 
 describe.skipIf(!TEST_DB || !TEST_REDIS)("a restart adopts resting orders", () => {
-    let pool, redis, engine, PaperVenue;
+    let pool, redis, engine, PaperVenue, reconcile;
     const USER = 8492;
     const SYMBOL = "INFY";
     const START = 100_000_000;
@@ -27,12 +27,16 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("a restart adopts resting orders", () =
         ({ default: redis } = await import("../config/redis.js"));
         engine = await import("../services/execution/engine.js");
         ({ PaperVenue } = await import("../services/execution/paperVenue.js"));
+        reconcile = await import("../services/execution/reconcile.js");
     });
 
     beforeEach(async () => {
         await pool.query(
             "DELETE FROM order_fills WHERE order_id IN (SELECT id FROM orders WHERE user_id=$1)",
             [USER]);
+        await pool.query(
+            `DELETE FROM order_reconciliations WHERE order_id IN
+             (SELECT id FROM orders WHERE user_id=$1)`, [USER]);
         await pool.query("DELETE FROM orders WHERE user_id=$1", [USER]);
         await pool.query("DELETE FROM portfolio WHERE user_id=$1", [USER]);
         await pool.query(
@@ -104,6 +108,55 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("a restart adopts resting orders", () =
         // Untouched. Its outcome is unknown, and inventing one is the failure
         // AMBIGUOUS exists to prevent.
         expect((await engine.getOrder(order.id)).state).toBe("AMBIGUOUS");
+    });
+
+    // The deadlock. externalStateOf used to read the order's own row back and
+    // present it as external truth, so an AMBIGUOUS order was compared against
+    // itself, reconciliation recorded MATCHED and "states agree", and it could
+    // never leave the state. Live, a TCS BUY sat AMBIGUOUS for hours holding
+    // Rs 99,982 of reserved cash — and because unresolved ambiguity blocks new
+    // exposure, one stuck order halted the entire book.
+    it("resolves an ambiguous order the venue never worked", async () => {
+        const before = new PaperVenue({ engine, defaultBehaviour: "DELAYED_FILL" });
+        const { order } = await before.submit(intent({ clientOrderId: "amb-1",
+                                                       correlationId: "amb-1" }));
+        await engine.markAmbiguous(order.id, "venue went silent");
+
+        // A new process: the venue has no memory of it, and no fill exists.
+        const after = new PaperVenue({ engine });
+        const external = await after.externalStateOf(await engine.getOrder(order.id));
+        expect(external).toEqual({ state: "CANCELLED", filledQuantity: 0, fills: [] });
+
+        const { outcome } = await reconcile.reconcileOrder(order.id, external);
+        expect(outcome).toBe("MISMATCH");
+        const resolved = await engine.getOrder(order.id);
+        expect(resolved.state).toBe("CANCELLED");
+        // And the cash it was holding is released.
+        expect(Number(resolved.reserved_paise)).toBe(0);
+        expect(await reconcile.hasUnresolvedAmbiguity(USER)).toBe(false);
+    });
+
+    it("reports what actually filled when the venue lost a part-filled order",
+       async () => {
+        const before = new PaperVenue({ engine, defaultBehaviour: "DELAYED_FILL" });
+        const { order } = await before.submit(intent({ clientOrderId: "amb-2",
+                                                       correlationId: "amb-2" }));
+        await engine.applyFill({ orderId: order.id, executionRef: "p1",
+                                 quantity: 40, pricePaise: 150_000 });
+        await engine.markAmbiguous(order.id, "process died mid-flight");
+
+        const after = new PaperVenue({ engine });
+        const external = await after.externalStateOf(await engine.getOrder(order.id));
+        // 40 of 100: the fills are the record, and they say partially filled.
+        expect(external).toMatchObject({ state: "PARTIALLY_FILLED", filledQuantity: 40 });
+    });
+
+    it("never invents an outcome for an order the venue is still holding", async () => {
+        const venue = new PaperVenue({ engine, defaultBehaviour: "SILENT" });
+        const { order } = await venue.submit(intent({ clientOrderId: "amb-3",
+                                                      correlationId: "amb-3" }));
+        // A venue that has not answered must produce AMBIGUOUS, not a guess.
+        expect(await venue.externalStateOf(order)).toBeNull();
     });
 
     it("does not adopt an order it is already driving", async () => {

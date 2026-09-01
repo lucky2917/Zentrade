@@ -230,12 +230,46 @@ export class PaperVenue {
 
     // What the venue believes, for reconciliation. A silent order returns null,
     // which is exactly the case that must produce AMBIGUOUS rather than a guess.
+    //
+    // For anything else this used to read the order's own database row back and
+    // hand it over as "external truth". That is circular, and on an AMBIGUOUS
+    // order it deadlocks: the row says AMBIGUOUS, the answer says AMBIGUOUS,
+    // reconciliation records MATCHED and "states agree", and the order can
+    // never leave the state. Observed live — a TCS BUY sat AMBIGUOUS from 06:27
+    // holding Rs 99,982 of reserved cash, reconciled every minute for hours,
+    // and because unresolved ambiguity blocks new exposure it halted the whole
+    // book.
+    //
+    // The paper venue IS the exchange here, so what it knows is what happened.
+    // If it is no longer tracking an order, the fills are the record: any that
+    // exist are the truth, and none existing means the venue never worked it.
+    // That is not a guess about an outside system, it is this simulator
+    // reporting its own books.
     async externalStateOf(order) {
         const entry = this.pending.get(order.id);
         if (entry?.behaviour === VENUE_BEHAVIOUR.SILENT) return null;
+
         const known = await this.engine.getOrder(order.id);
         if (!known) return null;
-        return { state: known.state, filledQuantity: Number(known.filled_quantity), fills: [] };
+
+        // Still in hand: the row and the venue are the same thing.
+        if (entry) {
+            return { state: known.state, filledQuantity: Number(known.filled_quantity), fills: [] };
+        }
+
+        // Not in hand. Answer from the fills, which is the only independent
+        // record of what this venue actually did.
+        const fills = await this.engine.fillsFor(order.id);
+        const filledQuantity = fills.reduce((n, f) => n + Number(f.quantity), 0);
+        if (filledQuantity === 0) {
+            return { state: STATES.CANCELLED, filledQuantity: 0, fills: [] };
+        }
+        return {
+            state: filledQuantity >= Number(known.quantity) ? STATES.FILLED
+                                                            : STATES.PARTIALLY_FILLED,
+            filledQuantity,
+            fills: [],
+        };
     }
 
     health() {
