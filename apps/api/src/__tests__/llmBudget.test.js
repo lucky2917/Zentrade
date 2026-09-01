@@ -219,3 +219,31 @@ describe("discovery is paced across the session", () => {
         expect(bodyOf("protect")).not.toMatch(/tokenBudget/);
     });
 });
+
+// Rate and latency are different things, and conflating them cost a trade.
+//
+// `minTime` was derived from the rate: MODEL_REFRESH_MS / MODEL_RPM. Lowering
+// the rate to the provider's real ceiling of 4/min therefore set fifteen
+// seconds BETWEEN CALLS, and a decision is two sequential calls. Observed live:
+// GNFC formed a BUY at 1.86 risk/reward clearing the cost hurdle, and Tier 4
+// refused it because the decision was 68 seconds old against a 30 second
+// freshness limit. The reservoir was doing the rate limiting; the spacing was
+// only adding age.
+
+describe("the rate ceiling does not become decision latency", () => {
+    it("spaces calls by a small constant, not by the rate", async () => {
+        const { modelBudget } = await import("../services/aiEngine.js");
+        const b = modelBudget();
+        expect(b.minSpacingMs).toBeLessThanOrEqual(1000);
+    });
+
+    it("leaves room for a two-call decision inside the freshness window",
+       async () => {
+        const { modelBudget } = await import("../services/aiEngine.js");
+        const { DEFAULT_TOLERANCE } = await import("../services/execution/revalidate.js");
+        // Two sequential calls must not spend the whole window queueing before
+        // the model has answered.
+        const queueingPerDecision = modelBudget().minSpacingMs * 2;
+        expect(queueingPerDecision).toBeLessThan(DEFAULT_TOLERANCE.maxDecisionAgeMs / 2);
+    });
+});

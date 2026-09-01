@@ -56,12 +56,27 @@ const MODEL_REFRESH_MS = 60_000;
 // scheduled job, and a job that sleeps is a loop that stops.
 const MAX_RETRY_WAIT_MS = Number(process.env.GROQ_MAX_RETRY_WAIT_MS) || 15_000;
 
+// The RESERVOIR enforces the rate. `minTime` only spaces the calls evenly
+// inside it, and spacing them evenly is what broke the trade.
+//
+// It was MODEL_REFRESH_MS / MODEL_RPM, so lowering the rate to the provider's
+// real ceiling of 4/min set it to fifteen seconds BETWEEN CALLS. A decision is
+// two sequential calls, so it spent thirty seconds queueing before the model
+// had done any work. Observed live: GNFC formed a BUY at 1.86 risk/reward that
+// cleared the cost hurdle, and Tier 4 refused it — correctly — because the
+// decision was 68 seconds old against a 30 second freshness limit.
+//
+// A decision's two calls are ~4,000 tokens against an 8,000/minute ceiling, so
+// letting them run back to back costs nothing the reservoir is not already
+// counting. This keeps the rate and returns the latency.
+const MODEL_MIN_SPACING_MS = Number(process.env.GROQ_MIN_SPACING_MS) || 250;
+
 const modelLimiter = new Bottleneck({
     reservoir: MODEL_RPM,
     reservoirRefreshAmount: MODEL_RPM,
     reservoirRefreshInterval: MODEL_REFRESH_MS,
     maxConcurrent: MODEL_MAX_CONCURRENT,
-    minTime: Math.ceil(MODEL_REFRESH_MS / MODEL_RPM),
+    minTime: MODEL_MIN_SPACING_MS,
 });
 
 // Bottleneck cancels its own refresh timer the first time updateSettings runs,
@@ -124,6 +139,29 @@ export const recordTokens = (usage, now = Date.now()) => {
     tokensUsed += (usage?.promptTokens ?? 0) + (usage?.completionTokens ?? 0);
 };
 
+// Can a whole decision be served right now?
+//
+// A decision is two sequential calls. Starting one with a single call left in
+// the reservoir spends it, then waits up to a minute for the refill before the
+// second — and the decision arrives older than the freshness window Tier 4
+// enforces, so the call is spent on something that cannot be acted on.
+// Observed live: a 2.0 risk/reward BUY clearing the cost hurdle, refused at 34
+// seconds against a 30 second limit, having consumed both calls.
+//
+// Asking first costs nothing and defers the candidate to the next pass, which
+// is exactly what the reservoir is telling us to do.
+export const canAffordDecision = async (calls = 2) => {
+    try {
+        const available = await modelLimiter.currentReservoir();
+        // Null means the limiter is not reservoir-bound; nothing to wait for.
+        return available === null || available >= calls;
+    } catch {
+        // Unreadable is not a reason to stall the trader; the limiter still
+        // enforces the ceiling either way.
+        return true;
+    }
+};
+
 export const tokenBudget = (now = Date.now()) => {
     rollTokenDay(now);
     const remaining = Math.max(0, DAILY_TOKEN_BUDGET - tokensUsed);
@@ -141,6 +179,7 @@ export const tokenBudget = (now = Date.now()) => {
 
 export const modelBudget = (now = Date.now()) => ({
     rpm: MODEL_RPM, maxConcurrent: MODEL_MAX_CONCURRENT,
+    minSpacingMs: MODEL_MIN_SPACING_MS,
     // queued() is synchronous; running() returns a Promise and serialised as
     // an empty object on the wire, so it is not reported at all rather than
     // reported as nothing.

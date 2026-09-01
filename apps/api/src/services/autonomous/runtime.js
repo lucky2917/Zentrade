@@ -13,7 +13,7 @@ import { makeEvent, EVENT_TYPES, SEVERITY } from "./events.js";
 import { THRESHOLDS } from "../intelligence/anomaly.js";
 import { FastPlaneBridge, PLANE_MODE } from "../tick/fastPlane.js";
 import { KIND } from "../cockpit/narrator.js";
-import { modelBudget, tokenBudget } from "../aiEngine.js";
+import { modelBudget, tokenBudget, canAffordDecision } from "../aiEngine.js";
 
 // The autonomous runtime.
 //
@@ -209,7 +209,7 @@ export class AutonomousRuntime {
             candidatesDeferred: 0, candidatesCooledDown: 0, candidatesBudgetSkipped: 0,
             candidatesPaced: 0, protectiveRetries: 0, ordersAdopted: 0, haltChanges: 0,
             planeAuthorityChanges: 0, unprotectedPositions: 0,
-            candidatesBelowCostHurdle: 0,
+            candidatesBelowCostHurdle: 0, candidatesDeferredForBudget: 0,
         };
 
         // Optional throughout: the runtime behaves identically without one,
@@ -940,6 +940,16 @@ export class AutonomousRuntime {
         if (!economics.worth) {
             this.metrics.candidatesBelowCostHurdle += 1;
             return { skipped: economics.reason };
+        }
+
+        // A decision is two sequential model calls. Beginning one when only a
+        // single call is left in the minute's allowance spends it, then waits
+        // for the refill before the second, and the decision arrives older
+        // than the freshness window Tier 4 enforces. The call is spent on
+        // something that cannot be acted on, so the candidate waits instead.
+        if (!(await canAffordDecision())) {
+            this.metrics.candidatesDeferredForBudget += 1;
+            return { skipped: "not enough model allowance left this minute for a whole decision" };
         }
 
         const now = (asOf ?? this.clock()).getTime();
