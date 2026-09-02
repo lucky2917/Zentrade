@@ -483,7 +483,12 @@ const start = async () => {
     // One tracker answers "is the feed delivering" for the pollers too, so REST
     // stands down while the websocket is healthy instead of racing it.
     setFeedTracker(connectionTracker);
-    startMarketWorker();
+    // NOT here. The worker polls Fyers REST, and the token is acquired by the
+    // fyers-auth boot stage further down — so starting it now fired a wall of
+    // "No Fyers access token available" errors before the token existed, on
+    // every single start. Nothing was broken; it simply looked like it was,
+    // which is worse than a real failure because it teaches you to ignore the
+    // log. It starts after boot, once the token stage has run.
     startWebSocketBroadcaster(io);
     // Narration rides the socket that already exists rather than a second one.
     attachCockpit(io, narrator);
@@ -598,6 +603,10 @@ const start = async () => {
     if (!boot.ok) {
         logger.error("Server", `boot failed at ${boot.stage}: ${boot.error}`);
     }
+
+    // The REST backstop, now that the token stage has had its turn. It stands
+    // down on its own while the websocket is healthy.
+    startMarketWorker();
     logger.info("Server", `health: ${health().status}`);
     await printBanner();
 };

@@ -1,3 +1,4 @@
+import { sessionStateAt } from "./session.js";
 import { HEALTH, deriveHealth } from "./health.js";
 import { CONNECTION } from "./connectionState.js";
 import { permitsNewExposure, SOURCE } from "./freshness.js";
@@ -82,7 +83,16 @@ export const buildHealth = ({ bootstrap, orchestrator, connection }) => {
     const connectionHealth = connection?.health?.() ?? {
         state: CONNECTION.DISCONNECTED, trusted: false, dataAgeMs: null,
     };
-    const session = orchestratorHealth.session ?? "CLOSED";
+    // An absent orchestrator means we do not know what the BRAIN is doing. It
+    // does not mean the market is shut, and defaulting to CLOSED said exactly
+    // that: the API process holds no runtime by design, so its banner
+    // announced "MARKET CLOSED" and "DEGRADED (expected — the market is
+    // CLOSED)" straight through a live session, which reads as a stack that
+    // failed to start.
+    //
+    // The session is a pure function of the clock and the calendar. Nothing
+    // has to be running to know it.
+    const session = orchestratorHealth.session ?? sessionStateAt(new Date());
 
     const status = deriveHealth({
         bootStage: bootstrap?.stage ?? "pending",

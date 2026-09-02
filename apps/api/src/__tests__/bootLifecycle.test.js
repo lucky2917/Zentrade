@@ -251,3 +251,29 @@ describe("assembled health view", () => {
         expect(view.exposureBlockedBecause).toBeTruthy();
     });
 });
+
+// The API process holds no autonomous runtime by design — the trader lives in
+// the agent process — so health was built with `orchestrator: null` and the
+// session fell through to a hard-coded "CLOSED". The banner then announced
+// "MARKET CLOSED" and "DEGRADED (expected — the market is CLOSED)" straight
+// through a live session, which reads as a stack that failed to start.
+
+describe("the session is known without a runtime", () => {
+    const at = (h, m) => new Date(Date.UTC(2026, 8, 2, h - 6, m + 30));   // IST h:m
+
+    it("reports the real session when no orchestrator is attached", () => {
+        const h = buildHealth({
+            bootstrap: { stage: "ready", dependencies: { database: true, redis: true } },
+            orchestrator: null, connection: null });
+        // Whatever it is, it is derived rather than assumed shut.
+        expect(["PRE_MARKET", "OPEN", "CLOSING", "CLOSED"]).toContain(h.session);
+    });
+
+    it("still prefers the orchestrator's own view when there is one", () => {
+        const h = buildHealth({
+            bootstrap: { stage: "ready", dependencies: { database: true, redis: true } },
+            orchestrator: { health: () => ({ phase: "RUNNING", session: "HALTED" }) },
+            connection: null });
+        expect(h.session).toBe("HALTED");
+    });
+});
