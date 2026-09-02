@@ -87,9 +87,7 @@ const App = () => {
             element={
               <ErrorBoundary>
                 <Suspense fallback={<div className="loading-screen">Loading...</div>}>
-                  <AuthProvider>
-                    <Logbook />
-                  </AuthProvider>
+                  <Logbook />
                 </Suspense>
               </ErrorBoundary>
             }

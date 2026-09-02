@@ -1,5 +1,7 @@
 import express from "express";
+import rateLimit from "express-rate-limit";
 import auth from "../middleware/auth.js";
+import { clientIpKey } from "../utils/clientIp.js";
 import { narrator } from "../services/cockpit/narrator.js";
 import { buildSnapshot, readPositionTimeline, readAccount, readDecisions }
     from "../services/cockpit/state.js";
@@ -11,6 +13,21 @@ import { readLogbook } from "../services/cockpit/logbook.js";
 // and there is no code path from it to execution, risk or thesis state. The
 // browser observes; it cannot act. That is enforced by a test, because a
 // read-only guarantee that depends on nobody adding a handler is not one.
+
+// The logbook is the one route here that is deliberately public. It is the
+// published record of what the system decided, meant to be readable without an
+// account, and it stays read-only like everything else on this router. Being
+// public is pinned by a test so no other route can quietly join it.
+//
+// Public also means it needs its own ceiling: a whole session is a large read,
+// so this is tighter than the general API limit and keyed the same way.
+export const logbookLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: clientIpKey,
+});
 
 // Every dependency is an accessor, not a value. This router is built while the
 // server module is still initialising, so anything read eagerly here is read
@@ -68,7 +85,7 @@ export const buildCockpitRouter = ({ runtimeHealth = async () => null,
     // The whole durable record of a session: decisions and the reasoning inside
     // them, the model calls they cost, the conditions that woke the trader, the
     // orders, fills, theses, reassessments and runtime events.
-    router.get("/logbook", auth, async (req, res) => {
+    router.get("/logbook", logbookLimiter, async (req, res) => {
         try {
             const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date ?? "")
                 ? req.query.date : null;

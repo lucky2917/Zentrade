@@ -327,10 +327,12 @@ describe("logbook page", () => {
         expect(screen.queryByText(/Logbook unavailable/)).toBeNull();
     });
 
-    it("reports a signed-out reader immediately rather than waiting", async () => {
+    // The logbook is published, so a refusal means the server is not serving it,
+    // not that the reader needs an account. Either way it must not hang.
+    it("reports a refusal immediately rather than waiting out a wake", async () => {
         api.get.mockRejectedValue({ response: { status: 401 } });
         render(<Logbook />);
-        await screen.findByText(/Sign in to read the logbook/);
+        await screen.findByText(/not published on this server/);
     });
 
     it("offers a retry once it has given up", async () => {

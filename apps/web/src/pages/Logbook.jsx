@@ -519,9 +519,9 @@ export const Logbook = () => {
                 setLog(data); setError(null); setWaking(null);
                 return;
             } catch (err) {
-                if (err.response?.status === 401) {
+                if (err.response?.status === 401 || err.response?.status === 403) {
                     setWaking(null);
-                    setError("Sign in to read the logbook.");
+                    setError("The logbook is not published on this server.");
                     return;
                 }
                 // A cold host can refuse or time out several times before it is

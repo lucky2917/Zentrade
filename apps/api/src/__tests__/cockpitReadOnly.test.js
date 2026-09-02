@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import jwt from "jsonwebtoken";
-import { buildCockpitRouter } from "../routes/cockpit.js";
+import { buildCockpitRouter, logbookLimiter } from "../routes/cockpit.js";
 import { identify, attachCockpit, COCKPIT_ROOM } from "../services/cockpit/transport.js";
 import { Narrator, KIND } from "../services/cockpit/narrator.js";
 
@@ -26,12 +26,33 @@ describe("the cockpit cannot act on the market", () => {
         expect([...new Set(methods)]).toEqual(["get"]);
     });
 
-    it("every route requires authentication", () => {
+    // The logbook is published on purpose. Everything else stays behind auth,
+    // and the exception is spelled out here so a second public route cannot
+    // appear without this test being changed deliberately.
+    const PUBLIC_ROUTES = ["/logbook"];
+
+    it("requires authentication everywhere except the published logbook", () => {
         for (const layer of router.stack.filter((l) => l.route)) {
             const names = layer.route.stack.map((h) => h.name);
+            const shouldGuard = !PUBLIC_ROUTES.includes(layer.route.path);
             expect({ path: layer.route.path, guarded: names.includes("auth") })
-                .toEqual({ path: layer.route.path, guarded: true });
+                .toEqual({ path: layer.route.path, guarded: shouldGuard });
         }
+    });
+
+    it("exposes exactly one public route, and no more", () => {
+        const open = router.stack
+            .filter((l) => l.route)
+            .filter((l) => !l.route.stack.map((h) => h.name).includes("auth"))
+            .map((l) => l.route.path);
+        expect(open).toEqual(PUBLIC_ROUTES);
+    });
+
+    // Public and unauthenticated is exactly the shape that invites abuse, and a
+    // whole session is an expensive read.
+    it("rate limits the public route", () => {
+        const layer = router.stack.find((l) => l.route?.path === "/logbook");
+        expect(layer.route.stack.some((h) => h.handle === logbookLimiter)).toBe(true);
     });
 
     // The structural half: there is no path from this code to execution, so no
