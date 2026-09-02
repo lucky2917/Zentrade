@@ -225,7 +225,9 @@ describe("logbook page", () => {
     it("requests the whole session rather than a first page", async () => {
         render(<Logbook />);
         await screen.findAllByText("NAUKRI");
-        expect(api.get.mock.calls[0][1].params.limit).toBe(5000);
+        const call = api.get.mock.calls.find(
+            ([path]) => path === "/internal/cockpit/logbook");
+        expect(call[1].params.limit).toBe(5000);
     });
 
     it("says when it opened on an earlier session than today", async () => {
@@ -302,9 +304,43 @@ describe("logbook page", () => {
         expect(within(funnel).getByText("calls failed")).toBeTruthy();
     });
 
-    it("reports an unavailable logbook rather than rendering nothing", async () => {
+    // A free host sleeps. The first visit must read as a server waking up, not
+    // as a missing record, and it must recover on its own.
+    it("waits out a sleeping server and then renders the session", async () => {
+        let asleep = 2;
+        api.get.mockImplementation(async (path) => {
+            if (asleep > 0) { asleep -= 1; throw { code: "ECONNABORTED" }; }
+            if (path === "/health") return { data: { status: "ok" } };
+            return { data: log };
+        });
+
+        render(<Logbook />);
+        await screen.findByText(/Waking the server/);
+        await screen.findAllByText("NAUKRI", {}, { timeout: 15000 });
+        expect(screen.queryByText(/Waking the server/)).toBeNull();
+    }, 20000);
+
+    it("never shows a bare error while the server may still be booting", async () => {
+        api.get.mockRejectedValue({ code: "ECONNABORTED" });
+        render(<Logbook />);
+        await screen.findByText(/Waking the server/);
+        expect(screen.queryByText(/Logbook unavailable/)).toBeNull();
+    });
+
+    it("reports a signed-out reader immediately rather than waiting", async () => {
+        api.get.mockRejectedValue({ response: { status: 401 } });
+        render(<Logbook />);
+        await screen.findByText(/Sign in to read the logbook/);
+    });
+
+    it("offers a retry once it has given up", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
         api.get.mockRejectedValue({ response: { status: 503 } });
         render(<Logbook />);
+        await screen.findByText(/Waking the server/);
+        await vi.advanceTimersByTimeAsync(95_000);
         await screen.findByText(/Logbook unavailable/);
-    });
+        expect(screen.getByText("Try again")).toBeTruthy();
+        vi.useRealTimers();
+    }, 20000);
 });

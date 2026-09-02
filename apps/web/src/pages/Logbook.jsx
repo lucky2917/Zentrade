@@ -29,6 +29,14 @@ const TALLY = [
     ["agentEvents", "agent events"],
 ];
 
+// The API may be asleep. A free host takes the better part of a minute to boot,
+// so the page waits that out rather than reporting the record as unavailable.
+const WAKE_LIMIT_MS = 90_000;
+const PROBE_TIMEOUT_MS = 8_000;
+const REFRESH_MS = 20_000;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 const LANES = [
     { id: "all", label: "Everything" },
     { id: "reasoning", label: "Reasoning" },
@@ -478,23 +486,63 @@ export const Logbook = () => {
     const [query, setQuery] = useState("");
     const [openId, setOpenId] = useState(null);
     const [date, setDate] = useState(null);
+    const [waking, setWaking] = useState(null);
 
-    const load = useCallback(async (forDate) => {
-        try {
-            const { data } = await api.get("/internal/cockpit/logbook", {
-                baseURL: "/", params: forDate ? { date: forDate, limit: 5000 } : { limit: 5000 },
-            });
-            setLog(data); setError(null);
-        } catch (err) {
-            setError(err.response?.status === 401
-                ? "Sign in to read the logbook." : "Logbook unavailable.");
+    const load = useCallback(async (forDate, { cold = false } = {}) => {
+        const started = Date.now();
+        // A sleeping host answers nothing until it has booted. Wake it with the
+        // cheapest request there is before asking for a whole session, so the
+        // first thing the reader sees is progress rather than a failure.
+        if (cold) {
+            let attempt = 0;
+            while (Date.now() - started < WAKE_LIMIT_MS) {
+                try {
+                    await api.get("/health", { timeout: PROBE_TIMEOUT_MS });
+                    break;
+                } catch (err) {
+                    // Any reply at all, including a refusal, proves the host is
+                    // up. Only a dead connection means it is still booting.
+                    if (err.response) break;
+                    attempt += 1;
+                    setWaking(Math.round((Date.now() - started) / 1000));
+                    await sleep(Math.min(1000 * attempt, 4000));
+                }
+            }
+        }
+
+        for (let attempt = 0; ; attempt += 1) {
+            try {
+                const { data } = await api.get("/internal/cockpit/logbook", {
+                    baseURL: "/",
+                    params: forDate ? { date: forDate, limit: 5000 } : { limit: 5000 },
+                });
+                setLog(data); setError(null); setWaking(null);
+                return;
+            } catch (err) {
+                if (err.response?.status === 401) {
+                    setWaking(null);
+                    setError("Sign in to read the logbook.");
+                    return;
+                }
+                // A cold host can refuse or time out several times before it is
+                // ready. Keep trying for as long as a cold start plausibly takes.
+                if (cold && Date.now() - started < WAKE_LIMIT_MS) {
+                    setWaking(Math.round((Date.now() - started) / 1000));
+                    await sleep(Math.min(1500 * (attempt + 1), 5000));
+                    continue;
+                }
+                setWaking(null);
+                if (cold) setError("Logbook unavailable.");
+                return;
+            }
         }
     }, []);
 
-    useEffect(() => { load(date); }, [load, date]);
-    // The session is still being written while it runs.
+    useEffect(() => { load(date, { cold: true }); }, [load, date]);
+    // The session is still being written while it runs. A background refresh
+    // never shows the waking state and never replaces a good page with an error.
     useEffect(() => {
-        const t = setInterval(() => load(date), 20000);
+        const t = setInterval(() => load(date), REFRESH_MS);
         return () => clearInterval(t);
     }, [load, date]);
 
@@ -527,7 +575,30 @@ export const Logbook = () => {
         return c;
     }, [timeline]);
 
-    if (error) return <div className="lb-root lb-centered"><p>{error}</p></div>;
+    if (waking !== null && !log) return (
+        <div className="lb-root lb-centered">
+            <div className="lb-wake">
+                <span className="lb-wake-dot" />
+                <p>Waking the server.</p>
+                <p className="lb-muted">
+                    It sleeps when idle and takes about a minute to come back.
+                    Nothing is lost while it does.
+                </p>
+                <p className="lb-muted lb-wake-count">{waking}s</p>
+            </div>
+        </div>
+    );
+    if (error) return (
+        <div className="lb-root lb-centered">
+            <div className="lb-wake">
+                <p>{error}</p>
+                <button type="button" className="lb-retry"
+                        onClick={() => { setError(null); load(date, { cold: true }); }}>
+                    Try again
+                </button>
+            </div>
+        </div>
+    );
     if (!log) return <div className="lb-root lb-centered"><p className="lb-muted">
         reading the logbook…</p></div>;
 

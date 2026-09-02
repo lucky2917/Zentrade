@@ -52,6 +52,10 @@
       "destination": "https://zentrade-server.onrender.com/socket.io/:path*"
     },
     {
+      "source": "/internal/cockpit/:path*",
+      "destination": "https://zentrade-server.onrender.com/internal/cockpit/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
