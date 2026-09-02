@@ -264,3 +264,16 @@
 @media (max-width: 860px) {
     .lb-ledger, .lb-tally { padding-left: 16px; padding-right: 16px; }
 }
+
+/* Shown when the page opened on an earlier session because today is still
+   empty. A quiet day must not read as a lost record. */
+.lb-stale {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 3px;
+    font-weight: 500;
+    color: var(--lb-warn);
+    background: #16120a;
+    border: 1px solid #43371c;
+}

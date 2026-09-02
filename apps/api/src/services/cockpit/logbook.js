@@ -14,11 +14,46 @@ import { sessionDateOf, sessionHistory } from "../account/paperAccount.js";
 
 const number = (v) => (v === null || v === undefined ? null : Number(v));
 
+// The day to open on when the caller did not name one.
+//
+// Defaulting blindly to today empties the page every night at midnight and on
+// every non-trading day, which reads as the record having been lost. The most
+// recent day that actually holds something is the honest default; an explicitly
+// requested day is always honoured, empty or not.
+const latestRecordedDay = async ({ userId, today, db }) => {
+    const { rows } = await db.query(
+        `SELECT to_char(MAX(d), 'YYYY-MM-DD') AS day FROM (
+             SELECT MAX(session_date) AS d FROM decision_records
+              WHERE user_id=$1 AND session_date <= $2
+             UNION ALL
+             SELECT MAX(session_date) AS d FROM agent_events
+              WHERE user_id=$1 AND session_date <= $2
+             UNION ALL
+             SELECT MAX(session_date) AS d FROM session_summaries
+              WHERE user_id=$1 AND session_date <= $2
+         ) days`, [userId, today]);
+    return rows[0]?.day ?? today;
+};
+
+// Every day the operator can ask for, not only the days that reached a summary.
+const recordedDays = async ({ userId, db, limit = 30 }) => {
+    const { rows } = await db.query(
+        `SELECT to_char(session_date, 'YYYY-MM-DD') AS day FROM (
+             SELECT session_date FROM decision_records WHERE user_id=$1
+             UNION
+             SELECT session_date FROM agent_events WHERE user_id=$1
+             UNION
+             SELECT session_date FROM session_summaries WHERE user_id=$1
+         ) days ORDER BY session_date DESC LIMIT $2`, [userId, limit]);
+    return rows.map((r) => r.day);
+};
+
 export const readLogbook = async ({ userId, sessionDate = null, limit = 400, db = pool }) => {
-    const day = sessionDate ?? sessionDateOf(new Date());
+    const today = sessionDateOf(new Date());
+    const day = sessionDate ?? await latestRecordedDay({ userId, today, db });
 
     const [decisions, calls, events, orders, fills, theses, reassessments,
-           agentEvents, sessions, totals] = await Promise.all([
+           agentEvents, sessions, days, totals] = await Promise.all([
         db.query(
             `SELECT decision_id, correlation_id, symbol, route, action, confidence,
                     trigger_type, trigger_severity, trigger_reason, evidence, thesis,
@@ -70,6 +105,7 @@ export const readLogbook = async ({ userId, sessionDate = null, limit = 400, db 
              WHERE user_id=$1 AND session_date=$2 ORDER BY occurred_at DESC LIMIT $3`,
             [userId, day, limit]),
         sessionHistory({ userId, db }),
+        recordedDays({ userId, db }),
         // The true size of the day, independent of the read limit. A page that
         // shows 500 of 1,026 events without saying so is worse than one that
         // shows fewer and admits it.
@@ -104,8 +140,9 @@ export const readLogbook = async ({ userId, sessionDate = null, limit = 400, db 
 
     const log = {
         sessionDate: day,
+        today,
         limit,
-        availableDates: sessions.map((r) => r.session_date),
+        availableDates: days,
         summary: sessions.find((r) => r.session_date === day) ?? null,
         sessions,
         counts: {

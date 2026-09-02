@@ -167,7 +167,37 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("session logbook", () => {
         expect(older.agentEvents.map((e) => e.kind)).toEqual(["AGENT_START"]);
     });
 
-    it("defaults to today and reads an empty session without failing", async () => {
+    // The record must not appear to vanish overnight. Defaulting to today empties
+    // the page every midnight and on every non-trading day, and the day being
+    // shown must always be one the date selector can offer.
+    it("opens on the most recent day that holds something", async () => {
+        await account.recordDecision({ userId: USER, record: declined });
+
+        const log = await logbook.readLogbook({ userId: USER });
+        expect(log.today).toBe(account.sessionDateOf(new Date()));
+        expect(log.sessionDate).toBe(DAY);
+        expect(log.decisions).toHaveLength(1);
+        expect(log.availableDates).toContain(DAY);
+        expect(log.availableDates).toContain(log.sessionDate);
+    });
+
+    it("offers days that never reached a session summary", async () => {
+        await account.recordDecision({ userId: USER, record: declined });
+        const log = await logbook.readLogbook({ userId: USER, sessionDate: DAY });
+        // No summary was written for this day, but it still holds decisions.
+        expect(log.summary).toBeNull();
+        expect(log.availableDates).toContain(DAY);
+    });
+
+    it("still honours an explicitly requested empty day", async () => {
+        await account.recordDecision({ userId: USER, record: declined });
+        const today = account.sessionDateOf(new Date());
+        const log = await logbook.readLogbook({ userId: USER, sessionDate: today });
+        expect(log.sessionDate).toBe(today);
+        expect(log.decisions).toEqual([]);
+    });
+
+    it("reads an empty account without failing", async () => {
         const log = await logbook.readLogbook({ userId: USER });
         expect(log.sessionDate).toBe(account.sessionDateOf(new Date()));
         expect(log.decisions).toEqual([]);

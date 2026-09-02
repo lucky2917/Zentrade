@@ -220,6 +220,21 @@ describe("logbook page", () => {
         expect(api.get.mock.calls[0][1].params.limit).toBe(5000);
     });
 
+    it("says when it opened on an earlier session than today", async () => {
+        api.get.mockResolvedValue({ data: { ...log, today: "2026-09-03" } });
+        render(<Logbook />);
+        await screen.findAllByText("NAUKRI");
+        expect(document.querySelector(".lb-stale").textContent)
+            .toMatch(/nothing stored yet for 2026-09-03/);
+    });
+
+    it("shows no stale notice when reading the current session", async () => {
+        api.get.mockResolvedValue({ data: { ...log, today: "2026-09-02" } });
+        render(<Logbook />);
+        await screen.findAllByText("NAUKRI");
+        expect(document.querySelector(".lb-stale")).toBeNull();
+    });
+
     it("reports an unavailable logbook rather than rendering nothing", async () => {
         api.get.mockRejectedValue({ response: { status: 503 } });
         render(<Logbook />);

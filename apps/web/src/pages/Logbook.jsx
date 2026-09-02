@@ -336,7 +336,11 @@ export const Logbook = () => {
                 <div className="lb-title">
                     <h1>Logbook</h1>
                     <span className="lb-muted">
-                        every decision, and everything behind it — {log.sessionDate}
+                        every decision, and everything behind it · {log.sessionDate}
+                        {log.today && log.today !== log.sessionDate ? (
+                            <b className="lb-stale"> latest recorded session,
+                                nothing stored yet for {log.today}</b>
+                        ) : null}
                     </span>
                 </div>
                 <div className="lb-stats">
