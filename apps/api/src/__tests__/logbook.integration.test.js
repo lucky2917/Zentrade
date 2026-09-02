@@ -34,7 +34,7 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("session logbook", () => {
 
     beforeEach(async () => {
         for (const table of ["agent_events", "session_summaries", "decision_records",
-                             "model_calls", "paper_account"]) {
+                             "model_calls", "paper_account", "position_events"]) {
             await pool.query(`DELETE FROM ${table} WHERE user_id=$1`, [USER]);
         }
         await pool.query(
@@ -123,6 +123,48 @@ describe.skipIf(!TEST_DB || !TEST_REDIS)("session logbook", () => {
         // midnight and sliced as an ISO string would give.
         expect(log.availableDates).toEqual([DAY, PRIOR]);
         expect(log.summary.session_date).toBe(DAY);
+    });
+
+    it("counts the whole day even when the read is limited", async () => {
+        for (let i = 0; i < 5; i += 1) {
+            await account.recordDecision({ userId: USER, record: {
+                ...declined, decisionId: `lb-n-${i}`, correlationId: `lb-n-${i}`,
+                decidedAt: at(DAY) } });
+        }
+
+        const full = await logbook.readLogbook({ userId: USER, sessionDate: DAY });
+        expect(full.counts.decisions).toBe(5);
+        expect(full.returned.decisions).toBe(5);
+        expect(full.truncated).toEqual([]);
+
+        // A limited read still reports the true size of the day, so the page can
+        // say it is showing part of it rather than presenting it as complete.
+        const short = await logbook.readLogbook({ userId: USER, sessionDate: DAY, limit: 2 });
+        expect(short.decisions).toHaveLength(2);
+        expect(short.counts.decisions).toBe(5);
+        expect(short.returned.decisions).toBe(2);
+        expect(short.truncated).toContain("decisions");
+    });
+
+    it("keeps a past session to its own day", async () => {
+        // Events are filtered on a timestamp range, not an exact session date.
+        // Without an upper bound, reading an older day pulled in every later one.
+        await account.recordAgentEvent({
+            userId: USER, kind: "AGENT_START", detail: {}, at: at(PRIOR) });
+        await account.recordAgentEvent({
+            userId: USER, kind: "AGENT_STOP", detail: {}, at: at(DAY) });
+        await pool.query(
+            `INSERT INTO position_events
+               (user_id, event_key, correlation_id, source, event_type, severity,
+                symbol, reason, observed, state, observed_at)
+             VALUES ($1,$2,'corr-old','test','VOLUME_SPIKE','CRITICAL','TCS','older day','{}'::jsonb,'PENDING',$3),
+                    ($1,$4,'corr-new','test','VOLUME_SPIKE','CRITICAL','TCS','later day','{}'::jsonb,'PENDING',$5)`,
+            [USER, `k-${PRIOR}`, at(PRIOR), `k-${DAY}`, at(DAY)]);
+
+        const older = await logbook.readLogbook({ userId: USER, sessionDate: PRIOR });
+        expect(older.marketEvents.map((e) => e.reason)).toEqual(["older day"]);
+        expect(older.counts.marketEvents).toBe(1);
+        expect(older.agentEvents.map((e) => e.kind)).toEqual(["AGENT_START"]);
     });
 
     it("defaults to today and reads an empty session without failing", async () => {

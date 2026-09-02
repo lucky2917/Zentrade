@@ -16,6 +16,19 @@ import "./Logbook.css";
 // as UNKNOWN rather than as a plausible number, and a section with no rows says
 // so rather than showing an empty frame that reads as broken.
 
+// The nine record types the session store keeps. Counted from the database,
+// not from what this page happened to load.
+const TALLY = [
+    ["decisions", "decisions"],
+    ["marketEvents", "market events"],
+    ["modelCalls", "model calls"],
+    ["orders", "orders"],
+    ["fills", "fills"],
+    ["theses", "theses"],
+    ["reassessments", "reassessments"],
+    ["agentEvents", "agent events"],
+];
+
 const LANES = [
     { id: "all", label: "Everything" },
     { id: "reasoning", label: "Reasoning" },
@@ -272,7 +285,7 @@ export const Logbook = () => {
     const load = useCallback(async (forDate) => {
         try {
             const { data } = await api.get("/internal/cockpit/logbook", {
-                baseURL: "/", params: forDate ? { date: forDate, limit: 500 } : { limit: 500 },
+                baseURL: "/", params: forDate ? { date: forDate, limit: 5000 } : { limit: 5000 },
             });
             setLog(data); setError(null);
         } catch (err) {
@@ -377,6 +390,73 @@ export const Logbook = () => {
                     </p>
                 </div>
             )}
+
+            {log.sessions?.length ? (
+                <section className="lb-ledger">
+                    <span className="lb-sub">Session summaries · one stored row per trading day</span>
+                    <div className="lb-tablewrap">
+                        <table className="lb-table">
+                            <thead>
+                                <tr>
+                                    <th>Session</th><th>Opening cash</th><th>Closing cash</th>
+                                    <th>Opening equity</th><th>Closing equity</th>
+                                    <th>Realised</th><th>Unrealised</th><th>Costs</th>
+                                    <th>Orders</th><th>Opened</th><th>Closed</th><th>Decisions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {log.sessions.map((r) => (
+                                    <tr key={r.session_date}
+                                        className={r.session_date === log.sessionDate ? "lb-tr-on" : ""}>
+                                        <td>{r.session_date}</td>
+                                        <td>{rupees(Number(r.opening_cash_paise))}</td>
+                                        <td>{rupees(Number(r.closing_cash_paise))}</td>
+                                        <td>{rupees(Number(r.opening_equity_paise))}</td>
+                                        <td>{rupees(Number(r.closing_equity_paise))}</td>
+                                        <td className={Number(r.realised_pnl_paise) < 0 ? "lb-bad" : "lb-good"}>
+                                            {signedRupees(Number(r.realised_pnl_paise))}</td>
+                                        <td className={Number(r.unrealised_pnl_paise) < 0 ? "lb-bad" : "lb-good"}>
+                                            {signedRupees(Number(r.unrealised_pnl_paise))}</td>
+                                        <td>{rupees(Number(r.costs_paise))}</td>
+                                        <td>{r.orders_placed}</td>
+                                        <td>{r.positions_opened}</td>
+                                        <td>{r.positions_closed}</td>
+                                        <td>{r.decisions_made}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            ) : null}
+
+            {log.counts ? (
+                <section className="lb-tally">
+                    <span className="lb-sub">Everything stored for {log.sessionDate}</span>
+                    <div className="lb-tally-grid">
+                        {TALLY.map(([key, label]) => (
+                            <div key={key} className="lb-tally-cell">
+                                <b>{(log.counts[key] ?? 0).toLocaleString("en-IN")}</b>
+                                <span>{label}</span>
+                                {log.returned?.[key] < log.counts[key] ? (
+                                    <em className="lb-bad">
+                                        showing {log.returned[key].toLocaleString("en-IN")}
+                                    </em>
+                                ) : null}
+                            </div>
+                        ))}
+                    </div>
+                    {log.truncated?.length ? (
+                        <p className="lb-muted lb-trunc">
+                            This session is larger than one read. Raise the limit to see the rest.
+                        </p>
+                    ) : (
+                        <p className="lb-muted lb-trunc">
+                            Every stored row for this session is on this page.
+                        </p>
+                    )}
+                </section>
+            ) : null}
 
             <footer className="lb-foot">
                 Paper simulation · read-only · every row was written by the system

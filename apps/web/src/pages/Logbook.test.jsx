@@ -18,6 +18,23 @@ const log = {
     sessionDate: "2026-09-02",
     availableDates: ["2026-09-02", "2026-09-01"],
     summary: { session_date: "2026-09-02", realised_pnl_paise: "-587460" },
+    sessions: [
+        { session_date: "2026-09-02", opening_cash_paise: "99392540",
+          closing_cash_paise: "89422940", opening_equity_paise: "99392540",
+          closing_equity_paise: "99386540", realised_pnl_paise: "-587460",
+          unrealised_pnl_paise: "-4000", costs_paise: "2000", orders_placed: 1,
+          positions_opened: 1, positions_closed: 0, decisions_made: 22 },
+        { session_date: "2026-09-01", opening_cash_paise: "99482240",
+          closing_cash_paise: "99392540", opening_equity_paise: "99482240",
+          closing_equity_paise: "99392540", realised_pnl_paise: "0",
+          unrealised_pnl_paise: "0", costs_paise: "4000", orders_placed: 3,
+          positions_opened: 2, positions_closed: 1, decisions_made: 370 },
+    ],
+    counts: { decisions: 2, modelCalls: 1, marketEvents: 1, orders: 1, fills: 1,
+              theses: 1, reassessments: 1, agentEvents: 1 },
+    returned: { decisions: 2, modelCalls: 1, marketEvents: 1, orders: 1, fills: 1,
+                theses: 1, reassessments: 1, agentEvents: 1 },
+    truncated: [],
     decisions: [{
         decisionId: "d-1", correlationId: "c-1", symbol: "NAUKRI", route: "CANDIDATE",
         action: "BUY", confidence: "HIGH",
@@ -130,11 +147,12 @@ describe("logbook page", () => {
         render(<Logbook />);
         await screen.findByText("DPABHUSHAN");
 
-        fireEvent.click(screen.getByText(/Market/));
+        const lanes = document.querySelector(".lb-lanes");
+        fireEvent.click(within(lanes).getByText(/Market/));
         await waitFor(() => expect(screen.queryByText("DPABHUSHAN")).toBeTruthy());
         expect(screen.queryByText("IFCI")).toBeNull();
 
-        fireEvent.click(screen.getByText(/Everything/));
+        fireEvent.click(within(lanes).getByText(/Everything/));
         fireEvent.change(document.querySelector(".lb-search"), { target: { value: "ifci" } });
         await waitFor(() => expect(screen.queryByText("DPABHUSHAN")).toBeNull());
         expect(screen.getByText("IFCI")).toBeTruthy();
@@ -153,10 +171,53 @@ describe("logbook page", () => {
     it("says so when the session is empty instead of showing a broken frame", async () => {
         api.get.mockResolvedValue({ data: {
             sessionDate: "2026-09-02", availableDates: [], summary: null,
+            sessions: [], counts: null, returned: {}, truncated: [],
             decisions: [], modelCalls: [], marketEvents: [], orders: [],
             fills: [], theses: [], reassessments: [], agentEvents: [] } });
         render(<Logbook />);
         await waitFor(() => expect(document.querySelector(".lb-empty")).toBeTruthy());
+    });
+
+    it("shows the session ledger, one stored row per trading day", async () => {
+        render(<Logbook />);
+        await screen.findAllByText("NAUKRI");
+
+        const ledger = document.querySelector(".lb-ledger");
+        expect(ledger).toBeTruthy();
+        expect(within(ledger).getByText("2026-09-01")).toBeTruthy();
+        // The day being read is marked in the ledger.
+        expect(ledger.querySelector(".lb-tr-on td").textContent).toBe("2026-09-02");
+        expect(within(ledger).getByText("370")).toBeTruthy();
+    });
+
+    it("counts what is stored, not what it happened to load", async () => {
+        api.get.mockResolvedValue({ data: {
+            ...log,
+            counts: { ...log.counts, marketEvents: 1026 },
+            returned: { ...log.returned, marketEvents: 500 },
+            truncated: ["marketEvents"],
+        } });
+        render(<Logbook />);
+        await screen.findAllByText("NAUKRI");
+
+        const tally = document.querySelector(".lb-tally");
+        // The real size of the day, and an admission that it was cut short.
+        expect(within(tally).getByText("1,026")).toBeTruthy();
+        expect(within(tally).getByText(/showing 500/)).toBeTruthy();
+        expect(within(tally).getByText(/larger than one read/)).toBeTruthy();
+    });
+
+    it("says plainly when the whole session is on the page", async () => {
+        render(<Logbook />);
+        await screen.findAllByText("NAUKRI");
+        expect(document.querySelector(".lb-tally").textContent)
+            .toMatch(/Every stored row for this session is on this page/);
+    });
+
+    it("requests the whole session rather than a first page", async () => {
+        render(<Logbook />);
+        await screen.findAllByText("NAUKRI");
+        expect(api.get.mock.calls[0][1].params.limit).toBe(5000);
     });
 
     it("reports an unavailable logbook rather than rendering nothing", async () => {

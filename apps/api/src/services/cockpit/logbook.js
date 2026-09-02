@@ -18,7 +18,7 @@ export const readLogbook = async ({ userId, sessionDate = null, limit = 400, db 
     const day = sessionDate ?? sessionDateOf(new Date());
 
     const [decisions, calls, events, orders, fills, theses, reassessments,
-           agentEvents, sessions] = await Promise.all([
+           agentEvents, sessions, totals] = await Promise.all([
         db.query(
             `SELECT decision_id, correlation_id, symbol, route, action, confidence,
                     trigger_type, trigger_severity, trigger_reason, evidence, thesis,
@@ -36,26 +36,26 @@ export const readLogbook = async ({ userId, sessionDate = null, limit = 400, db 
         db.query(
             `SELECT event_key, event_type, severity, symbol, reason, observed, state,
                     attempts, last_error, observed_at, handled_at
-             FROM position_events WHERE user_id=$1 AND observed_at >= $2::date
+             FROM position_events WHERE user_id=$1 AND observed_at >= $2::date AND observed_at < $2::date + 1
              ORDER BY observed_at DESC LIMIT $3`, [userId, day, limit]),
         db.query(
             `SELECT id, symbol, type, quantity, filled_quantity, price_paise,
                     total_value_paise, brokerage_paise, pnl_paise, state, order_mode,
                     client_order_id, correlation_id, rejection_reason, ambiguity_reason,
                     created_at, completed_at
-             FROM orders WHERE user_id=$1 AND created_at >= $2::date
+             FROM orders WHERE user_id=$1 AND created_at >= $2::date AND created_at < $2::date + 1
              ORDER BY created_at DESC LIMIT $3`, [userId, day, limit]),
         db.query(
             `SELECT f.order_id, f.execution_ref, f.symbol, f.side, f.quantity,
                     f.price_paise, f.source, f.filled_at
              FROM order_fills f JOIN orders o ON o.id = f.order_id
-             WHERE o.user_id=$1 AND f.filled_at >= $2::date
+             WHERE o.user_id=$1 AND f.filled_at >= $2::date AND f.filled_at < $2::date + 1
              ORDER BY f.filled_at DESC LIMIT $3`, [userId, day, limit]),
         db.query(
             `SELECT id, symbol, side, entry_price_paise, quantity, rationale, setup_type,
                     invalidation_conditions, stop_paise, target_paise, horizon,
                     opened_at, closed_at
-             FROM trade_thesis WHERE user_id=$1 AND opened_at >= $2::date
+             FROM trade_thesis WHERE user_id=$1 AND opened_at >= $2::date AND opened_at < $2::date + 1
              ORDER BY opened_at DESC LIMIT $3`, [userId, day, limit]),
         db.query(
             `SELECT r.thesis_id, t.symbol, r.action, r.confidence, r.thesis_still_valid,
@@ -63,19 +63,57 @@ export const readLogbook = async ({ userId, sessionDate = null, limit = 400, db 
                     r.risk_reason, r.executed, r.unrealised_pnl_paise,
                     r.current_price_paise, r.holding_seconds, r.created_at
              FROM position_reassessments r JOIN trade_thesis t ON t.id = r.thesis_id
-             WHERE t.user_id=$1 AND r.created_at >= $2::date
+             WHERE t.user_id=$1 AND r.created_at >= $2::date AND r.created_at < $2::date + 1
              ORDER BY r.created_at DESC LIMIT $3`, [userId, day, limit]),
         db.query(
             `SELECT kind, detail, occurred_at FROM agent_events
              WHERE user_id=$1 AND session_date=$2 ORDER BY occurred_at DESC LIMIT $3`,
             [userId, day, limit]),
         sessionHistory({ userId, db }),
+        // The true size of the day, independent of the read limit. A page that
+        // shows 500 of 1,026 events without saying so is worse than one that
+        // shows fewer and admits it.
+        db.query(
+            `SELECT
+               (SELECT COUNT(*)::int FROM decision_records
+                 WHERE user_id=$1 AND session_date=$2) AS decisions,
+               (SELECT COUNT(*)::int FROM model_calls
+                 WHERE user_id=$1 AND session_date=$2) AS model_calls,
+               (SELECT COUNT(*)::int FROM position_events
+                 WHERE user_id=$1 AND observed_at >= $2::date
+                   AND observed_at < $2::date + 1) AS market_events,
+               (SELECT COUNT(*)::int FROM orders
+                 WHERE user_id=$1 AND created_at >= $2::date
+                   AND created_at < $2::date + 1) AS orders,
+               (SELECT COUNT(*)::int FROM order_fills f JOIN orders o ON o.id = f.order_id
+                 WHERE o.user_id=$1 AND f.filled_at >= $2::date
+                   AND f.filled_at < $2::date + 1) AS fills,
+               (SELECT COUNT(*)::int FROM trade_thesis
+                 WHERE user_id=$1 AND opened_at >= $2::date
+                   AND opened_at < $2::date + 1) AS theses,
+               (SELECT COUNT(*)::int FROM position_reassessments r
+                  JOIN trade_thesis t ON t.id = r.thesis_id
+                 WHERE t.user_id=$1 AND r.created_at >= $2::date
+                   AND r.created_at < $2::date + 1) AS reassessments,
+               (SELECT COUNT(*)::int FROM agent_events
+                 WHERE user_id=$1 AND session_date=$2) AS agent_events`,
+            [userId, day]),
     ]);
 
-    return {
+    const counts = totals.rows[0];
+
+    const log = {
         sessionDate: day,
+        limit,
         availableDates: sessions.map((r) => r.session_date),
         summary: sessions.find((r) => r.session_date === day) ?? null,
+        sessions,
+        counts: {
+            decisions: counts.decisions, modelCalls: counts.model_calls,
+            marketEvents: counts.market_events, orders: counts.orders,
+            fills: counts.fills, theses: counts.theses,
+            reassessments: counts.reassessments, agentEvents: counts.agent_events,
+        },
         decisions: decisions.rows.map((r) => ({
             decisionId: r.decision_id, correlationId: r.correlation_id, symbol: r.symbol,
             route: r.route, action: r.action, confidence: r.confidence,
@@ -143,4 +181,12 @@ export const readLogbook = async ({ userId, sessionDate = null, limit = 400, db 
             kind: r.kind, detail: r.detail, at: r.occurred_at,
         })),
     };
+
+    // What actually came back, so the page can say "500 of 1,026" rather than
+    // presenting a truncated day as a complete one.
+    log.returned = Object.fromEntries(
+        Object.keys(log.counts).map((k) => [k, log[k].length]));
+    log.truncated = Object.keys(log.counts)
+        .filter((k) => log.returned[k] < log.counts[k]);
+    return log;
 };

@@ -188,3 +188,79 @@
     .lb-two, .lb-grid { grid-template-columns: 1fr; }
     .lb-field { grid-template-columns: 1fr; }
 }
+
+/* The ledger and the tally. Both are stored facts about the session rather
+   than events inside it, so they sit below the stream instead of in it. */
+
+.lb-ledger, .lb-tally { padding: 26px 24px 0; }
+
+.lb-tablewrap {
+    overflow-x: auto;
+    border: 1px solid var(--lb-line);
+    border-radius: 4px;
+    background: var(--lb-panel);
+}
+.lb-table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 900px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+.lb-table th {
+    text-align: left;
+    padding: 8px 12px;
+    white-space: nowrap;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--lb-muted);
+    border-bottom: 1px solid var(--lb-line);
+    background: #0d1219;
+}
+.lb-table td {
+    padding: 7px 12px;
+    white-space: nowrap;
+    border-bottom: 1px solid #151b25;
+}
+.lb-table tbody tr:last-child td { border-bottom: none; }
+.lb-table tbody tr:hover { background: #0d1219; }
+.lb-tr-on td { color: var(--lb-text); box-shadow: inset 2px 0 0 var(--lb-accent); }
+.lb-tr-on td:first-child { color: var(--lb-accent); font-weight: 600; }
+
+.lb-tally-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+    gap: 1px;
+    background: var(--lb-line);
+    border: 1px solid var(--lb-line);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.lb-tally-cell {
+    background: var(--lb-panel);
+    padding: 13px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.lb-tally-cell b {
+    font-size: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+}
+.lb-tally-cell span {
+    font-size: 9px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--lb-muted);
+}
+.lb-tally-cell em { font-style: normal; font-size: 10px; }
+.lb-trunc { font-size: 11px; margin: 10px 0 0; }
+
+@media (max-width: 860px) {
+    .lb-ledger, .lb-tally { padding-left: 16px; padding-right: 16px; }
+}

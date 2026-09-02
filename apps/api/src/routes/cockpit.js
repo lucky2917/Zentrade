@@ -74,7 +74,7 @@ export const buildCockpitRouter = ({ runtimeHealth = async () => null,
                 ? req.query.date : null;
             res.json(await readLogbook({
                 userId: account(), sessionDate: date,
-                limit: Math.min(Number(req.query.limit) || 400, 1000),
+                limit: Math.min(Number(req.query.limit) || 400, 5000),
             }));
         } catch (err) {
             res.status(503).json({ error: "logbook unavailable", detail: err.message });
