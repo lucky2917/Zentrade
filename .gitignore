@@ -42,3 +42,8 @@ CHANGELOG.md
 # Separate nested repo + venv + secrets, deliberately kept out of history.
 us_agent/
 
+
+# Local .env repairs leave dated backups holding a full credential set.
+# They must never be committed.
+.env.backup*
+*.env.backup*
