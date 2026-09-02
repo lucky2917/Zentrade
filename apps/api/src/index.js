@@ -34,6 +34,7 @@ import { narrator, NARRATION_CHANNEL, RUNTIME_HEALTH_KEY, RUNTIME_HALT_KEY }
     from "./services/cockpit/narrator.js";
 import { attachCockpit } from "./services/cockpit/transport.js";
 import { buildCockpitRouter } from "./routes/cockpit.js";
+import { SPA_ROUTES } from "./routes/spaRoutes.js";
 import { startSquareOffJob, stopSquareOffJob, reconcileSquareOff } from "./services/squareOff.js";
 import { initFyersAuth, isConfigured as isFyersConfigured } from "./services/fyers/fyersAuth.js";
 import { connect as connectFyersWebSocket, subscribe as subscribeFyersWebSocket, stop as stopFyersWebSocket, setBarSink, setConnectionSink } from "./services/fyers/fyersWebSocket.js";
@@ -627,7 +628,7 @@ const mountCockpitUI = () => {
     app.use(express.static(dist, { index: false, maxAge: "1h" }));
     // The cockpit is a single-page route; a refresh on it must return the app
     // shell rather than a 404.
-    for (const route of ["/trader", "/architecture-progress"]) {
+    for (const route of SPA_ROUTES) {
         app.get(route, (req, res) => res.sendFile(join(dist, "index.html")));
     }
     logger.info("Server", "cockpit UI mounted", { route: "/trader" });
