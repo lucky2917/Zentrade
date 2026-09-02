@@ -33,6 +33,7 @@ const ArchitectureProgress = lazy(() => import("./pages/ArchitectureProgress.jsx
 // market banner would only compete with it. It is read-only and has no path to
 // execution.
 const TraderCockpit = lazy(() => import("./pages/TraderCockpit.jsx"));
+const Logbook = lazy(() => import("./pages/Logbook.jsx"));
 
 const AppContent = () => {
   return (
@@ -77,6 +78,18 @@ const App = () => {
               <ErrorBoundary>
                 <Suspense fallback={<div className="loading-screen">Loading...</div>}>
                   <ArchitectureProgress />
+                </Suspense>
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/logs"
+            element={
+              <ErrorBoundary>
+                <Suspense fallback={<div className="loading-screen">Loading...</div>}>
+                  <AuthProvider>
+                    <Logbook />
+                  </AuthProvider>
                 </Suspense>
               </ErrorBoundary>
             }

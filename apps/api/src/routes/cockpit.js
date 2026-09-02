@@ -3,6 +3,7 @@ import auth from "../middleware/auth.js";
 import { narrator } from "../services/cockpit/narrator.js";
 import { buildSnapshot, readPositionTimeline, readAccount, readDecisions }
     from "../services/cockpit/state.js";
+import { readLogbook } from "../services/cockpit/logbook.js";
 
 // The cockpit's HTTP surface.
 //
@@ -61,6 +62,22 @@ export const buildCockpitRouter = ({ runtimeHealth = async () => null,
                 limit: Number(req.query.limit) || 50, symbol }) });
         } catch (err) {
             res.status(503).json({ error: "decisions unavailable", detail: err.message });
+        }
+    });
+
+    // The whole durable record of a session: decisions and the reasoning inside
+    // them, the model calls they cost, the conditions that woke the trader, the
+    // orders, fills, theses, reassessments and runtime events.
+    router.get("/logbook", auth, async (req, res) => {
+        try {
+            const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date ?? "")
+                ? req.query.date : null;
+            res.json(await readLogbook({
+                userId: account(), sessionDate: date,
+                limit: Math.min(Number(req.query.limit) || 400, 1000),
+            }));
+        } catch (err) {
+            res.status(503).json({ error: "logbook unavailable", detail: err.message });
         }
     });
 

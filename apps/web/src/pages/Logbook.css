@@ -1,0 +1,190 @@
+/* The logbook.
+   Calm on purpose. The interest is meant to come from real records arriving in
+   order, so nothing here animates without a state change behind it, and the
+   density is the point: a session should be readable in one scroll. */
+
+.lb-root {
+    --lb-bg: #0a0d12;
+    --lb-panel: #10141c;
+    --lb-line: #1c232e;
+    --lb-text: #d9e0ea;
+    --lb-muted: #6c7a8d;
+    --lb-accent: #63b3ed;
+    --lb-good: #48bb78;
+    --lb-warn: #ecc94b;
+    --lb-bad: #f56565;
+    --lb-think: #b794f4;
+    min-height: 100vh;
+    background:
+        radial-gradient(1200px 600px at 20% -10%, #131a26 0%, transparent 60%),
+        var(--lb-bg);
+    color: var(--lb-text);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    padding-bottom: 60px;
+}
+.lb-centered { display: grid; place-items: center; min-height: 100vh; }
+.lb-muted { color: var(--lb-muted); }
+.lb-good { color: var(--lb-good); }
+.lb-bad { color: var(--lb-bad); }
+.lb-warn b { color: var(--lb-warn); }
+
+/* header */
+.lb-top {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end;
+    justify-content: space-between;
+    padding: 22px 24px 16px;
+    background: linear-gradient(180deg, rgba(10,13,18,0.97) 70%, rgba(10,13,18,0));
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--lb-line);
+}
+.lb-title h1 {
+    margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+}
+.lb-title span { font-size: 11px; }
+.lb-stats { display: flex; flex-wrap: wrap; gap: 22px; }
+.lb-stats div { display: flex; flex-direction: column; align-items: flex-end; }
+.lb-stats b {
+    font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+.lb-stats span {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--lb-muted);
+}
+
+/* controls */
+.lb-controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    padding: 14px 24px; border-bottom: 1px solid var(--lb-line);
+}
+.lb-lanes { display: flex; flex-wrap: wrap; gap: 4px; }
+.lb-lane {
+    display: inline-flex; align-items: baseline; gap: 6px;
+    padding: 4px 11px; border-radius: 999px; cursor: pointer;
+    background: #0e131b; border: 1px solid var(--lb-line);
+    color: var(--lb-muted); font: inherit; font-size: 11px;
+    transition: border-color 120ms ease, color 120ms ease;
+}
+.lb-lane:hover { border-color: #2a3446; color: var(--lb-text); }
+.lb-lane em { font-style: normal; font-size: 10px; opacity: 0.65; }
+.lb-lane-on { color: var(--lb-text); border-color: var(--lb-accent); background: #0d1722; }
+.lb-search {
+    flex: 1; min-width: 220px;
+    padding: 6px 12px; border-radius: 6px;
+    background: #0e131b; border: 1px solid var(--lb-line);
+    color: var(--lb-text); font: inherit; font-size: 12px;
+}
+.lb-search:focus, .lb-date:focus { outline: 2px solid var(--lb-accent); outline-offset: 1px; }
+.lb-date {
+    padding: 6px 10px; border-radius: 6px; background: #0e131b;
+    border: 1px solid var(--lb-line); color: var(--lb-text); font: inherit; font-size: 12px;
+}
+
+/* the stream */
+.lb-stream { display: flex; flex-direction: column; padding: 8px 0; }
+.lb-row { border-bottom: 1px solid #151b25; }
+.lb-row:hover { background: #0d1219; }
+.lb-head {
+    display: grid;
+    grid-template-columns: 66px 104px 96px 1fr 20px;
+    gap: 12px; align-items: baseline; width: 100%;
+    padding: 7px 24px; text-align: left;
+    background: none; border: none; color: inherit; font: inherit;
+    border-left: 2px solid transparent;
+}
+.lb-row.lb-decision .lb-head { cursor: pointer; }
+.lb-head time { color: var(--lb-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.lb-kind {
+    font-size: 9px; letter-spacing: 0.07em; text-transform: uppercase;
+    padding: 1px 7px; border-radius: 3px; white-space: nowrap;
+    border: 1px solid var(--lb-line); background: #121821; color: var(--lb-muted);
+}
+.lb-k-reasoning { color: var(--lb-think); border-color: #362b52; background: #16121f; }
+.lb-k-execution { color: var(--lb-good); border-color: #1e4630; background: #0c1711; }
+.lb-k-market    { color: #7fb2d8; border-color: #22384a; background: #0b141b; }
+.lb-k-model     { color: #d8a657; border-color: #43371c; background: #16120a; }
+.lb-k-system    { color: var(--lb-muted); }
+.lb-symbol { color: var(--lb-accent); font-weight: 600; font-size: 12px; }
+.lb-headline { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; font-size: 12px; }
+.lb-chev { color: var(--lb-muted); text-align: right; }
+.lb-state {
+    font-size: 10px; letter-spacing: 0.04em; color: var(--lb-muted);
+    border: 1px solid var(--lb-line); border-radius: 3px; padding: 0 5px;
+}
+.lb-act { font-weight: 600; }
+.lb-act-BUY, .lb-act-ADD { color: var(--lb-good); }
+.lb-act-SELL, .lb-act-EXIT, .lb-act-REDUCE { color: var(--lb-bad); }
+.lb-act-HOLD, .lb-act-NONE { color: var(--lb-muted); }
+.lb-arrow { color: var(--lb-muted); }
+
+/* severities, reused from the cockpit vocabulary */
+.sev-critical { color: var(--lb-bad); }
+.sev-warning  { color: var(--lb-warn); }
+.sev-info     { color: var(--lb-muted); }
+.sev-unknown  { color: var(--lb-muted); }
+
+/* the opened decision */
+.lb-open { background: #0c1119; border-left: 2px solid var(--lb-think); }
+.lb-open .lb-head { border-left-color: transparent; }
+.lb-body {
+    display: flex; flex-direction: column; gap: 16px;
+    padding: 6px 24px 22px 92px;
+    animation: lb-in 160ms ease-out;
+}
+@keyframes lb-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lb-body { animation: none; } }
+
+.lb-sub {
+    display: block; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--lb-muted); margin-bottom: 6px;
+}
+.lb-sub em {
+    font-style: normal; margin-left: 8px; letter-spacing: 0.04em;
+    padding: 1px 6px; border-radius: 3px; border: 1px solid var(--lb-line);
+}
+.lb-v-THESIS_HOLDS  { color: var(--lb-good); border-color: #1e4630 !important; }
+.lb-v-THESIS_WEAK   { color: var(--lb-warn); border-color: #4a4020 !important; }
+.lb-v-THESIS_BROKEN { color: var(--lb-bad);  border-color: #5c2f2f !important; }
+
+.lb-field { display: grid; grid-template-columns: 150px 1fr; gap: 4px 14px; }
+.lb-field-label { color: var(--lb-muted); font-size: 11px; }
+.lb-field-value { font-size: 12px; }
+.lb-chain, .lb-outcome { display: flex; flex-direction: column; gap: 5px; }
+.lb-two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.lb-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 16px; }
+.lb-grid .lb-field { grid-template-columns: auto; }
+.lb-bullets { margin: 0; padding-left: 16px; font-size: 12px; }
+.lb-bullets li { margin: 1px 0; }
+
+.lb-evidence { display: flex; flex-direction: column; gap: 3px; }
+.lb-ev { display: grid; grid-template-columns: 92px 1fr; gap: 10px; font-size: 12px; }
+.lb-ev-tier { font-size: 9px; letter-spacing: 0.06em; color: var(--lb-muted); }
+.tier-fact       .lb-ev-tier { color: var(--lb-good); }
+.tier-observation .lb-ev-tier { color: #7fb2d8; }
+.tier-inference  .lb-ev-tier { color: var(--lb-think); }
+.tier-hypothesis .lb-ev-tier, .tier-prediction .lb-ev-tier { color: var(--lb-warn); }
+
+.lb-challenge, .lb-synth, .lb-gates, .lb-evidence {
+    border-left: 1px solid var(--lb-line); padding-left: 14px;
+}
+.lb-gates { border-left-color: var(--lb-warn); }
+.lb-synth { border-left-color: var(--lb-accent); }
+.lb-challenge { border-left-color: #4a3a2a; }
+
+.lb-empty { padding: 60px 24px; text-align: center; }
+.lb-foot {
+    padding: 18px 24px; color: var(--lb-muted); font-size: 10px;
+    border-top: 1px solid var(--lb-line); margin-top: 20px;
+}
+
+@media (max-width: 860px) {
+    .lb-head { grid-template-columns: 58px 1fr 20px; row-gap: 4px; }
+    .lb-kind, .lb-symbol { grid-column: 2; }
+    .lb-headline { grid-column: 1 / -1; }
+    .lb-body { padding-left: 24px; }
+    .lb-two, .lb-grid { grid-template-columns: 1fr; }
+    .lb-field { grid-template-columns: 1fr; }
+}

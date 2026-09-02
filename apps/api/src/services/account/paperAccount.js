@@ -249,9 +249,18 @@ export const writeSessionSummary = async ({ userId, state, at = new Date(), db =
     return sessionDate;
 };
 
+// session_date is a DATE. The driver hands it back as a Date at local midnight,
+// which serialises to the previous day in UTC and reads as off-by-one wherever
+// it is displayed. Formatted here so every caller gets the calendar day the
+// session actually was.
 export const sessionHistory = async ({ userId, limit = 30, db = pool }) => {
     const { rows } = await db.query(
-        `SELECT * FROM session_summaries WHERE user_id=$1
+        `SELECT to_char(session_date, 'YYYY-MM-DD') AS session_date,
+                user_id, opening_cash_paise, closing_cash_paise, opening_equity_paise,
+                closing_equity_paise, realised_pnl_paise, unrealised_pnl_paise,
+                costs_paise, orders_placed, positions_opened, positions_closed,
+                decisions_made, updated_at
+         FROM session_summaries WHERE user_id=$1
          ORDER BY session_date DESC LIMIT $2`, [userId, Math.min(limit, 120)]);
     return rows;
 };
