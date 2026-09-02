@@ -79,12 +79,20 @@ const log = {
                filledQuantity: 366, pricePaise: 136590, at: "2026-09-02T04:20:05.000Z" }],
     fills: [{ orderId: 11, symbol: "NAUKRI", quantity: 366, pricePaise: 136590,
               at: "2026-09-02T04:20:06.000Z" }],
-    theses: [{ id: "t-1", symbol: "NAUKRI", direction: "LONG", status: "OPEN",
-               entryPaise: 136590, stopPaise: 136000, targetPaise: 137650,
+    theses: [{ id: "t-1", symbol: "NAUKRI", side: "BUY", setupType: "Volume-spike breakout",
+               horizon: "INTRADAY", quantity: 366,
+               rationale: "Participation confirms the breakout above VWAP.",
+               invalidationConditions: ["a close back below VWAP"],
+               entryPricePaise: 136590, stopPaise: 136000, targetPaise: 137650,
+               openedAt: "2026-09-02T04:20:07.000Z", closedAt: null,
                at: "2026-09-02T04:20:07.000Z" }],
     reassessments: [{ symbol: "NAUKRI", action: "HOLD", confidence: "MEDIUM",
                       thesisStillValid: true, whatChanged: "drifted toward stop",
-                      material: false, reasoning: "structure intact",
+                      material: false,
+                      reasoning: "The stock still holds above VWAP with volume intact, "
+                        + "so the original breakout thesis has not been invalidated.",
+                      risk: { decision: "ALLOW", reason: null }, executed: false,
+                      currentPricePaise: 136400,
                       unrealisedPnlPaise: -4000, holdingSeconds: 900,
                       at: "2026-09-02T04:35:00.000Z" }],
     agentEvents: [{ kind: "AGENT_START", detail: { pid: 29239 },
@@ -233,6 +241,65 @@ describe("logbook page", () => {
         render(<Logbook />);
         await screen.findAllByText("NAUKRI");
         expect(document.querySelector(".lb-stale")).toBeNull();
+    });
+
+    // Every stored record opens, not only decisions. The reasoning behind a
+    // position already held is the longest prose the system keeps, and it used to
+    // be truncated to a headline.
+    it("opens a reassessment and shows its full reasoning", async () => {
+        render(<Logbook />);
+        await screen.findAllByText("NAUKRI");
+        const row = [...document.querySelectorAll(".lb-row.lb-reassessment")][0];
+        fireEvent.click(row.querySelector(".lb-head"));
+
+        await waitFor(() => expect(
+            within(row).getByText(/original breakout thesis has not been invalidated/))
+            .toBeTruthy());
+        expect(row.querySelector(".lb-body").textContent).toMatch(/still holds/);
+    });
+
+    it("opens a thesis and shows why the position exists", async () => {
+        render(<Logbook />);
+        await screen.findAllByText("NAUKRI");
+        const row = [...document.querySelectorAll(".lb-row.lb-thesis")][0];
+        fireEvent.click(row.querySelector(".lb-head"));
+
+        await waitFor(() => expect(
+            within(row).getByText(/Participation confirms the breakout/)).toBeTruthy());
+        expect(within(row).getByText("a close back below VWAP")).toBeTruthy();
+    });
+
+    it("opens a market event and shows what it measured", async () => {
+        render(<Logbook />);
+        await screen.findAllByText("DPABHUSHAN");
+        const row = [...document.querySelectorAll(".lb-row.lb-market_event")][0];
+        fireEvent.click(row.querySelector(".lb-head"));
+
+        await waitFor(() => expect(within(row).getByText("Ratio")).toBeTruthy());
+        expect(within(row).getByText("9.9")).toBeTruthy();
+    });
+
+    it("shows a decision the model calls it paid for", async () => {
+        render(<Logbook />);
+        await screen.findAllByText("NAUKRI");
+        const row = [...document.querySelectorAll(".lb-row.lb-decision")]
+            .find((el) => el.textContent.includes("NAUKRI"));
+        fireEvent.click(row.querySelector(".lb-head"));
+
+        // The failed formation call is linked to d-1 and must appear with it.
+        await waitFor(() => expect(within(row).getByText(/What it cost/)).toBeTruthy());
+        expect(within(row).getByText(/senior thesis formation/)).toBeTruthy();
+        expect(within(row).getByText(/Groq API error 429/)).toBeTruthy();
+    });
+
+    it("shows the funnel and what the reasoning cost", async () => {
+        render(<Logbook />);
+        await screen.findAllByText("NAUKRI");
+        const funnel = document.querySelector(".lb-funnel");
+        expect(within(funnel).getByText("market events")).toBeTruthy();
+        expect(within(funnel).getByText("executed")).toBeTruthy();
+        expect(within(funnel).getByText("tokens spent")).toBeTruthy();
+        expect(within(funnel).getByText("calls failed")).toBeTruthy();
     });
 
     it("reports an unavailable logbook rather than rendering nothing", async () => {

@@ -277,3 +277,103 @@
     background: #16120a;
     border: 1px solid #43371c;
 }
+
+/* Long stored prose: a reassessment's reasoning, a thesis rationale. Set for
+   reading rather than scanning, so the line length is deliberately short. */
+.lb-prose {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.65;
+    max-width: 78ch;
+    color: var(--lb-text);
+}
+.lb-note-line { font-size: 12px; margin: 0; }
+
+/* The model calls a decision paid for. */
+.lb-calls {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-left: 1px solid #43371c;
+    padding-left: 14px;
+}
+.lb-call {
+    display: grid;
+    grid-template-columns: 200px 62px 78px 1fr;
+    gap: 12px;
+    align-items: baseline;
+    font-size: 12px;
+}
+.lb-call-agent { color: var(--lb-text); }
+
+/* Every row opens now, so the affordance has to read as interactive. */
+.lb-row .lb-head { cursor: pointer; }
+.lb-head:focus-visible { outline: 2px solid var(--lb-accent); outline-offset: -2px; }
+.lb-open { background: #0c1119; border-left: 2px solid var(--lb-accent); }
+.lb-row.lb-decision.lb-open { border-left-color: var(--lb-think); }
+
+@media (max-width: 860px) {
+    .lb-call { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* The funnel. Bars are proportional to the widest stage, so the shape of the
+   session reads before any number does. */
+.lb-funnel { padding: 22px 24px 0; }
+.lb-funnel-rows { display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px; }
+.lb-fstep {
+    position: relative;
+    background: var(--lb-panel);
+    border: 1px solid var(--lb-line);
+    border-left: 2px solid var(--lb-accent);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.lb-fstep:last-child { border-left-color: var(--lb-good); }
+.lb-fbar { position: absolute; inset: 0 auto 0 0; background: #131c27; }
+.lb-fstep:last-child .lb-fbar { background: #0e1a13; }
+.lb-fbody {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 14px;
+    padding: 8px 14px;
+}
+.lb-fbody b {
+    font-size: 17px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    min-width: 4.5ch;
+}
+.lb-fstep:last-child .lb-fbody b { color: var(--lb-good); }
+.lb-fbody span { font-size: 12px; }
+.lb-fbody em { font-style: normal; font-size: 11px; }
+
+.lb-spend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+    gap: 1px;
+    background: var(--lb-line);
+    border: 1px solid var(--lb-line);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.lb-spend > div { background: var(--lb-panel); padding: 11px 14px; }
+.lb-spend b {
+    display: block;
+    font-size: 17px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+}
+.lb-spend span {
+    display: block;
+    margin-top: 2px;
+    font-size: 9px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--lb-muted);
+}
+.lb-spend .lb-warn b { color: var(--lb-warn); }
+
+@media (max-width: 860px) { .lb-funnel { padding-left: 16px; padding-right: 16px; } }

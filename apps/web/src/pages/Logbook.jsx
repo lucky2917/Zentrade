@@ -66,6 +66,13 @@ const buildTimeline = (log) => {
     return rows.sort((a, b) => b.ts - a.ts);
 };
 
+// Payload keys arrive as they were stored: camelCase, machine-shaped. Rendered
+// as a label a person reads without translating.
+const labelOf = (key) => {
+    const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/_/g, " ");
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+};
+
 const Field = ({ label, children, value }) => (
     <div className="lb-field">
         <span className="lb-field-label">{label}</span>
@@ -87,9 +94,11 @@ const Bullets = ({ items, empty = "none stated" }) => {
 // believed, what the challenger said, what the arithmetic measured, what the
 // gates did, and what happened.
 
-const DecisionBody = ({ d }) => {
+const DecisionBody = ({ d, calls = [] }) => {
     const s = d.synthesis ?? {};
     const gates = s.entryGates ?? [];
+    const spend = calls.reduce(
+        (n, c) => n + (c.promptTokens ?? 0) + (c.completionTokens ?? 0), 0);
     return (
         <div className="lb-body">
             <div className="lb-chain">
@@ -164,6 +173,29 @@ const DecisionBody = ({ d }) => {
                 </div>
             ) : null}
 
+            {calls.length ? (
+                <div className="lb-calls">
+                    <span className="lb-sub">
+                        What it cost<em>{calls.length} call{calls.length > 1 ? "s" : ""}
+                        {spend ? ` · ${spend.toLocaleString("en-IN")} tokens` : ""}</em>
+                    </span>
+                    {calls.map((c, i) => (
+                        <div key={i} className="lb-call">
+                            <span className="lb-call-agent">{text(c.agent).replace(/_/g, " ")}</span>
+                            <span className={c.status === "ok" ? "lb-good" : "lb-bad"}>{text(c.status)}</span>
+                            <span className="lb-muted">
+                                {isKnown(c.latencyMs) ? `${c.latencyMs} ms` : UNKNOWN}
+                            </span>
+                            <span className="lb-muted">
+                                {isKnown(c.promptTokens)
+                                    ? `${c.promptTokens} in · ${c.completionTokens ?? 0} out`
+                                    : (c.error ? text(c.error) : UNKNOWN)}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            ) : null}
+
             <div className="lb-outcome">
                 <Field label="Risk gate">
                     {d.risk
@@ -181,7 +213,161 @@ const DecisionBody = ({ d }) => {
     );
 };
 
-const Row = ({ row, open, onToggle }) => {
+// The reasoning behind a position that is already open. This is the same
+// senior-trader chain as an entry, run against a live position, and its
+// reasoning field is the longest prose the system stores.
+const ReassessmentBody = ({ r }) => (
+    <div className="lb-body">
+        <div className="lb-chain">
+            <Field label="Verdict">
+                <span className={`lb-act lb-act-${r.action}`}>{text(r.action)}</span>
+                <span className="lb-arrow"> · thesis {r.thesisStillValid === false
+                    ? <b className="lb-bad">no longer valid</b> : <b className="lb-good">still holds</b>}</span>
+                {r.material ? <span className="lb-arrow"> · change judged <b>material</b></span> : null}
+            </Field>
+            <Field label="What changed" value={r.whatChanged} />
+            <Field label="Confidence" value={r.confidence} />
+        </div>
+        <div className="lb-synth">
+            <span className="lb-sub">Its reasoning</span>
+            <p className="lb-prose">{text(r.reasoning)}</p>
+        </div>
+        <div className="lb-outcome">
+            <Field label="Held for">{duration(r.holdingSeconds)}</Field>
+            <Field label="Price">{rupees(r.currentPricePaise)}</Field>
+            <Field label="Open P&L">
+                <span className={(r.unrealisedPnlPaise ?? 0) >= 0 ? "lb-good" : "lb-bad"}>
+                    {signedRupees(r.unrealisedPnlPaise)}</span>
+            </Field>
+            <Field label="Risk gate">
+                {r.risk ? `${r.risk.decision}${r.risk.reason ? ` — ${r.risk.reason}` : ""}`
+                        : "not reached"}
+            </Field>
+            <Field label="Acted">{r.executed ? "yes" : "no"}</Field>
+        </div>
+    </div>
+);
+
+const EventBody = ({ e }) => (
+    <div className="lb-body">
+        <div className="lb-chain">
+            <Field label="Detector" value={e.observed?.detector} />
+            <Field label="Reason" value={e.reason} />
+            <Field label="Severity" value={e.severity} />
+        </div>
+        {e.observed && Object.keys(e.observed).length ? (
+            <div className="lb-synth">
+                <span className="lb-sub">What it measured</span>
+                <div className="lb-grid">
+                    {Object.entries(e.observed).map(([k, v]) => (
+                        <Field key={k} label={labelOf(k)} value={v} />
+                    ))}
+                </div>
+            </div>
+        ) : null}
+        <div className="lb-outcome">
+            <Field label="Handling">{text(e.state)}</Field>
+            <Field label="Attempts">{text(e.attempts)}</Field>
+            <Field label="Handled at">{e.handledAt ? clockTime(e.handledAt) : "not handled"}</Field>
+            {e.lastError ? <Field label="Last error" value={e.lastError} /> : null}
+            <Field label="Key" value={e.key} />
+        </div>
+    </div>
+);
+
+const OrderBody = ({ o }) => (
+    <div className="lb-body">
+        <div className="lb-grid">
+            <Field label="Side" value={o.side} />
+            <Field label="State" value={o.state} />
+            <Field label="Mode" value={o.mode} />
+            <Field label="Quantity">{text(o.quantity)}</Field>
+            <Field label="Filled">{text(o.filledQuantity)}</Field>
+            <Field label="Price">{rupees(o.pricePaise)}</Field>
+            <Field label="Value">{rupees(o.totalValuePaise)}</Field>
+            <Field label="Brokerage">{rupees(o.brokeragePaise)}</Field>
+            <Field label="Realised P&L">
+                {isKnown(o.pnlPaise)
+                    ? <span className={o.pnlPaise >= 0 ? "lb-good" : "lb-bad"}>
+                        {signedRupees(o.pnlPaise)}</span>
+                    : UNKNOWN}
+            </Field>
+        </div>
+        <div className="lb-outcome">
+            {o.rejectionReason ? <Field label="Rejected" value={o.rejectionReason} /> : null}
+            {o.ambiguityReason ? <Field label="Ambiguity" value={o.ambiguityReason} /> : null}
+            <Field label="Completed">{o.completedAt ? clockTime(o.completedAt) : "open"}</Field>
+            <Field label="Client id" value={o.clientOrderId} />
+            <Field label="Correlation" value={o.correlationId} />
+        </div>
+    </div>
+);
+
+const ThesisBody = ({ t }) => (
+    <div className="lb-body">
+        <div className="lb-chain">
+            <Field label="Setup" value={t.setupType} />
+            <Field label="Horizon" value={t.horizon} />
+        </div>
+        <div className="lb-synth">
+            <span className="lb-sub">Why the position exists</span>
+            <p className="lb-prose">{text(t.rationale)}</p>
+        </div>
+        <div className="lb-gates">
+            <span className="lb-sub">What would invalidate it</span>
+            <Bullets items={t.invalidationConditions} />
+        </div>
+        <div className="lb-grid">
+            <Field label="Entry">{rupees(t.entryPricePaise)}</Field>
+            <Field label="Stop">{rupees(t.stopPaise)}</Field>
+            <Field label="Target">{rupees(t.targetPaise)}</Field>
+            <Field label="Quantity">{text(t.quantity)}</Field>
+            <Field label="Closed">{t.closedAt ? clockTime(t.closedAt) : "open"}</Field>
+        </div>
+    </div>
+);
+
+const ModelCallBody = ({ c }) => (
+    <div className="lb-body">
+        <div className="lb-grid">
+            <Field label="Agent">{text(c.agent).replace(/_/g, " ")}</Field>
+            <Field label="Model" value={c.model} />
+            <Field label="Status" value={c.status} />
+            <Field label="Latency">{isKnown(c.latencyMs) ? `${c.latencyMs} ms` : UNKNOWN}</Field>
+            <Field label="Prompt tokens">{text(c.promptTokens)}</Field>
+            <Field label="Completion tokens">{text(c.completionTokens)}</Field>
+        </div>
+        {c.error ? (
+            <div className="lb-challenge">
+                <span className="lb-sub">Why it failed</span>
+                <p className="lb-prose lb-bad">{text(c.error)}</p>
+            </div>
+        ) : (
+            <p className="lb-muted lb-note-line">
+                The answer this call produced is stored as the decision itself, not
+                duplicated here.
+            </p>
+        )}
+        <div className="lb-outcome">
+            <Field label="Decision" value={c.decisionId} />
+        </div>
+    </div>
+);
+
+const AgentBody = ({ a }) => (
+    <div className="lb-body">
+        <div className="lb-grid">
+            {Object.entries(a.detail ?? {}).map(([k, v]) => (
+                <Field key={k} label={labelOf(k)}
+                       value={Array.isArray(v) ? (v.length ? v.join(", ") : "none") : v} />
+            ))}
+        </div>
+        {!Object.keys(a.detail ?? {}).length
+            ? <span className="lb-muted">no detail recorded</span> : null}
+    </div>
+);
+
+const Row = ({ row, open, onToggle, calls = [] }) => {
     const p = row.payload;
     const head = () => {
         switch (row.kind) {
@@ -257,19 +443,30 @@ const Row = ({ row, open, onToggle }) => {
         }
     };
 
-    const expandable = row.kind === "DECISION";
+    const body = () => {
+        switch (row.kind) {
+            case "DECISION":     return <DecisionBody d={p} calls={calls} />;
+            case "REASSESSMENT": return <ReassessmentBody r={p} />;
+            case "MARKET_EVENT": return <EventBody e={p} />;
+            case "ORDER":        return <OrderBody o={p} />;
+            case "FILL":         return <OrderBody o={{ ...p, side: p.side, state: "FILLED" }} />;
+            case "THESIS":       return <ThesisBody t={p} />;
+            case "MODEL_CALL":   return <ModelCallBody c={p} />;
+            case "AGENT":        return <AgentBody a={p} />;
+            default:             return null;
+        }
+    };
     return (
         <article className={`lb-row lb-${row.kind.toLowerCase()}${open ? " lb-open" : ""}`}>
             <button type="button" className="lb-head"
-                    onClick={expandable ? onToggle : undefined}
-                    aria-expanded={expandable ? open : undefined}>
+                    onClick={onToggle} aria-expanded={open}>
                 <time>{clockTime(row.at)}</time>
                 <span className={`lb-kind lb-k-${row.lane}`}>{row.kind.replace(/_/g, " ")}</span>
                 <span className="lb-symbol">{row.symbol ?? "—"}</span>
                 <span className="lb-headline">{head()}</span>
-                {expandable ? <span className="lb-chev">{open ? "−" : "+"}</span> : null}
+                <span className="lb-chev">{open ? "−" : "+"}</span>
             </button>
-            {open && expandable ? <DecisionBody d={p} /> : null}
+            {open ? body() : null}
         </article>
     );
 };
@@ -302,6 +499,18 @@ export const Logbook = () => {
     }, [load, date]);
 
     const timeline = useMemo(() => buildTimeline(log), [log]);
+    // Each decision cost one or more model calls. Indexed here so a decision can
+    // show its own price rather than leaving the calls stranded in another lane.
+    const callsByDecision = useMemo(() => {
+        const index = new Map();
+        for (const c of log?.modelCalls ?? []) {
+            const key = c.decisionId ?? c.correlationId;
+            if (!key) continue;
+            if (!index.has(key)) index.set(key, []);
+            index.get(key).push(c);
+        }
+        return index;
+    }, [log]);
     const rows = useMemo(() => {
         const q = query.trim().toLowerCase();
         return timeline.filter((r) => {
@@ -325,10 +534,30 @@ export const Logbook = () => {
     const s = log.summary;
     const calls = log.modelCalls ?? [];
     const failed = calls.filter((c) => c.status !== "ok").length;
-    const tokens = calls.reduce((n, c) => n + (c.promptTokens ?? 0) + (c.completionTokens ?? 0), 0);
     const decided = log.decisions ?? [];
     const proposedBuys = decided.filter((d) => d.synthesis?.proposedAction === "BUY").length;
     const executed = decided.filter((d) => d.executed).length;
+
+    // Where the session lost candidates. Every number is counted from stored
+    // records, so a stage that stopped nothing shows zero rather than vanishing.
+    const ok = calls.filter((c) => c.status === "ok");
+    const tokens = calls.reduce(
+        (n, c) => n + (c.promptTokens ?? 0) + (c.completionTokens ?? 0), 0);
+    const perDecision = decided.length ? Math.round(tokens / decided.length) : 0;
+    const meanLatency = ok.length
+        ? Math.round(ok.reduce((n, c) => n + (c.latencyMs ?? 0), 0) / ok.length) : 0;
+    const funnel = [
+        { label: "market events", n: log.counts?.marketEvents ?? 0,
+          note: "detectors that fired" },
+        { label: "decisions", n: decided.length, note: "reasoned to a verdict" },
+        { label: "proposed a buy", n: proposedBuys, note: "the model argued for a position" },
+        { label: "cleared costs", n: decided.filter(
+            (d) => d.synthesis?.edge?.verdict === "CLEARS_COSTS").length,
+          note: "beat the round-trip hurdle" },
+        { label: "reached the risk gate", n: decided.filter((d) => d.risk).length,
+          note: "deterministic limits" },
+        { label: "executed", n: executed, note: "became a position" },
+    ];
 
     return (
         <div className="lb-root">
@@ -355,6 +584,32 @@ export const Logbook = () => {
                 </div>
             </header>
 
+            <section className="lb-funnel">
+                <span className="lb-sub">How the session narrowed</span>
+                <div className="lb-funnel-rows">
+                    {funnel.map((f) => (
+                        <div key={f.label} className="lb-fstep">
+                            <div className="lb-fbar"
+                                 style={{ width: `${funnel[0].n ? Math.max(2, (f.n / funnel[0].n) * 100) : 0}%` }} />
+                            <div className="lb-fbody">
+                                <b>{f.n.toLocaleString("en-IN")}</b>
+                                <span>{f.label}</span>
+                                <em className="lb-muted">{f.note}</em>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="lb-spend">
+                    <div><b>{tokens.toLocaleString("en-IN")}</b><span>tokens spent</span></div>
+                    <div><b>{calls.length}</b><span>model calls</span></div>
+                    <div className={failed ? "lb-warn" : ""}>
+                        <b>{failed}</b><span>calls failed</span></div>
+                    <div><b>{perDecision.toLocaleString("en-IN")}</b><span>tokens per decision</span></div>
+                    <div><b>{meanLatency ? `${(meanLatency / 1000).toFixed(1)}s` : "—"}</b>
+                        <span>mean latency</span></div>
+                </div>
+            </section>
+
             <div className="lb-controls">
                 <div className="lb-lanes">
                     {LANES.map((l) => (
@@ -380,6 +635,10 @@ export const Logbook = () => {
                 <div className="lb-stream">
                     {rows.map((r, i) => (
                         <Row key={`${r.kind}-${r.ts}-${i}`} row={r}
+                             calls={r.kind === "DECISION"
+                                 ? (callsByDecision.get(r.payload.decisionId)
+                                    ?? callsByDecision.get(r.payload.correlationId) ?? [])
+                                 : []}
                              open={openId === `${r.kind}-${r.ts}-${i}`}
                              onToggle={() => setOpenId(
                                  openId === `${r.kind}-${r.ts}-${i}` ? null : `${r.kind}-${r.ts}-${i}`)} />
